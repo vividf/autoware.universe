@@ -39,7 +39,7 @@ DistortionCorrectorComponent::DistortionCorrectorComponent(const rclcpp::NodeOpt
   // Parameter
   time_stamp_field_name_ = declare_parameter("time_stamp_field_name", "time_stamp");
   use_imu_ = declare_parameter("use_imu", true);
-  update_azimuth_and_distance_ = declare_parameter<bool>("update_azimuth_and_distance");
+  update_azimuth_and_distance_ = declare_parameter<bool>("update_azimuth_and_distance", true);
 
   // Publisher
   undistorted_points_pub_ =
@@ -61,9 +61,26 @@ DistortionCorrectorComponent::DistortionCorrectorComponent(const rclcpp::NodeOpt
 void DistortionCorrectorComponent::onTwistWithCovarianceStamped(
   const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr twist_msg)
 {
+  tf2::Transform tf2_baselink_to_sensor_link{};
+  getTransform(sensor_frame_, twist_msg->header.frame_id, &tf2_baselink_to_sensor_link);
+  geometry_msgs::msg::TransformStamped::SharedPtr tf_baselink2sensor_ptr =
+    std::make_shared<geometry_msgs::msg::TransformStamped>();
+  tf_baselink2sensor_ptr->transform.rotation = tf2::toMsg(tf2_baselink_to_sensor_link.getRotation());
+
+  geometry_msgs::msg::Vector3 linear_velocity;  
+  geometry_msgs::msg::Vector3 angular_velocity;
+  geometry_msgs::msg::Vector3 transformed_linear_velocity;
+  geometry_msgs::msg::Vector3 transformed_angular_velocity;
+
+  linear_velocity = twist_msg->twist.twist.linear;;
+  angular_velocity = twist_msg->twist.twist.angular;
+  tf2::doTransform(linear_velocity, transformed_linear_velocity, *tf_baselink2sensor_ptr);
+  tf2::doTransform(angular_velocity, transformed_angular_velocity, *tf_baselink2sensor_ptr);
+ 
   geometry_msgs::msg::TwistStamped msg;
   msg.header = twist_msg->header;
-  msg.twist = twist_msg->twist.twist;
+  msg.twist.linear = linear_velocity;
+  msg.twist.angular = angular_velocity;
   twist_queue_.push_back(msg);
 
   while (!twist_queue_.empty()) {
@@ -85,17 +102,17 @@ void DistortionCorrectorComponent::onImu(const sensor_msgs::msg::Imu::ConstShare
     return;
   }
 
-  tf2::Transform tf2_imu_link_to_base_link{};
-  getTransform(base_link_frame_, imu_msg->header.frame_id, &tf2_imu_link_to_base_link);
-  geometry_msgs::msg::TransformStamped::SharedPtr tf_base2imu_ptr =
+  tf2::Transform tf2_imu_link_to_sensor_link{};
+  getTransform(sensor_frame_, imu_msg->header.frame_id, &tf2_imu_link_to_sensor_link);
+  geometry_msgs::msg::TransformStamped::SharedPtr tf_imu2sensor_ptr =
     std::make_shared<geometry_msgs::msg::TransformStamped>();
-  tf_base2imu_ptr->transform.rotation = tf2::toMsg(tf2_imu_link_to_base_link.getRotation());
+  tf_imu2sensor_ptr->transform.rotation = tf2::toMsg(tf2_imu_link_to_sensor_link.getRotation());
 
   geometry_msgs::msg::Vector3Stamped angular_velocity;
   angular_velocity.vector = imu_msg->angular_velocity;
 
   geometry_msgs::msg::Vector3Stamped transformed_angular_velocity;
-  tf2::doTransform(angular_velocity, transformed_angular_velocity, *tf_base2imu_ptr);
+  tf2::doTransform(angular_velocity, transformed_angular_velocity, *tf_imu2sensor_ptr);
   transformed_angular_velocity.header = imu_msg->header;
   angular_velocity_queue_.push_back(transformed_angular_velocity);
 
@@ -124,11 +141,7 @@ void DistortionCorrectorComponent::onPointCloud(PointCloud2::UniquePtr points_ms
     return;
   }
 
-  tf2::Transform tf2_base_link_to_sensor{};
-  getTransform(points_msg->header.frame_id, base_link_frame_, &tf2_base_link_to_sensor);
-
-  undistortPointCloud(tf2_base_link_to_sensor, *points_msg);
-
+  undistortPointCloud(*points_msg);
   undistorted_points_pub_->publish(std::move(points_msg));
 
   // add processing time for debug
@@ -168,8 +181,7 @@ bool DistortionCorrectorComponent::getTransform(
   return true;
 }
 
-bool DistortionCorrectorComponent::undistortPointCloud(
-  const tf2::Transform & tf2_base_link_to_sensor, PointCloud2 & points)
+bool DistortionCorrectorComponent::undistortPointCloud(PointCloud2 & points)
 {
   if (points.data.empty() || twist_queue_.empty()) {
     RCLCPP_WARN_STREAM_THROTTLE(
@@ -197,9 +209,6 @@ bool DistortionCorrectorComponent::undistortPointCloud(
   sensor_msgs::PointCloud2Iterator<float> it_distance(points, "distance");
   sensor_msgs::PointCloud2ConstIterator<double> it_time_stamp(points, time_stamp_field_name_);
 
-  float theta{0.0f};
-  float x{0.0f};
-  float y{0.0f};
   double prev_time_stamp_sec{*it_time_stamp};
   const double first_point_time_stamp_sec{*it_time_stamp};
 
@@ -221,19 +230,16 @@ bool DistortionCorrectorComponent::undistortPointCloud(
       imu_it == std::end(angular_velocity_queue_) ? std::end(angular_velocity_queue_) - 1 : imu_it;
   }
 
-  const tf2::Transform tf2_base_link_to_sensor_inv{tf2_base_link_to_sensor.inverse()};
-
   // For performance, do not instantiate `rclcpp::Time` inside of the for-loop
   double twist_stamp = rclcpp::Time(twist_it->header.stamp).seconds();
 
   // For performance, instantiate outside of the for-loop
-  tf2::Quaternion baselink_quat{};
-  tf2::Transform baselink_tf_odom{};
-  tf2::Vector3 point{};
-  tf2::Vector3 undistorted_point{};
+  Eigen::Vector4f point;
+  Eigen::Vector4f undistorted_point;
+  Eigen::Matrix4f transformation_matrix;
+  Eigen::Matrix4f prev_transformation_matrix = Eigen::Matrix4f::Identity();
 
-  // For performance, avoid transform computation if unnecessary
-  bool need_transform = points.header.frame_id != base_link_frame_;
+
 
   for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z, ++it_azimuth, ++it_distance, ++it_time_stamp) {
     while (twist_it != std::end(twist_queue_) - 1 && *it_time_stamp > twist_stamp) {
@@ -241,15 +247,29 @@ bool DistortionCorrectorComponent::undistortPointCloud(
       twist_stamp = rclcpp::Time(twist_it->header.stamp).seconds();
     }
 
+    float v_x{static_cast<float>(twist_it->twist.linear.x)};
+    float v_y{static_cast<float>(twist_it->twist.linear.y)};
+    float v_z{static_cast<float>(twist_it->twist.linear.z)};
+    float w_x{static_cast<float>(twist_it->twist.angular.x)};
+    float w_y{static_cast<float>(twist_it->twist.angular.y)};
+    float w_z{static_cast<float>(twist_it->twist.angular.z)};
+    
+    /*
     float v{static_cast<float>(twist_it->twist.linear.x)};
     float w{static_cast<float>(twist_it->twist.angular.z)};
+    */
+
 
     if (std::abs(*it_time_stamp - twist_stamp) > 0.1) {
       RCLCPP_WARN_STREAM_THROTTLE(
         get_logger(), *get_clock(), 10000 /* ms */,
         "twist time_stamp is too late. Could not interpolate.");
-      v = 0.0f;
-      w = 0.0f;
+      v_x = 0.0f;
+      v_y = 0.0f;
+      v_z = 0.0f;
+      w_x = 0.0f;
+      w_y = 0.0f;
+      w_z = 0.0f;
     }
 
     if (use_imu_ && !angular_velocity_queue_.empty()) {
@@ -272,44 +292,38 @@ bool DistortionCorrectorComponent::undistortPointCloud(
           get_logger(), *get_clock(), 10000 /* ms */,
           "imu time_stamp is too late. Could not interpolate.");
       } else {
-        w = static_cast<float>(imu_it->vector.z);
+        w_x = static_cast<float>(imu_it->vector.x);
+        w_y = static_cast<float>(imu_it->vector.y);
+        w_z = static_cast<float>(imu_it->vector.z);
       }
     }
 
     const auto time_offset = static_cast<float>(*it_time_stamp - prev_time_stamp_sec);
+    point << *it_x, *it_y, *it_z, 1.0;
 
-    point.setValue(*it_x, *it_y, *it_z);
+    std::cout << "\nbefore " << std::endl;
+    std::cout << "*it_x: " << *it_x << "*it_y: " << *it_y << "*it_z: " << *it_z << std::endl;
 
-    if (need_transform) {
-      point = tf2_base_link_to_sensor_inv * point;
-    }
+    Sophus::SE3f::Tangent twist;
+    twist << v_x, v_y, v_z, w_x, w_y, w_z;
+    twist = twist * time_offset;
+    transformation_matrix = Sophus::SE3f::exp(twist).matrix();
+    transformation_matrix = transformation_matrix * prev_transformation_matrix;
 
-    theta += w * time_offset;
-    baselink_quat.setValue(
-      0, 0, tier4_autoware_utils::sin(theta * 0.5f),
-      tier4_autoware_utils::cos(theta * 0.5f));  // baselink_quat.setRPY(0.0, 0.0, theta);
-    const float dis = v * time_offset;
-    x += dis * tier4_autoware_utils::cos(theta);
-    y += dis * tier4_autoware_utils::sin(theta);
+    undistorted_point = transformation_matrix * point;
+    *it_x = undistorted_point[0];
+    *it_y = undistorted_point[1];
+    *it_z = undistorted_point[2];
 
-    baselink_tf_odom.setOrigin(tf2::Vector3(x, y, 0.0));
-    baselink_tf_odom.setRotation(baselink_quat);
-
-    undistorted_point = baselink_tf_odom * point;
-
-    if (need_transform) {
-      undistorted_point = tf2_base_link_to_sensor * undistorted_point;
-    }
-
-    *it_x = static_cast<float>(undistorted_point.getX());
-    *it_y = static_cast<float>(undistorted_point.getY());
-    *it_z = static_cast<float>(undistorted_point.getZ());
+    std::cout << "after " << std::endl;
+    std::cout << "*it_x: " << *it_x << "*it_y: " << *it_y << "*it_z: " << *it_z << std::endl;
 
     if (update_azimuth_and_distance_) {
       *it_distance = sqrt(*it_x * *it_x + *it_y * *it_y + *it_z * *it_z);
       *it_azimuth = cv::fastAtan2(*it_y, *it_x) * 100;
     }
     prev_time_stamp_sec = *it_time_stamp;
+    prev_transformation_matrix = transformation_matrix;
   }
   return true;
 }
