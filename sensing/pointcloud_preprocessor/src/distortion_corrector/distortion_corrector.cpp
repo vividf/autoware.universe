@@ -19,6 +19,7 @@
 #include <deque>
 #include <string>
 #include <utility>
+#include <time.h>
 
 namespace pointcloud_preprocessor
 {
@@ -141,7 +142,13 @@ void DistortionCorrectorComponent::onPointCloud(PointCloud2::UniquePtr points_ms
     return;
   }
 
+
+  double start = 0, finish = 0, duration = 0; 
+  start = clock();
   undistortPointCloud(*points_msg);
+  finish = clock();
+  duration = (double)(finish - start) / CLOCKS_PER_SEC;
+  std::cout << "duration: " << duration << std::endl;
   undistorted_points_pub_->publish(std::move(points_msg));
 
   // add processing time for debug
@@ -301,8 +308,8 @@ bool DistortionCorrectorComponent::undistortPointCloud(PointCloud2 & points)
     const auto time_offset = static_cast<float>(*it_time_stamp - prev_time_stamp_sec);
     point << *it_x, *it_y, *it_z, 1.0;
 
-    std::cout << "\nbefore " << std::endl;
-    std::cout << "*it_x: " << *it_x << "*it_y: " << *it_y << "*it_z: " << *it_z << std::endl;
+    //std::cout << "\nbefore " << std::endl;
+    //std::cout << "*it_x: " << *it_x << "*it_y: " << *it_y << "*it_z: " << *it_z << std::endl;
 
     Sophus::SE3f::Tangent twist;
     twist << v_x, v_y, v_z, w_x, w_y, w_z;
@@ -315,8 +322,8 @@ bool DistortionCorrectorComponent::undistortPointCloud(PointCloud2 & points)
     *it_y = undistorted_point[1];
     *it_z = undistorted_point[2];
 
-    std::cout << "after " << std::endl;
-    std::cout << "*it_x: " << *it_x << "*it_y: " << *it_y << "*it_z: " << *it_z << std::endl;
+    //std::cout << "after " << std::endl;
+    //std::cout << "*it_x: " << *it_x << "*it_y: " << *it_y << "*it_z: " << *it_z << std::endl;
 
     if (update_azimuth_and_distance_) {
       *it_distance = sqrt(*it_x * *it_x + *it_y * *it_y + *it_z * *it_z);
