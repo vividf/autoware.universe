@@ -64,19 +64,23 @@ void DistortionCorrectorComponent::onTwistWithCovarianceStamped(
 {
   tf2::Transform tf2_baselink_to_sensor_link{};
   getTransform(sensor_frame_, twist_msg->header.frame_id, &tf2_baselink_to_sensor_link);
-  geometry_msgs::msg::TransformStamped::SharedPtr tf_baselink2sensor_ptr =
-    std::make_shared<geometry_msgs::msg::TransformStamped>();
-  tf_baselink2sensor_ptr->transform.rotation = tf2::toMsg(tf2_baselink_to_sensor_link.getRotation());
+  Eigen::Matrix4f eigen_baselink_to_sensor_link = tf2::transformToEigen(toMsg(tf2_baselink_to_sensor_link)).matrix().cast<float>();
 
-  geometry_msgs::msg::Vector3 linear_velocity;  
-  geometry_msgs::msg::Vector3 angular_velocity;
-  geometry_msgs::msg::Vector3 transformed_linear_velocity;
-  geometry_msgs::msg::Vector3 transformed_angular_velocity;
+  geometry_msgs::msg::Vector3 linear_velocity = twist_msg->twist.twist.linear;
+  geometry_msgs::msg::Vector3 angular_velocity = twist_msg->twist.twist.angular;
 
-  linear_velocity = twist_msg->twist.twist.linear;;
-  angular_velocity = twist_msg->twist.twist.angular;
-  tf2::doTransform(linear_velocity, transformed_linear_velocity, *tf_baselink2sensor_ptr);
-  tf2::doTransform(angular_velocity, transformed_angular_velocity, *tf_baselink2sensor_ptr);
+  Eigen::Matrix3f rotation_matrix = eigen_baselink_to_sensor_link.topLeftCorner<3, 3>();
+  Eigen::Vector3f translation_vector = eigen_baselink_to_sensor_link.topRightCorner<3, 1>();
+  Sophus::SE3f T_b_to_s(rotation_matrix, translation_vector);
+  Sophus::SE3f::Tangent twist(linear_velocity.x, linear_velocity.y, linear_velocity.z, angular_velocity.x, angular_velocity.y, angular_velocity.z);
+  Sophus::SE3f::Tangent transformed_twist = T_b_to_s.Adj() * twist;
+
+  linear_velocity.x = transformed_twist[0];
+  linear_velocity.y = transformed_twist[1];
+  linear_velocity.z = transformed_twist[2];
+  angular_velocity.x = transformed_twist[3];
+  angular_velocity.y = transformed_twist[4];
+  angular_velocity.z = transformed_twist[5];
  
   geometry_msgs::msg::TwistStamped msg;
   msg.header = twist_msg->header;
@@ -305,19 +309,19 @@ bool DistortionCorrectorComponent::undistortPointCloud(PointCloud2 & points)
       }
     }
 
-    const auto time_offset = static_cast<float>(*it_time_stamp - prev_time_stamp_sec);
+    float time_offset = static_cast<float>(*it_time_stamp - prev_time_stamp_sec);
     point << *it_x, *it_y, *it_z, 1.0;
 
     //std::cout << "\nbefore " << std::endl;
     //std::cout << "*it_x: " << *it_x << "*it_y: " << *it_y << "*it_z: " << *it_z << std::endl;
 
-    Sophus::SE3f::Tangent twist;
-    twist << v_x, v_y, v_z, w_x, w_y, w_z;
+    Sophus::SE3f::Tangent twist(v_x, v_y, v_z, w_x, w_y, w_z);
     twist = twist * time_offset;
     transformation_matrix = Sophus::SE3f::exp(twist).matrix();
-    transformation_matrix = transformation_matrix * prev_transformation_matrix;
 
+    transformation_matrix = transformation_matrix * prev_transformation_matrix;
     undistorted_point = transformation_matrix * point;
+    
     *it_x = undistorted_point[0];
     *it_y = undistorted_point[1];
     *it_z = undistorted_point[2];

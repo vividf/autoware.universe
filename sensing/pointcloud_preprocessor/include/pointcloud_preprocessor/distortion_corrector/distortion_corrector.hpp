@@ -25,6 +25,8 @@
 
 #include <tf2/convert.h>
 #include <tf2/transform_datatypes.h>
+#include <tf2_eigen/tf2_eigen.hpp>
+
 
 #ifdef ROS_DISTRO_GALACTIC
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
@@ -46,6 +48,7 @@
 
 #include <sophus/se3.hpp>
 #include <Eigen/Core>
+
 
 
 namespace pointcloud_preprocessor
