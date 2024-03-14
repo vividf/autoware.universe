@@ -39,7 +39,7 @@ DistortionCorrectorComponent::DistortionCorrectorComponent(const rclcpp::NodeOpt
   // Parameter
   time_stamp_field_name_ = declare_parameter("time_stamp_field_name", "time_stamp");
   use_imu_ = declare_parameter("use_imu", true);
-  update_azimuth_and_distance_ = declare_parameter<bool>("update_azimuth_and_distance");
+  update_azimuth_and_distance_ = declare_parameter<bool>("update_azimuth_and_distance", true);
 
   // Publisher
   undistorted_points_pub_ =
@@ -246,6 +246,15 @@ bool DistortionCorrectorComponent::undistortPointCloud(
   bool need_transform = points.header.frame_id != base_link_frame_;
 
   for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z, ++it_azimuth, ++it_distance, ++it_time_stamp) {
+    if (update_azimuth_and_distance_ && !has_azimuth_transformation_) {
+      // calculate the relation between the Lidar azimuth coordinate and the Cartesian coordinate
+      // system 360 - atan(xy) - Lidar azimuth = offset azimuth transformation = 360 - offset =
+      // atan(xy) + Lidar azimuth
+      azimuth_transformation_ = cv::fastAtan2(*it_y, *it_x) * azimuth_factor_ + *it_azimuth;
+      std::cout << "azimuth_transformation_: " << azimuth_transformation_ << std::endl;
+      has_azimuth_transformation_ = true;
+    }
+
     while (twist_it != std::end(twist_queue_) - 1 && *it_time_stamp > twist_stamp) {
       ++twist_it;
       twist_stamp = rclcpp::Time(twist_it->header.stamp).seconds();
@@ -311,14 +320,22 @@ bool DistortionCorrectorComponent::undistortPointCloud(
       undistorted_point = tf2_base_link_to_sensor * undistorted_point;
     }
 
+    std::cout << "berfore x : " << *it_x << " y : " << *it_y << " azimuth : " << *it_azimuth
+              << std::endl;
     *it_x = static_cast<float>(undistorted_point.getX());
     *it_y = static_cast<float>(undistorted_point.getY());
     *it_z = static_cast<float>(undistorted_point.getZ());
 
     if (update_azimuth_and_distance_ && need_transform) {
       *it_distance = sqrt(*it_x * *it_x + *it_y * *it_y + *it_z * *it_z);
-      *it_azimuth = cv::fastAtan2(*it_y, *it_x) * azimuth_factor_;
+      float cartesian_coordinate_azimuth = cv::fastAtan2(*it_y, *it_x) * azimuth_factor_;
+      *it_azimuth = azimuth_transformation_ - cartesian_coordinate_azimuth > 0.f
+                      ? azimuth_transformation_ - cartesian_coordinate_azimuth
+                      : azimuth_transformation_ - cartesian_coordinate_azimuth + 36000.f;
     }
+    std::cout << "after x : " << *it_x << " y : " << *it_y << " azimuth : " << *it_azimuth
+              << std::endl;
+
     prev_time_stamp_sec = *it_time_stamp;
   }
   return true;
