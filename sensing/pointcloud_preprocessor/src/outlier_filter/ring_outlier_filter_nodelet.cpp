@@ -49,7 +49,7 @@ RingOutlierFilterComponent::RingOutlierFilterComponent(const rclcpp::NodeOptions
     max_points_num_per_ring_ =
       static_cast<size_t>(declare_parameter("max_points_num_per_ring", 4000));
     publish_excluded_points_ =
-      static_cast<bool>(declare_parameter("publish_excluded_points", false));
+      static_cast<bool>(declare_parameter("publish_excluded_points", true));
   }
 
   using std::placeholders::_1;
@@ -99,6 +99,9 @@ void RingOutlierFilterComponent::faster_filter(
   int walk_first_idx = 0;
   int walk_last_idx = -1;
 
+  // int total = 0;
+  // int count = 0;
+
   for (const auto & indices : ring2indices) {
     if (indices.size() < 2) continue;
 
@@ -118,6 +121,9 @@ void RingOutlierFilterComponent::faster_filter(
         *reinterpret_cast<const float *>(&input->data[next_data_idx + azimuth_offset]);
       float azimuth_diff = std::abs(next_azimuth - current_azimuth);
       azimuth_diff = azimuth_diff > 18000.f ? 36000.f - azimuth_diff : azimuth_diff;
+
+      // std::cout << "azimuth_diff: " << azimuth_diff << std::endl;
+      // total++;
 
       const float & current_distance =
         *reinterpret_cast<const float *>(&input->data[current_data_idx + distance_offset]);
@@ -153,6 +159,8 @@ void RingOutlierFilterComponent::faster_filter(
 
           output_size += output.point_step;
         }
+      } else {
+        // count++;
       }
 
       walk_first_idx = idx + 1;
@@ -185,6 +193,8 @@ void RingOutlierFilterComponent::faster_filter(
     }
   }
 
+  // std::cout << "total: " << total << std::endl;
+  // std::cout << "filter num: " << count << std::endl;
   output.data.resize(output_size);
 
   // Note that `input->header.frame_id` is data before converted when `transform_info.need_transform
@@ -276,6 +286,7 @@ sensor_msgs::msg::PointCloud2 RingOutlierFilterComponent::extractExcludedPoints(
   const sensor_msgs::msg::PointCloud2 & input, const sensor_msgs::msg::PointCloud2 & output,
   float epsilon)
 {
+  int counter = 0;
   // Convert ROS PointCloud2 message to PCL point cloud for easier manipulation
   pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::PointCloud<pcl::PointXYZ>::Ptr output_cloud(new pcl::PointCloud<pcl::PointXYZ>);
@@ -298,6 +309,7 @@ sensor_msgs::msg::PointCloud2 RingOutlierFilterComponent::extractExcludedPoints(
       continue;
     }
     if (nn_distances[0] > epsilon) {
+      counter++;
       excluded_points->points.push_back(point);
     }
   }
@@ -316,6 +328,7 @@ sensor_msgs::msg::PointCloud2 RingOutlierFilterComponent::extractExcludedPoints(
   excluded_points_msg.header.frame_id =
     !tf_input_frame_.empty() ? tf_input_frame_ : tf_input_orig_frame_;
 
+  std::cout << "Excluded points: " << counter << std::endl;
   return excluded_points_msg;
 }
 

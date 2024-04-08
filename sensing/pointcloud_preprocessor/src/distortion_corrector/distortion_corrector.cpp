@@ -246,6 +246,23 @@ bool DistortionCorrectorComponent::undistortPointCloud(
   bool need_transform = points.header.frame_id != base_link_frame_;
 
   for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z, ++it_azimuth, ++it_distance, ++it_time_stamp) {
+    if (!has_azimuth_transformation_ && update_azimuth_and_distance_) {
+      // calculate the relation between the Lidar azimuth coordinate and the Cartesian coordinate
+      // system 360 - atan(xy) - Lidar azimuth = offset azimuth transformation = 360 - offset =
+      // atan(xy) + Lidar azimuth
+      float offset =
+        std::abs(36000.f - cv::fastAtan2(*it_y, *it_x) * azimuth_factor_ - *it_azimuth);
+      if (offset < 4500.f)
+        azimuth_transformation_ = 36000.f;  // velodyne azimuth coordinate
+      else if (offset < 13500.f)
+        azimuth_transformation_ = 9000.f;  // hesai azimuth coordinate
+      else if (offset < 22500.f)
+        azimuth_transformation_ = 18000.f;
+      else if (offset < 31500.f)
+        azimuth_transformation_ = 27000.f;
+      has_azimuth_transformation_ = true;
+    }
+
     while (twist_it != std::end(twist_queue_) - 1 && *it_time_stamp > twist_stamp) {
       ++twist_it;
       twist_stamp = rclcpp::Time(twist_it->header.stamp).seconds();
@@ -317,8 +334,12 @@ bool DistortionCorrectorComponent::undistortPointCloud(
 
     if (update_azimuth_and_distance_ && need_transform) {
       *it_distance = sqrt(*it_x * *it_x + *it_y * *it_y + *it_z * *it_z);
-      *it_azimuth = cv::fastAtan2(*it_y, *it_x) * azimuth_factor_;
+      float cartesian_coordinate_azimuth = cv::fastAtan2(*it_y, *it_x) * azimuth_factor_;
+      *it_azimuth = azimuth_transformation_ - cartesian_coordinate_azimuth > 0.f
+                      ? azimuth_transformation_ - cartesian_coordinate_azimuth
+                      : azimuth_transformation_ - cartesian_coordinate_azimuth + 36000.f;
     }
+
     prev_time_stamp_sec = *it_time_stamp;
   }
   return true;

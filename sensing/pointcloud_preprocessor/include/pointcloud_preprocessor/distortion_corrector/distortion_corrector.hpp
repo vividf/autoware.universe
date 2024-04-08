@@ -83,7 +83,9 @@ private:
   std::string time_stamp_field_name_;
   bool use_imu_;
   bool update_azimuth_and_distance_;
-  float azimuth_factor_ = 100.0;
+  bool has_azimuth_transformation_{false};
+  float azimuth_factor_{100.0};
+  float azimuth_transformation_;
 };
 
 }  // namespace pointcloud_preprocessor
