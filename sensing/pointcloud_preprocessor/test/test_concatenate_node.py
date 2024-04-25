@@ -70,7 +70,7 @@ def generate_test_description():
         ComposableNode(
             package="pointcloud_preprocessor",
             plugin="pointcloud_preprocessor::PointCloudConcatenateDataSynchronizerComponent",
-            name="concatenate_data",
+            name="synchoronize_concatenate_node",
             remappings=[
                 ("~/input/twist", "/test/sensing/vehicle_velocity_converter/twist_with_covariance"),
                 ("output", "/test/sensing/lidar/concatenated/pointcloud"),
@@ -165,7 +165,8 @@ def get_pointcloud_msg(is_generate_points: bool, frame_id_index: int):
     Create ros2 point cloud message from list of points.
 
     Args:
-        pts (list): list of points [[x, y, z], ...]
+        is_generate_points: flag to determine if the pointlcloud message includes points.
+        frame_id_index: index of the frame_id, from 0 to 2.
 
     Returns:
         PointCloud2: ros2 point cloud message
@@ -244,6 +245,39 @@ def generate_static_transform_msg():
     return [tf_top_lidar_msg, tf_right_lidar_msg, tf_left_lidar_msg]
 
 
+def generate_twist_msg():
+    twist_header = Header()
+    twist_header.stamp = rclpy.clock.Clock().now().to_msg()
+    twist_header.frame_id = "base_link"
+    twist_msg = TwistWithCovarianceStamped()
+    twist_msg.header = twist_header
+    twist_msg.twist.twist.linear.x = 1.0
+
+    return twist_msg
+
+
+def calculate_number_of_points(msg):
+    """
+    Calculate the number of points in a PointCloud2 message.
+
+    Args:
+        msg (PointCloud2): The PointCloud2 message.
+
+    Returns:
+        int: Number of points in the PointCloud.
+    """
+    # Each point's size (in bytes) is the sum of the sizes of all its fields
+    point_step = msg.point_step
+    print("point_step: ", point_step)
+    # Total data size (in bytes) of the point cloud
+    data_size = len(msg.data)
+    print("data_size: ", data_size)
+    # Number of points is the total data size divided by the size of each point
+    num_points = data_size // point_step
+
+    return num_points
+
+
 class TestConcatenateNode(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -262,12 +296,15 @@ class TestConcatenateNode(unittest.TestCase):
         tf_msg = generate_static_transform_msg()
         self.tf_broadcaster = StaticTransformBroadcaster(self.node)
         self.tf_broadcaster.sendTransform(tf_msg)
-
-        self.twist_pub, self.pointcloud_pub = self.create_pub_sub()
+        self.msg_buffer = []
+        self.twist_publisher, self.pointcloud_publishers = self.create_pub_sub()
 
     def tearDown(self):
         # called when each test finished
         self.node.destroy_node()
+
+    def callback(self, msg: PointCloud2):
+        self.msg_buffer.append(msg)
 
     def create_pub_sub(self):
         # QoS profile for sensor data
@@ -278,23 +315,146 @@ class TestConcatenateNode(unittest.TestCase):
             durability=QoSDurabilityPolicy.VOLATILE,
         )
         # Publishers
-        twist_pub = self.node.create_publisher(
+        twist_publisher = self.node.create_publisher(
             TwistWithCovarianceStamped,
             "/test/sensing/vehicle_velocity_converter/twist_with_covariance",
             10,
         )
 
-        pointcloud_pub = {}
-        for input_lidar_topic in INPUT_LIDAR_TOPICS:
-            pointcloud_pub[input_lidar_topic] = self.node.create_publisher(
+        pointcloud_publishers = {}
+        for idx, input_lidar_topic in enumerate(INPUT_LIDAR_TOPICS):
+            pointcloud_publishers[idx] = self.node.create_publisher(
                 PointCloud2,
                 input_lidar_topic,
                 qos_profile=sensor_qos,
             )
 
-        return twist_pub, pointcloud_pub
+        # create subscriber
+        self.msg_buffer = []
+        # subscribe to occupancy grid with buffer
+        self.node.create_subscription(
+            PointCloud2,
+            "/test/sensing/lidar/concatenated/pointcloud",
+            self.callback,
+            qos_profile=sensor_qos,
+        )
+
+        return twist_publisher, pointcloud_publishers
 
     def test_normal_input(self):
+        """
+        Test normal situation.
+
+        All of the pointcloud come in time before timeout.
+        Node can successfully concatenate all pointclouds.
+
+        input: pointclouds from three different topics.
+        output: concatenate pointcloud
+        """
         # wait for the node to be ready
         time.sleep(3)
-        pass
+
+        # fill the twist msg
+        twist_msg = generate_twist_msg()
+        self.twist_publisher.publish(twist_msg)
+
+        for frame_idx in range(len(INPUT_LIDAR_TOPICS)):
+            pointcloud_msg = get_pointcloud_msg(True, frame_idx)
+            self.pointcloud_publishers[frame_idx].publish(pointcloud_msg)
+
+        rclpy.spin_once(self.node, timeout_sec=0.1)
+
+        # Should receive only one concatenate pointcloud
+        self.assertEqual(
+            len(self.msg_buffer), 1, "There are more than one concatenate pointcloud in this case"
+        )
+        self.assertEqual(
+            self.msg_buffer[0].header.frame_id,
+            "base_link",
+            "The concatendate pointcloud frame id is not base_link",
+        )
+        self.assertEqual(
+            calculate_number_of_points(self.msg_buffer[0]),
+            NUM_OF_POINTS * len(FRAME_ID_LISTS),
+            "The concatendate pointcloud has a different number of point as expected",
+        )
+
+    def test_abnormal_pointcloud_drop(self):
+        """
+        Test abnormal situation.
+
+        One of the pointcloud drop before timeout.
+        Node should concatenate the remain pointcloud.
+
+        input: pointclouds from three different topics.
+        output: concatenate pointcloud
+        """
+        # wait for the node to be ready
+        time.sleep(3)
+
+        # fill the twist msg
+        twist_msg = generate_twist_msg()
+        self.twist_publisher.publish(twist_msg)
+
+        for frame_idx in range(len(INPUT_LIDAR_TOPICS) - 1):
+            pointcloud_msg = get_pointcloud_msg(True, frame_idx)
+            self.pointcloud_publishers[frame_idx].publish(pointcloud_msg)
+
+        rclpy.spin_once(self.node, timeout_sec=0.1)
+
+        # Should receive only one concatenate pointcloud
+        self.assertEqual(
+            len(self.msg_buffer), 1, "There are more than one concatenate pointcloud in this case"
+        )
+        self.assertEqual(
+            self.msg_buffer[0].header.frame_id,
+            "base_link",
+            "The concatendate pointcloud frame id is not base_link",
+        )
+        self.assertEqual(
+            calculate_number_of_points(self.msg_buffer[0]),
+            NUM_OF_POINTS * (len(FRAME_ID_LISTS) - 1),
+            "The concatendate pointcloud has a different number of point as expected",
+        )
+
+    def test_abnormal_pointcloud_delay(self):
+        """Test abnormal situation.
+
+        One of the pointcloud come after timeout.
+        Node should concatenate the remain pointcloud first
+        and then concatenate the delay pointcloud
+
+        input: pointclouds from three different topics.
+        output: concatenate pointcloud
+        """
+        # wait for the node to be ready
+        time.sleep(3)
+
+        # fill the twist msg
+        twist_msg = generate_twist_msg()
+        self.twist_publisher.publish(twist_msg)
+
+        for frame_idx in range(len(INPUT_LIDAR_TOPICS) - 1):
+            pointcloud_msg = get_pointcloud_msg(True, frame_idx)
+            self.pointcloud_publishers[frame_idx].publish(pointcloud_msg)
+
+        time.sleep(1)
+        pointcloud_msg = get_pointcloud_msg(True, frame_idx)
+        self.pointcloud_publishers[frame_idx].publish(pointcloud_msg)
+
+        rclpy.spin_once(self.node, timeout_sec=0.1)
+
+        # Should receive only one concatenate pointcloud
+        self.assertEqual(
+            len(self.msg_buffer), 1, "There are more than one concatenate pointcloud in this case"
+        )
+        self.assertEqual(
+            self.msg_buffer[0].header.frame_id,
+            "base_link",
+            "The concatendate pointcloud frame id is not base_link",
+        )
+        self.assertEqual(
+            calculate_number_of_points(self.msg_buffer[0]),
+            NUM_OF_POINTS * (len(FRAME_ID_LISTS) - 1),
+            "The concatendate pointcloud has a different number of point as expected",
+        )

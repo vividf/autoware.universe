@@ -358,6 +358,8 @@ PointCloudConcatenateDataSynchronizerComponent::combineClouds(
       pc_stamps.push_back(rclcpp::Time(e.second->header.stamp));
     }
   }
+
+  RCLCPP_WARN(this->get_logger(), "pc_stamps: %ld", pc_stamps.size());
   if (pc_stamps.empty()) {
     return transformed_clouds;
   }
@@ -426,6 +428,7 @@ PointCloudConcatenateDataSynchronizerComponent::combineClouds(
 
 void PointCloudConcatenateDataSynchronizerComponent::publish()
 {
+  RCLCPP_WARN(this->get_logger(), "on publish");
   stop_watch_ptr_->toc("processing_time", true);
   sensor_msgs::msg::PointCloud2::SharedPtr concat_cloud_ptr = nullptr;
   not_subscribed_topic_names_.clear();
@@ -437,8 +440,9 @@ void PointCloudConcatenateDataSynchronizerComponent::publish()
   if (concat_cloud_ptr) {
     auto output = std::make_unique<sensor_msgs::msg::PointCloud2>(*concat_cloud_ptr);
     pub_output_->publish(std::move(output));
+    RCLCPP_WARN(this->get_logger(), "successfully publish");
   } else {
-    RCLCPP_WARN(this->get_logger(), "concat_cloud_ptr is nullptr, skipping pointcloud publish.");
+    RCLCPP_ERROR(this->get_logger(), "concat_cloud_ptr is nullptr, skipping pointcloud publish.");
   }
 
   // publish transformed raw pointclouds
@@ -535,6 +539,8 @@ void PointCloudConcatenateDataSynchronizerComponent::setPeriod(const int64_t new
   if (ret != RCL_RET_OK) {
     rclcpp::exceptions::throw_from_rcl_error(ret, "Couldn't get old period");
   }
+  RCLCPP_WARN(this->get_logger(), "Old period is: %f", old_period * 1e-9);
+  RCLCPP_WARN(this->get_logger(), "Setperiod to: %f", new_period * 1e-9);
   ret = rcl_timer_exchange_period(timer_->get_timer_handle().get(), new_period, &old_period);
   if (ret != RCL_RET_OK) {
     rclcpp::exceptions::throw_from_rcl_error(ret, "Couldn't exchange_period");
@@ -544,6 +550,14 @@ void PointCloudConcatenateDataSynchronizerComponent::setPeriod(const int64_t new
 void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
   const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_ptr, const std::string & topic_name)
 {
+  RCLCPP_WARN(this->get_logger(), "%s cloud_callback.", topic_name.c_str());
+  int64_t current_period = 0;
+  rcl_ret_t ret = rcl_timer_get_period(timer_->get_timer_handle().get(), &current_period);
+  if (ret != RCL_RET_OK) {
+    rclcpp::exceptions::throw_from_rcl_error(ret, "Couldn't get old period");
+  }
+  RCLCPP_WARN(this->get_logger(), "current period is: %f", current_period * 1e-9);
+
   std::lock_guard<std::mutex> lock(mutex_);
   sensor_msgs::msg::PointCloud2::SharedPtr xyzi_input_ptr(new sensor_msgs::msg::PointCloud2());
   auto input = std::make_shared<sensor_msgs::msg::PointCloud2>(*input_ptr);
@@ -560,10 +574,14 @@ void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
     std::begin(cloud_stdmap_tmp_), std::end(cloud_stdmap_tmp_),
     [](const auto & e) { return e.second != nullptr; });
 
+  RCLCPP_WARN(this->get_logger(), "is_already_subscribed_this: %d", is_already_subscribed_this);
+  RCLCPP_WARN(this->get_logger(), "is_already_subscribed_tmp: %d", is_already_subscribed_tmp);
+
   if (is_already_subscribed_this) {
     cloud_stdmap_tmp_[topic_name] = xyzi_input_ptr;
-
+    RCLCPP_ERROR(this->get_logger(), "###buffer has this pointcloud, save pointcloud to tmp ###:");
     if (!is_already_subscribed_tmp) {
+      RCLCPP_ERROR(this->get_logger(), "###First pointcloud, set the time to timeout_sec ###:");
       auto period = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::duration<double>(timeout_sec_));
       try {
@@ -580,9 +598,11 @@ void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
       std::begin(cloud_stdmap_), std::end(cloud_stdmap_),
       [](const auto & e) { return e.second != nullptr; });
 
+    RCLCPP_WARN(this->get_logger(), "is_subscribed_all: %d", is_subscribed_all);
     if (is_subscribed_all) {
       for (const auto & e : cloud_stdmap_tmp_) {
         if (e.second != nullptr) {
+          RCLCPP_WARN(this->get_logger(), "replace current buffer from temporary buffer");
           cloud_stdmap_[e.first] = e.second;
         }
       }
@@ -591,16 +611,26 @@ void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
       });
 
       timer_->cancel();
+      RCLCPP_WARN(this->get_logger(), "buffer full, publish");
       publish();
     } else if (offset_map_.size() > 0) {
       timer_->cancel();
+      RCLCPP_WARN(this->get_logger(), "recieve other pointcloud, decrease the time");
       auto period = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::duration<double>(timeout_sec_ - offset_map_[topic_name]));
+
+      RCLCPP_WARN(
+        this->get_logger(), "timeout_sec_ %f, offset_map_[topic_name]: %f", timeout_sec_,
+        offset_map_[topic_name]);
+      RCLCPP_WARN(
+        this->get_logger(), "recieve other pointcloud, decrease the time %f",
+        period.count() * 1e-9);
       try {
         setPeriod(period.count());
       } catch (rclcpp::exceptions::RCLError & ex) {
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "%s", ex.what());
       }
+
       timer_->reset();
     }
   }
@@ -608,6 +638,7 @@ void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
 
 void PointCloudConcatenateDataSynchronizerComponent::timer_callback()
 {
+  RCLCPP_ERROR(this->get_logger(), "Timer callback");
   using std::chrono_literals::operator""ms;
   timer_->cancel();
   if (mutex_.try_lock()) {
