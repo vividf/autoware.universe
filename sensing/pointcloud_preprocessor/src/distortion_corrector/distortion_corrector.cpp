@@ -41,7 +41,6 @@ DistortionCorrectorComponent::DistortionCorrectorComponent(const rclcpp::NodeOpt
   // Parameter
   time_stamp_field_name_ = declare_parameter("time_stamp_field_name", "time_stamp");
   use_imu_ = declare_parameter("use_imu", true);
-  update_azimuth_and_distance_ = declare_parameter<bool>("update_azimuth_and_distance", true);
 
   // Publisher
   undistorted_points_pub_ =
@@ -223,8 +222,6 @@ bool DistortionCorrectorComponent::undistortPointCloud(PointCloud2 & points)
   sensor_msgs::PointCloud2Iterator<float> it_x(points, "x");
   sensor_msgs::PointCloud2Iterator<float> it_y(points, "y");
   sensor_msgs::PointCloud2Iterator<float> it_z(points, "z");
-  sensor_msgs::PointCloud2Iterator<float> it_azimuth(points, "azimuth");
-  sensor_msgs::PointCloud2Iterator<float> it_distance(points, "distance");
   sensor_msgs::PointCloud2ConstIterator<double> it_time_stamp(points, time_stamp_field_name_);
 
   double prev_time_stamp_sec{*it_time_stamp};
@@ -257,7 +254,7 @@ bool DistortionCorrectorComponent::undistortPointCloud(PointCloud2 & points)
   Eigen::Matrix4f transformation_matrix;
   Eigen::Matrix4f prev_transformation_matrix = Eigen::Matrix4f::Identity();
 
-  for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z, ++it_azimuth, ++it_distance, ++it_time_stamp) {
+  for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z, ++it_time_stamp) {
     while (twist_it != std::end(twist_queue_) - 1 && *it_time_stamp > twist_stamp) {
       ++twist_it;
       twist_stamp = rclcpp::Time(twist_it->header.stamp).seconds();
@@ -316,9 +313,6 @@ bool DistortionCorrectorComponent::undistortPointCloud(PointCloud2 & points)
     float time_offset = static_cast<float>(*it_time_stamp - prev_time_stamp_sec);
     point << *it_x, *it_y, *it_z, 1.0;
 
-    // std::cout << "\nbefore " << std::endl;
-    // std::cout << "*it_x: " << *it_x << "*it_y: " << *it_y << "*it_z: " << *it_z << std::endl;
-
     Sophus::SE3f::Tangent twist(v_x, v_y, v_z, w_x, w_y, w_z);
     twist = twist * time_offset;
     transformation_matrix = Sophus::SE3f::exp(twist).matrix();
@@ -330,13 +324,6 @@ bool DistortionCorrectorComponent::undistortPointCloud(PointCloud2 & points)
     *it_y = undistorted_point[1];
     *it_z = undistorted_point[2];
 
-    // std::cout << "after " << std::endl;
-    // std::cout << "*it_x: " << *it_x << "*it_y: " << *it_y << "*it_z: " << *it_z << std::endl;
-
-    if (update_azimuth_and_distance_) {
-      *it_distance = sqrt(*it_x * *it_x + *it_y * *it_y + *it_z * *it_z);
-      *it_azimuth = cv::fastAtan2(*it_y, *it_x) * 100;
-    }
     prev_time_stamp_sec = *it_time_stamp;
     prev_transformation_matrix = transformation_matrix;
   }
