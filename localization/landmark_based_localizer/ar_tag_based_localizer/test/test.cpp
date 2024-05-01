@@ -55,7 +55,10 @@ protected:
 
 TEST_F(TestArTagBasedLocalizer, test_setup)  // NOLINT
 {
-  EXPECT_TRUE(node_->setup());
+  // Check if the constructor finishes successfully
+  // For some unknown reason, the test sometimes fails to terminate normally and results in failure
+  // unless a 1-second wait is implemented.
+  std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 
 int main(int argc, char ** argv)

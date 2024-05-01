@@ -15,17 +15,20 @@
 #ifndef UTILS_HPP_
 #define UTILS_HPP_
 
+#include "tier4_autoware_utils/geometry/geometry.hpp"
+
 #include <behavior_velocity_planner_common/planner_data.hpp>
 #include <behavior_velocity_planner_common/utilization/util.hpp>
 #include <vehicle_info_util/vehicle_info_util.hpp>
 
+#include <autoware_auto_perception_msgs/msg/predicted_object.hpp>
 #include <autoware_auto_perception_msgs/msg/shape.hpp>
 #include <autoware_auto_planning_msgs/msg/path_point.hpp>
 #include <tier4_debug_msgs/msg/float32_stamped.hpp>
+#include <unique_identifier_msgs/msg/uuid.hpp>
 
 #include <string>
 #include <vector>
-
 namespace behavior_velocity_planner
 {
 namespace run_out_utils
@@ -53,11 +56,19 @@ struct CommonParam
 struct RunOutParam
 {
   std::string detection_method;
+  std::vector<std::string> target_obstacle_types;
   bool use_partition_lanelet;
+  bool suppress_on_crosswalk;
   bool specify_decel_jerk;
+  bool use_ego_cut_line;
+  bool exclude_obstacles_already_in_path;
   double stop_margin;
   double passing_margin;
   double deceleration_jerk;
+  double ego_cut_line_length;
+  double ego_footprint_extra_margin;
+  double keep_obstacle_on_path_time_threshold;
+  double keep_stop_point_time;
   float detection_distance;
   float detection_span;
   float min_vel_ego_kmph;
@@ -84,19 +95,20 @@ struct MandatoryArea
   float decel_jerk;
 };
 
-struct ApproachingParam
-{
-  bool enable;
-  float margin;
-  float limit_vel_kmph;
-};
-
 struct StateParam
 {
   float stop_thresh;
   float stop_time_thresh;
   float disable_approach_dist;
   float keep_approach_duration;
+};
+
+struct ApproachingParam
+{
+  bool enable;
+  float margin;
+  float limit_vel_kmph;
+  StateParam state;
 };
 
 struct SlowDownLimit
@@ -114,11 +126,13 @@ struct Smoother
 struct DynamicObstacleParam
 {
   bool use_mandatory_area;
+  bool assume_fixed_velocity;
 
   float min_vel_kmph;
   float max_vel_kmph;
 
   // parameter to convert points to dynamic obstacle
+  float std_dev_multiplier;
   float diameter;             // [m]
   float height;               // [m]
   float max_prediction_time;  // [sec]
@@ -140,7 +154,6 @@ struct PlannerParam
   DetectionArea detection_area;
   MandatoryArea mandatory_area;
   ApproachingParam approaching;
-  StateParam state_param;
   DynamicObstacleParam dynamic_obstacle;
   SlowDownLimit slow_down_limit;
   Smoother smoother;
@@ -179,6 +192,7 @@ struct DynamicObstacle
   std::vector<ObjectClassification> classifications;
   Shape shape;
   std::vector<PredictedPath> predicted_paths;
+  unique_identifier_msgs::msg::UUID uuid;
 };
 
 struct DynamicObstacleData
@@ -190,6 +204,10 @@ struct DynamicObstacleData
 };
 
 Polygon2d createBoostPolyFromMsg(const std::vector<geometry_msgs::msg::Point> & input_poly);
+
+bool pathIntersectsEgoCutLine(
+  const std::vector<geometry_msgs::msg::Pose> & path, const geometry_msgs::msg::Pose & ego_pose,
+  const double half_line_length, std::vector<geometry_msgs::msg::Point> & ego_cut_line);
 
 std::uint8_t getHighestProbLabel(const std::vector<ObjectClassification> & classification);
 
@@ -207,7 +225,7 @@ std::vector<geometry_msgs::msg::Point> findLateralSameSidePoints(
 bool isSamePoint(const geometry_msgs::msg::Point & p1, const geometry_msgs::msg::Point & p2);
 
 // if path points have the same point as target_point, return the index
-boost::optional<size_t> haveSamePoint(
+std::optional<size_t> haveSamePoint(
   const PathPointsWithLaneId & path_points, const geometry_msgs::msg::Point & target_point);
 
 // insert path velocity which doesn't exceed original velocity
@@ -217,7 +235,7 @@ void insertPathVelocityFromIndexLimited(
 void insertPathVelocityFromIndex(
   const size_t & start_idx, const float velocity_mps, PathPointsWithLaneId & path_points);
 
-boost::optional<size_t> findFirstStopPointIdx(PathPointsWithLaneId & path_points);
+std::optional<size_t> findFirstStopPointIdx(PathPointsWithLaneId & path_points);
 
 LineString2d createLineString2d(const lanelet::BasicPolygon2d & poly);
 
@@ -235,7 +253,7 @@ PathWithLaneId trimPathFromSelfPose(
 
 // create polygon for passing lines and deceleration line calculated by stopping jerk
 // note that this polygon is not closed
-boost::optional<std::vector<geometry_msgs::msg::Point>> createDetectionAreaPolygon(
+std::optional<std::vector<geometry_msgs::msg::Point>> createDetectionAreaPolygon(
   const std::vector<std::vector<geometry_msgs::msg::Point>> & passing_lines,
   const size_t deceleration_line_idx);
 

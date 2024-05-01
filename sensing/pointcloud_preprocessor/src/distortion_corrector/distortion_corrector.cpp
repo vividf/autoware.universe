@@ -16,10 +16,11 @@
 
 #include "tier4_autoware_utils/math/trigonometry.hpp"
 
+#include <time.h>
+
 #include <deque>
 #include <string>
 #include <utility>
-#include <time.h>
 
 namespace pointcloud_preprocessor
 {
@@ -64,7 +65,8 @@ void DistortionCorrectorComponent::onTwistWithCovarianceStamped(
 {
   tf2::Transform tf2_baselink_to_sensor_link{};
   getTransform(sensor_frame_, twist_msg->header.frame_id, &tf2_baselink_to_sensor_link);
-  Eigen::Matrix4f eigen_baselink_to_sensor_link = tf2::transformToEigen(toMsg(tf2_baselink_to_sensor_link)).matrix().cast<float>();
+  Eigen::Matrix4f eigen_baselink_to_sensor_link =
+    tf2::transformToEigen(toMsg(tf2_baselink_to_sensor_link)).matrix().cast<float>();
 
   geometry_msgs::msg::Vector3 linear_velocity = twist_msg->twist.twist.linear;
   geometry_msgs::msg::Vector3 angular_velocity = twist_msg->twist.twist.angular;
@@ -72,7 +74,9 @@ void DistortionCorrectorComponent::onTwistWithCovarianceStamped(
   Eigen::Matrix3f rotation_matrix = eigen_baselink_to_sensor_link.topLeftCorner<3, 3>();
   Eigen::Vector3f translation_vector = eigen_baselink_to_sensor_link.topRightCorner<3, 1>();
   Sophus::SE3f T_b_to_s(rotation_matrix, translation_vector);
-  Sophus::SE3f::Tangent twist(linear_velocity.x, linear_velocity.y, linear_velocity.z, angular_velocity.x, angular_velocity.y, angular_velocity.z);
+  Sophus::SE3f::Tangent twist(
+    linear_velocity.x, linear_velocity.y, linear_velocity.z, angular_velocity.x, angular_velocity.y,
+    angular_velocity.z);
   Sophus::SE3f::Tangent transformed_twist = T_b_to_s.Adj() * twist;
 
   linear_velocity.x = transformed_twist[0];
@@ -81,7 +85,7 @@ void DistortionCorrectorComponent::onTwistWithCovarianceStamped(
   angular_velocity.x = transformed_twist[3];
   angular_velocity.y = transformed_twist[4];
   angular_velocity.z = transformed_twist[5];
- 
+
   geometry_msgs::msg::TwistStamped msg;
   msg.header = twist_msg->header;
   msg.twist.linear = linear_velocity;
@@ -146,13 +150,16 @@ void DistortionCorrectorComponent::onPointCloud(PointCloud2::UniquePtr points_ms
     return;
   }
 
+  if (debug_publisher_) {
+    auto pipeline_latency_ms =
+      std::chrono::duration<double, std::milli>(
+        std::chrono::nanoseconds(
+          (this->get_clock()->now() - points_msg->header.stamp).nanoseconds()))
+        .count();
+    debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
+      "debug/pipeline_latency_ms", pipeline_latency_ms);
+  }
 
-  double start = 0, finish = 0, duration = 0; 
-  start = clock();
-  undistortPointCloud(*points_msg);
-  finish = clock();
-  duration = (double)(finish - start) / CLOCKS_PER_SEC;
-  std::cout << "duration: " << duration << std::endl;
   undistorted_points_pub_->publish(std::move(points_msg));
 
   // add processing time for debug
@@ -250,8 +257,6 @@ bool DistortionCorrectorComponent::undistortPointCloud(PointCloud2 & points)
   Eigen::Matrix4f transformation_matrix;
   Eigen::Matrix4f prev_transformation_matrix = Eigen::Matrix4f::Identity();
 
-
-
   for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z, ++it_azimuth, ++it_distance, ++it_time_stamp) {
     while (twist_it != std::end(twist_queue_) - 1 && *it_time_stamp > twist_stamp) {
       ++twist_it;
@@ -264,12 +269,11 @@ bool DistortionCorrectorComponent::undistortPointCloud(PointCloud2 & points)
     float w_x{static_cast<float>(twist_it->twist.angular.x)};
     float w_y{static_cast<float>(twist_it->twist.angular.y)};
     float w_z{static_cast<float>(twist_it->twist.angular.z)};
-    
+
     /*
     float v{static_cast<float>(twist_it->twist.linear.x)};
     float w{static_cast<float>(twist_it->twist.angular.z)};
     */
-
 
     if (std::abs(*it_time_stamp - twist_stamp) > 0.1) {
       RCLCPP_WARN_STREAM_THROTTLE(
@@ -312,8 +316,8 @@ bool DistortionCorrectorComponent::undistortPointCloud(PointCloud2 & points)
     float time_offset = static_cast<float>(*it_time_stamp - prev_time_stamp_sec);
     point << *it_x, *it_y, *it_z, 1.0;
 
-    //std::cout << "\nbefore " << std::endl;
-    //std::cout << "*it_x: " << *it_x << "*it_y: " << *it_y << "*it_z: " << *it_z << std::endl;
+    // std::cout << "\nbefore " << std::endl;
+    // std::cout << "*it_x: " << *it_x << "*it_y: " << *it_y << "*it_z: " << *it_z << std::endl;
 
     Sophus::SE3f::Tangent twist(v_x, v_y, v_z, w_x, w_y, w_z);
     twist = twist * time_offset;
@@ -321,13 +325,13 @@ bool DistortionCorrectorComponent::undistortPointCloud(PointCloud2 & points)
 
     transformation_matrix = transformation_matrix * prev_transformation_matrix;
     undistorted_point = transformation_matrix * point;
-    
+
     *it_x = undistorted_point[0];
     *it_y = undistorted_point[1];
     *it_z = undistorted_point[2];
 
-    //std::cout << "after " << std::endl;
-    //std::cout << "*it_x: " << *it_x << "*it_y: " << *it_y << "*it_z: " << *it_z << std::endl;
+    // std::cout << "after " << std::endl;
+    // std::cout << "*it_x: " << *it_x << "*it_y: " << *it_y << "*it_z: " << *it_z << std::endl;
 
     if (update_azimuth_and_distance_) {
       *it_distance = sqrt(*it_x * *it_x + *it_y * *it_y + *it_z * *it_z);
