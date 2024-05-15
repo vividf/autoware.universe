@@ -224,7 +224,7 @@ def generate_static_transform_msg():
     tf_right_lidar_msg.child_frame_id = FRAME_ID_LISTS[1]
     tf_right_lidar_msg.transform.translation.x = 0.0
     tf_right_lidar_msg.transform.translation.y = 5.0
-    tf_right_lidar_msg.transform.translation.z = 0.0
+    tf_right_lidar_msg.transform.translation.z = 5.0
     tf_right_lidar_msg.transform.rotation.x = 0.0
     tf_right_lidar_msg.transform.rotation.y = 0.0
     tf_right_lidar_msg.transform.rotation.z = 0.0
@@ -236,7 +236,7 @@ def generate_static_transform_msg():
     tf_left_lidar_msg.child_frame_id = FRAME_ID_LISTS[2]
     tf_left_lidar_msg.transform.translation.x = 0.0
     tf_left_lidar_msg.transform.translation.y = -5.0
-    tf_left_lidar_msg.transform.translation.z = 0.0
+    tf_left_lidar_msg.transform.translation.z = 5.0
     tf_left_lidar_msg.transform.rotation.x = 0.0
     tf_left_lidar_msg.transform.rotation.y = 0.0
     tf_left_lidar_msg.transform.rotation.z = 0.0
@@ -276,6 +276,12 @@ def calculate_number_of_points(msg):
     num_points = data_size // point_step
 
     return num_points
+
+
+def pointcloud2_to_xyz_array(cloud_msg):
+    cloud_arr = np.frombuffer(cloud_msg.data, dtype=np.float32)
+    cloud_arr = np.reshape(cloud_arr, (cloud_msg.width, int(cloud_msg.point_step / 4)))
+    return cloud_arr[:, :3]
 
 
 class TestConcatenateNode(unittest.TestCase):
@@ -382,6 +388,29 @@ class TestConcatenateNode(unittest.TestCase):
             self.msg_buffer[0].header.frame_id,
             "base_link",
             "The concatendate pointcloud frame id is not base_link",
+        )
+
+        # test transformed points
+        expected_array = np.array(
+            [
+                [1.0, 0.0, 5.0],
+                [0.0, 1.0, 5.0],
+                [0.0, 0.0, 6.0],
+                [1.0208441, 5.0, 5.0],
+                [0.02084414, 6.0, 5.0],
+                [0.02084414, 5.0, 6.0],
+                [1.0419736, -5.0, 5.0],
+                [0.04197362, -4.0, 5.0],
+                [0.04197362, -5.0, 6.0],
+            ],
+            dtype=np.float32,
+        )
+
+        cloud_arr = pointcloud2_to_xyz_array(self.msg_buffer[0])
+        print("cloud_arr: ", cloud_arr)
+        self.assertTrue(
+            np.allclose(cloud_arr, expected_array, atol=1e-3),
+            "The concatenation node have wierd output",
         )
 
     def test_abnormal_null_pointcloud(self):
