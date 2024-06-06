@@ -1,4 +1,4 @@
-// Copyright 2020 Tier IV, Inc.
+// Copyright 2024 Tier IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -64,8 +64,6 @@
 #define DEFAULT_SYNC_TOPIC_POSTFIX \
   "_synchronized"  // default postfix name for synchronized pointcloud
 
-//////////////////////////////////////////////////////////////////////////////////////////////
-
 namespace pointcloud_preprocessor
 {
 
@@ -106,7 +104,7 @@ PointCloudConcatenateDataSynchronizerComponent::PointCloudConcatenateDataSynchro
   params_.maximum_queue_size = static_cast<int>(declare_parameter("maximum_queue_size", 5));
   params_.timeout_sec = static_cast<double>(declare_parameter("timeout_sec", 0.1));
   params_.sensor_timestamp_threshold =
-    static_cast<double>(declare_parameter("sensor_timestamp_threshold", 0.005));
+    static_cast<double>(declare_parameter("sensor_timestamp_threshold", 0.02)); 
 
   params_.publish_synchronized_pointcloud =
     declare_parameter("publish_synchronized_pointcloud", true);
@@ -116,7 +114,7 @@ PointCloudConcatenateDataSynchronizerComponent::PointCloudConcatenateDataSynchro
     declare_parameter("synchronized_pointcloud_postfix", "pointcloud");
 
   // Publishers
-  concatenate_cloud_publisher_ = this->create_publisher<PointCloud2>(
+  concatenate_cloud_publisher_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
     "output", rclcpp::SensorDataQoS().keep_last(params_.maximum_queue_size));
 
   // Transformed Raw PointCloud2 Publisher to publish the transformed pointcloud
@@ -170,9 +168,9 @@ PointCloudConcatenateDataSynchronizerComponent::PointCloudConcatenateDataSynchro
   }
 
   // Diagnostic Updater
-  // updater_.setHardwareID("concatenate_data_checker");
-  // updater_.add(
-  //  "concat_status", this, &PointCloudConcatenateDataSynchronizerComponent::checkConcatStatus);
+  updater_.setHardwareID("concatenate_data_checker");
+  updater_.add(
+   "concat_status", this, &PointCloudConcatenateDataSynchronizerComponent::checkConcatStatus);
 
   // Cloud handler
   combine_cloud_handler_ = std::make_shared<CombineCloudHandler>(
@@ -257,8 +255,7 @@ void PointCloudConcatenateDataSynchronizerComponent::publishClouds()
 {
   stop_watch_ptr_->toc("processing_time", true);
 
-  // TODO(vivid): remember the diagonistc
-  // not_subscribed_topic_names_.clear();
+  missed_cloud_.clear();
   const auto & topic_to_transformed_cloud_map_ =
     combine_cloud_handler_->getTopicToTransformedCloudMap();
   const auto & concat_cloud_ptr = combine_cloud_handler_->getConcatenatePointcloud();
@@ -268,22 +265,24 @@ void PointCloudConcatenateDataSynchronizerComponent::publishClouds()
   concatenate_cloud_publisher_->publish(std::move(concat_output));
 
   // publish transformed raw pointclouds
-  if (params_.publish_synchronized_pointcloud) {
-    for (const auto & pair : topic_to_transformed_cloud_map_) {
-      if (pair.second) {
-        auto transformed_cloud_output =
-          std::make_unique<sensor_msgs::msg::PointCloud2>(*pair.second);
-        topic_to_transformed_cloud_publisher_map_[pair.first]->publish(
-          std::move(transformed_cloud_output));
-      } else {
-        RCLCPP_WARN(
-          this->get_logger(), "transformed_raw_points[%s] is nullptr, skipping pointcloud publish.",
-          pair.first.c_str());
-      }
+  for (const auto & pair : topic_to_transformed_cloud_map_) {
+    if (pair.second) {
+        if (params_.publish_synchronized_pointcloud) {
+          auto transformed_cloud_output =
+            std::make_unique<sensor_msgs::msg::PointCloud2>(*pair.second);
+          topic_to_transformed_cloud_publisher_map_[pair.first]->publish(
+            std::move(transformed_cloud_output));
+        }
+    } else {
+      RCLCPP_WARN(
+        this->get_logger(), "transformed_raw_points[%s] is nullptr, skipping pointcloud publish.",
+        pair.first.c_str());
+      missed_cloud_.insert(pair.first);
     }
   }
-  combine_cloud_handler_.reset();
+  
 
+  combine_cloud_handler_.reset();
   updater_.force_update();
 
   // add processing time for debug
@@ -294,42 +293,39 @@ void PointCloudConcatenateDataSynchronizerComponent::publishClouds()
       "debug/cyclic_time_ms", cyclic_time_ms);
     debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
       "debug/processing_time_ms", processing_time_ms);
-  }
-  /*
-  for (const auto & e : cloud_stdmap_) {
-    if (e.second != nullptr) {
-      if (debug_publisher_) {
+
+    for (const auto & pair : topic_to_transformed_cloud_map_) {
+      if (pair.second != nullptr) {
         const auto pipeline_latency_ms =
           std::chrono::duration<double, std::milli>(
             std::chrono::nanoseconds(
-              (this->get_clock()->now() - e.second->header.stamp).nanoseconds()))
+              (this->get_clock()->now() - pair.second->header.stamp).nanoseconds()))
             .count();
         debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
-          "debug" + e.first + "/pipeline_latency_ms", pipeline_latency_ms);
+          "debug" + pair.first + "/pipeline_latency_ms", pipeline_latency_ms);
       }
     }
   }
-  */
 }
 
-// void PointCloudConcatenateDataSynchronizerComponent::checkConcatStatus(
-//   diagnostic_updater::DiagnosticStatusWrapper & stat)
-// {
+void PointCloudConcatenateDataSynchronizerComponent::checkConcatStatus(
+  diagnostic_updater::DiagnosticStatusWrapper & stat)
+{
 
-//   for (const std::string & input_topic : params_.input_topics) {
-//     const std::string subscribe_status =
-//       not_subscribed_topic_names_.count(input_topic) ? "NG" : "OK";
-//     stat.add(input_topic, subscribe_status);
-//   }
+  for (const std::string & input_topic : params_.input_topics) {
+    const std::string subscribe_status =
+      missed_cloud_.count(input_topic) ? "NG" : "OK";
+    stat.add(input_topic, subscribe_status);
+  }
 
-//   const int8_t level = not_subscribed_topic_names_.empty()
-//                          ? diagnostic_msgs::msg::DiagnosticStatus::OK
-//                          : diagnostic_msgs::msg::DiagnosticStatus::WARN;
-//   const std::string message = not_subscribed_topic_names_.empty()
-//                                 ? "Concatenate all topics"
-//                                 : "Some topics are not concatenated";
-//   stat.summary(level, message);
-// }
+  const int8_t level = missed_cloud_.empty()
+                         ? diagnostic_msgs::msg::DiagnosticStatus::OK
+                         : diagnostic_msgs::msg::DiagnosticStatus::WARN;
+  const std::string message = missed_cloud_.empty()
+                                ? "Concatenate all topics"
+                                : "Some topics are not concatenated";
+  stat.summary(level, message);
+}
 
 }  // namespace pointcloud_preprocessor
 

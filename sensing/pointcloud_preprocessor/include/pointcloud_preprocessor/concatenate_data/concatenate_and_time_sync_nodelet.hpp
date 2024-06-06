@@ -84,42 +84,20 @@
 #include <message_filters/sync_policies/approximate_time.h>
 #include <message_filters/sync_policies/exact_time.h>
 #include <message_filters/synchronizer.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 namespace pointcloud_preprocessor
 {
-using autoware_point_types::PointXYZI;
-using point_cloud_msg_wrapper::PointCloud2Modifier;
 
-/** \brief @b PointCloudConcatenateDataSynchronizerComponent is a special form of data
- * synchronizer: it listens for a set of input PointCloud messages on the same topic,
- * checks their timestamps, and concatenates their fields together into a single
- * PointCloud output message.
- * \author Radu Bogdan Rusu
- */
 class PointCloudConcatenateDataSynchronizerComponent : public rclcpp::Node
 {
 public:
-  typedef sensor_msgs::msg::PointCloud2 PointCloud2;
 
-  /** \brief constructor. */
   explicit PointCloudConcatenateDataSynchronizerComponent(const rclcpp::NodeOptions & node_options);
-
-  /** \brief constructor.
-   * \param queue_size the maximum queue size
-   */
-  PointCloudConcatenateDataSynchronizerComponent(
-    const rclcpp::NodeOptions & node_options, int queue_size);
-
-  /** \brief Empty destructor. */
   virtual ~PointCloudConcatenateDataSynchronizerComponent() {}
 
   void publishClouds();
 
 private:
-  /** \brief The maximum number of messages that we can store in the queue. */
-
   struct Parameters
   {
     int maximum_queue_size;
@@ -133,25 +111,24 @@ private:
     std::vector<std::string> input_topics;
   } params_;
 
-  // std::set<std::string> not_subscribed_topic_names_;
+  std::set<std::string> missed_cloud_;
   std::shared_ptr<CombineCloudHandler> combine_cloud_handler_;
   std::unique_ptr<CloudCollector> cloud_collector_;
   std::vector<std::unique_ptr<CloudCollector>> cloud_collectors_;
   std::mutex mutex_;
 
-  std::vector<rclcpp::Subscription<PointCloud2>::SharedPtr> pointcloud_subs;
+  // subscribers
+  std::vector<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr> pointcloud_subs;
   rclcpp::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr twist_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
-  /** \brief processing time publisher. **/
-  std::unique_ptr<tier4_autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
-  std::unique_ptr<tier4_autoware_utils::DebugPublisher> debug_publisher_;
 
-  /** \brief The output PointCloud publisher. */
-  rclcpp::Publisher<PointCloud2>::SharedPtr concatenate_cloud_publisher_;
-  /** \brief Delay Compensated PointCloud publisher*/
+  // publishers
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr concatenate_cloud_publisher_;
   std::unordered_map<std::string, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr>
     topic_to_transformed_cloud_publisher_map_;
+  std::unique_ptr<tier4_autoware_utils::DebugPublisher> debug_publisher_;
 
+  std::unique_ptr<tier4_autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
   diagnostic_updater::Updater updater_{this};
 
   void cloud_callback(
@@ -159,7 +136,7 @@ private:
     const std::string & topic_name);
   void twist_callback(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr input);
   void odom_callback(const nav_msgs::msg::Odometry::ConstSharedPtr input);
-  // void checkConcatStatus(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  void checkConcatStatus(diagnostic_updater::DiagnosticStatusWrapper & stat);
   std::string replaceSyncTopicNamePostfix(
     const std::string & original_topic_name, const std::string & postfix);
 };
