@@ -113,8 +113,8 @@ private:
 
   std::set<std::string> missed_cloud_;
   std::shared_ptr<CombineCloudHandler> combine_cloud_handler_;
-  std::unique_ptr<CloudCollector> cloud_collector_;
-  std::vector<std::unique_ptr<CloudCollector>> cloud_collectors_;
+  std::shared_ptr<CloudCollector> cloud_collector_;
+  std::vector<std::shared_ptr<CloudCollector>> cloud_collectors_;
   std::mutex mutex_;
 
   // subscribers

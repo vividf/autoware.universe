@@ -60,6 +60,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <iomanip>      // std::setprecision
 
 #define DEFAULT_SYNC_TOPIC_POSTFIX \
   "_synchronized"  // default postfix name for synchronized pointcloud
@@ -102,9 +103,9 @@ PointCloudConcatenateDataSynchronizerComponent::PointCloudConcatenateDataSynchro
     declare_parameter<std::string>("input_twist_topic_type", "twist");
 
   params_.maximum_queue_size = static_cast<int>(declare_parameter("maximum_queue_size", 5));
-  params_.timeout_sec = static_cast<double>(declare_parameter("timeout_sec", 0.1));
+  params_.timeout_sec = static_cast<double>(declare_parameter("timeout_sec", 0.1)); //TODO(vivid): set as parameter to timer
   params_.sensor_timestamp_threshold =
-    static_cast<double>(declare_parameter("sensor_timestamp_threshold", 0.02)); 
+    static_cast<double>(declare_parameter("sensor_timestamp_threshold", 0.04)); 
 
   params_.publish_synchronized_pointcloud =
     declare_parameter("publish_synchronized_pointcloud", true);
@@ -210,7 +211,7 @@ std::string PointCloudConcatenateDataSynchronizerComponent::replaceSyncTopicName
 void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
   const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_ptr, const std::string & topic_name)
 {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::cout << "topic name pointcloud arrive: " << topic_name << std::fixed << std::setprecision(9) << rclcpp::Time(input_ptr->header.stamp).seconds() << std::endl;
   sensor_msgs::msg::PointCloud2::SharedPtr xyzi_input_ptr(new sensor_msgs::msg::PointCloud2());
   auto input = std::make_shared<sensor_msgs::msg::PointCloud2>(*input_ptr);
   if (input->data.empty()) {
@@ -220,21 +221,51 @@ void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
     // convert to XYZI pointcloud if pointcloud is not empty
     combine_cloud_handler_->convertToXYZICloud(input, xyzi_input_ptr);
   }
-
+  std::unique_lock<std::mutex> lock(mutex_);
   // For each callback, check whether there is a exist collecotor that matches this cloud
-  for (const auto & cloud_collector : cloud_collectors_) {
-    if (
-      std::abs(cloud_collector->getTimeStamp() - rclcpp::Time(input_ptr->header.stamp).seconds()) <
-      params_.sensor_timestamp_threshold) {
-      cloud_collector->processCloud(topic_name, input_ptr);
-    } else {
-      auto new_cloud_collector = std::make_unique<CloudCollector>(
+  
+  if(cloud_collectors_.empty()) {
+
+      std::cout << "cloud_collectors_.empty(): " << cloud_collectors_.empty() << std::endl;
+      auto new_cloud_collector = std::make_shared<CloudCollector>(this,
         std::dynamic_pointer_cast<PointCloudConcatenateDataSynchronizerComponent>(
           shared_from_this()),
         cloud_collectors_, combine_cloud_handler_, params_.input_topics.size());
-      cloud_collector->setTimeStamp(rclcpp::Time(input_ptr->header.stamp).seconds());
-      cloud_collector->processCloud(topic_name, input_ptr);
-      cloud_collectors_.push_back(std::move(new_cloud_collector));
+      
+
+      cloud_collectors_.push_back(new_cloud_collector);
+
+      //release the lock
+      lock.unlock();
+      new_cloud_collector->setTimeStamp(rclcpp::Time(input_ptr->header.stamp).seconds());
+      new_cloud_collector->processCloud(topic_name, input_ptr);
+  }
+  else {
+    std::cout << "Searching collect in size:  " << cloud_collectors_.size() << std::endl;
+    bool collector_found = false;
+    for (const auto & cloud_collector : cloud_collectors_) {
+      //std::cout << "offset" << std::setprecision(9) << std::abs(cloud_collector->getTimeStamp() - rclcpp::Time(input_ptr->header.stamp).seconds()) <<  std::endl;
+      if (std::abs(cloud_collector->getTimeStamp() - rclcpp::Time(input_ptr->header.stamp).seconds()) <
+        params_.sensor_timestamp_threshold) {
+        std::cout << "find collecotr" << std::endl;
+        lock.unlock();
+        cloud_collector->processCloud(topic_name, input_ptr);
+        collector_found = true;
+        break;
+      } 
+    }
+
+    if(!collector_found) {
+      std::cout << "Create new collector becasue no timestamp match: " << std::endl;
+      auto new_cloud_collector = std::make_shared<CloudCollector>(this, 
+        std::dynamic_pointer_cast<PointCloudConcatenateDataSynchronizerComponent>(
+          shared_from_this()),
+        cloud_collectors_, combine_cloud_handler_, params_.input_topics.size());
+
+      cloud_collectors_.push_back(new_cloud_collector);
+      lock.unlock();
+      new_cloud_collector->setTimeStamp(rclcpp::Time(input_ptr->header.stamp).seconds());
+      new_cloud_collector->processCloud(topic_name, input_ptr);
     }
   }
 }
@@ -242,17 +273,18 @@ void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
 void PointCloudConcatenateDataSynchronizerComponent::twist_callback(
   const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr input)
 {
-  combine_cloud_handler_->process_twist(input);
+  combine_cloud_handler_->processTwist(input);
 }
 
 void PointCloudConcatenateDataSynchronizerComponent::odom_callback(
   const nav_msgs::msg::Odometry::ConstSharedPtr input)
 {
-  combine_cloud_handler_->process_odometry(input);
+  combine_cloud_handler_->processOdometry(input);
 }
 
 void PointCloudConcatenateDataSynchronizerComponent::publishClouds()
 {
+  std::cout << "in publishClouds" << std::endl;
   stop_watch_ptr_->toc("processing_time", true);
 
   missed_cloud_.clear();
@@ -282,7 +314,7 @@ void PointCloudConcatenateDataSynchronizerComponent::publishClouds()
   }
   
 
-  combine_cloud_handler_.reset();
+  combine_cloud_handler_->resetCloud();
   updater_.force_update();
 
   // add processing time for debug

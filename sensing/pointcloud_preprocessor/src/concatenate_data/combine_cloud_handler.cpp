@@ -79,12 +79,13 @@ CombineCloudHandler::CombineCloudHandler(
   }
 }
 
-void CombineCloudHandler::process_twist(
+void CombineCloudHandler::processTwist(
   const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr & input)
 {
   // if rosbag restart, clear buffer
   if (!twist_ptr_queue_.empty()) {
     if (rclcpp::Time(twist_ptr_queue_.front()->header.stamp) > rclcpp::Time(input->header.stamp)) {
+      std::cout << "Clearing twist_ptr_queue_ due to timestamp mismatch" << std::endl;
       twist_ptr_queue_.clear();
     }
   }
@@ -103,9 +104,10 @@ void CombineCloudHandler::process_twist(
   twist_ptr->header = input->header;
   twist_ptr->twist = input->twist.twist;
   twist_ptr_queue_.push_back(twist_ptr);
+
 }
 
-void CombineCloudHandler::process_odometry(const nav_msgs::msg::Odometry::ConstSharedPtr & input)
+void CombineCloudHandler::processOdometry(const nav_msgs::msg::Odometry::ConstSharedPtr & input)
 {
   // if rosbag restart, clear buffer
   if (!twist_ptr_queue_.empty()) {
@@ -169,7 +171,7 @@ void CombineCloudHandler::convertToXYZICloud(
   }
 }
 
-void CombineCloudHandler::reset()
+void CombineCloudHandler::resetCloud()
 {
   // reset the pointcloud and map
   concatenate_cloud_ptr_ = nullptr;
@@ -195,6 +197,7 @@ void CombineCloudHandler::combinePointClouds(
   for (const auto & pair : topic_to_cloud_map_) {
     std::string topic_name = pair.first;
     sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud = pair.second;
+    std::cout << "in combination topic: " << topic_name << std::endl;
 
     transformPointCloud(cloud, transformed_cloud_ptr);
     // calculate transforms to oldest stamp

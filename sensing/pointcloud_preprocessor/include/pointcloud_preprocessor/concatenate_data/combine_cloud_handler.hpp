@@ -110,13 +110,13 @@ public:
   CombineCloudHandler(
     rclcpp::Node * node, std::vector<std::string> input_topics,
     bool keep_input_frame_in_synchronized_pointcloud, std::string output_frame);
-  void process_twist(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr & input);
-  void process_odometry(const nav_msgs::msg::Odometry::ConstSharedPtr & input);
+  void processTwist(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr & input);
+  void processOdometry(const nav_msgs::msg::Odometry::ConstSharedPtr & input);
   void convertToXYZICloud(
     const sensor_msgs::msg::PointCloud2::SharedPtr & input_ptr,
     sensor_msgs::msg::PointCloud2::SharedPtr & output_ptr);
 
-  void reset();
+  void resetCloud();
   void combinePointClouds(
     std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::ConstSharedPtr> &
       topic_cloud_map_);
