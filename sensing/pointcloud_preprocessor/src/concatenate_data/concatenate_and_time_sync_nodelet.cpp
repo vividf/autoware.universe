@@ -161,7 +161,7 @@ PointCloudConcatenateDataSynchronizerComponent::PointCloudConcatenateDataSynchro
 
   pointcloud_subs.resize(params_.input_topics.size());
   for (size_t topic_id = 0; topic_id < params_.input_topics.size(); ++topic_id) {
-    std::function<void(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)> callback =
+    std::function<void(const sensor_msgs::msg::PointCloud2::SharedPtr msg)> callback =
       std::bind(
         &PointCloudConcatenateDataSynchronizerComponent::cloud_callback, this,
         std::placeholders::_1, params_.input_topics[topic_id]);
@@ -219,7 +219,7 @@ std::string PointCloudConcatenateDataSynchronizerComponent::replaceSyncTopicName
 }
 
 void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_ptr, const std::string & topic_name)
+  const sensor_msgs::msg::PointCloud2::SharedPtr & input_ptr, const std::string & topic_name)
 {
   std::cout << "topic name pointcloud arrive: " << topic_name << std::fixed << std::setprecision(9) << rclcpp::Time(input_ptr->header.stamp).seconds() << std::endl;
   sensor_msgs::msg::PointCloud2::SharedPtr xyzi_input_ptr(new sensor_msgs::msg::PointCloud2());

@@ -133,7 +133,7 @@ private:
   diagnostic_updater::Updater updater_{this};
 
   void cloud_callback(
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_ptr,
+    const sensor_msgs::msg::PointCloud2::SharedPtr & input_ptr,
     const std::string & topic_name);
   void twist_callback(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr input);
   void odom_callback(const nav_msgs::msg::Odometry::ConstSharedPtr input);

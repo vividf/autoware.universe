@@ -184,7 +184,7 @@ void CombineCloudHandler::resetCloud()
 }
 
 void CombineCloudHandler::combinePointClouds(
-  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::ConstSharedPtr> &
+  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> &
     topic_to_cloud_map_)
 {
   std::vector<rclcpp::Time> pc_stamps;
@@ -201,12 +201,32 @@ void CombineCloudHandler::combinePointClouds(
     new sensor_msgs::msg::PointCloud2());
   for (const auto & pair : topic_to_cloud_map_) {
     std::string topic_name = pair.first;
-    sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud = pair.second;
+    // TODO: should I keep it back to const?
+    sensor_msgs::msg::PointCloud2::SharedPtr cloud = pair.second;
     std::cout << "in combination topic: " << topic_name << std::endl;
+
+
+
 
     auto start1 = std::chrono::high_resolution_clock::now();
     // sensor frame to baselink
-    transformPointCloud(cloud, transformed_cloud_ptr);
+    // TODO: if condition for this, casue 1.2 ms for this function with VLS128
+    auto transformed_cloud_ptr = std::make_shared<sensor_msgs::msg::PointCloud2>();
+    if (output_frame_ != cloud->header.frame_id) {
+      std::cout << "in" << std::endl;
+      //output_cloud = std::make_shared<sensor_msgs::msg::PointCloud2>(*input_cloud);
+      if (!pcl_ros::transformPointCloud(output_frame_, *cloud, *transformed_cloud_ptr, tf_buffer_)) {
+        RCLCPP_ERROR(
+          node_->get_logger(),
+          "[transformPointCloud] Error converting first input dataset from %s to %s.",
+          cloud->header.frame_id.c_str(), output_frame_.c_str());
+        return;
+      }
+    }
+    else {
+      transformed_cloud_ptr = cloud;
+    }
+
     // calculate transforms to oldest stamp
           // 記錄結束時間
     auto end1 = std::chrono::high_resolution_clock::now();
@@ -219,7 +239,7 @@ void CombineCloudHandler::combinePointClouds(
 
 
     // TODO(vivid): speed optimization: there is no reason we need to calculate transforms one by
-    // one.
+    // one. current implementation spend 1.5 ms
 
     auto start = std::chrono::high_resolution_clock::now();
     
@@ -277,34 +297,8 @@ void CombineCloudHandler::combinePointClouds(
   concatenate_cloud_ptr_->header.stamp = oldest_stamp;
 }
 
-void CombineCloudHandler::transformPointCloud(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_cloud,
-  sensor_msgs::msg::PointCloud2::SharedPtr & output_cloud)
-{
-  // Transform the point clouds into the specified output frame
-  std::cout << "output_frame_: " << output_frame_ << std::endl;
-  std::cout << "input_cloud->header.frame_id: " << input_cloud->header.frame_id << std::endl;
-  if (output_frame_ != input_cloud->header.frame_id) {
-    if (!pcl_ros::transformPointCloud(output_frame_, *input_cloud, *output_cloud, tf_buffer_)) {
-      RCLCPP_ERROR(
-        node_->get_logger(),
-        "[transformPointCloud] Error converting first input dataset from %s to %s.",
-        input_cloud->header.frame_id.c_str(), output_frame_.c_str());
-      return;
-    }
-  } else {
-    std::cout << "hi" << std::endl;
-    output_cloud = std::make_shared<sensor_msgs::msg::PointCloud2>(*input_cloud);
-  }
-}
 
-/**
- * @brief compute transform to adjust for old timestamp
- *
- * @param old_stamp
- * @param new_stamp
- * @return Eigen::Matrix4f: transformation matrix from new_stamp to old_stamp
- */
+
 Eigen::Matrix4f CombineCloudHandler::computeTransformToAdjustForOldTimestamp(
   const rclcpp::Time & old_stamp, const rclcpp::Time & new_stamp)
 {

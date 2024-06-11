@@ -89,7 +89,7 @@ double CloudCollector::getTimeStamp()
 }
 
 void CloudCollector::processCloud(
-  std::string topic_name, sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud)
+  std::string topic_name, sensor_msgs::msg::PointCloud2::SharedPtr cloud)
 {
   topic_cloud_map_[topic_name] = cloud;
   if (topic_cloud_map_.size() == num_of_clouds_) combineClouds();

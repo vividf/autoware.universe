@@ -118,11 +118,8 @@ public:
 
   void resetCloud();
   void combinePointClouds(
-    std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::ConstSharedPtr> &
+    std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> &
       topic_cloud_map_);
-  void transformPointCloud(
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_cloud,
-    sensor_msgs::msg::PointCloud2::SharedPtr & output_cloud);
   Eigen::Matrix4f computeTransformToAdjustForOldTimestamp(
     const rclcpp::Time & old_stamp, const rclcpp::Time & new_stamp);
 

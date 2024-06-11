@@ -76,7 +76,7 @@ public:
 
   void setTimeStamp(double timestamp);
   double getTimeStamp();
-  void processCloud(std::string topic_name, sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud);
+  void processCloud(std::string topic_name, sensor_msgs::msg::PointCloud2::SharedPtr cloud);
   void combineClouds();
   void deleteCollector();
   // for debugging
@@ -87,7 +87,7 @@ private:
   std::list<std::shared_ptr<CloudCollector>> & collectors_;
   std::shared_ptr<CombineCloudHandler> combine_cloud_handler_;
   rclcpp::TimerBase::SharedPtr timer_;
-  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::ConstSharedPtr> topic_cloud_map_;
+  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> topic_cloud_map_;
   uint64_t num_of_clouds_;
   double timeout_sec_;
   double timestamp_;
