@@ -58,6 +58,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <list>
 
 namespace pointcloud_preprocessor
 {
@@ -69,27 +70,27 @@ class CloudCollector
 {
 public:
   CloudCollector(
-    rclcpp::Node * node,
     std::shared_ptr<PointCloudConcatenateDataSynchronizerComponent> concatenate_node,
-    std::vector<std::shared_ptr<CloudCollector>> & collectors,
-    std::shared_ptr<CombineCloudHandler> combine_cloud_handler, int num_of_clouds);
+    std::list<std::shared_ptr<CloudCollector>> & collectors,
+    std::shared_ptr<CombineCloudHandler> combine_cloud_handler, int num_of_clouds, double time);
 
   void setTimeStamp(double timestamp);
   double getTimeStamp();
   void processCloud(std::string topic_name, sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud);
-  void combineClouds1();
-  void combineClouds2();
+  void combineClouds();
   void deleteCollector();
+  // for debugging
+  void printTimer(); 
 
 private:
-  rclcpp::Node * node_;
   std::shared_ptr<PointCloudConcatenateDataSynchronizerComponent> concatenate_node_;
-  std::vector<std::shared_ptr<CloudCollector>> & collectors_;
+  std::list<std::shared_ptr<CloudCollector>> & collectors_;
   std::shared_ptr<CombineCloudHandler> combine_cloud_handler_;
   rclcpp::TimerBase::SharedPtr timer_;
   std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::ConstSharedPtr> topic_cloud_map_;
-  double timestamp_;
   uint64_t num_of_clouds_;
+  double timeout_sec_;
+  double timestamp_;
   std::mutex mutex_;
 };
 

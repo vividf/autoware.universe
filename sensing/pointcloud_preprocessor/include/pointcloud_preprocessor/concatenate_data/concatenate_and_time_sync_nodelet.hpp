@@ -59,6 +59,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <list>
 
 // ROS includes
 #include "autoware_point_types/types.hpp"
@@ -94,28 +95,28 @@ public:
 
   explicit PointCloudConcatenateDataSynchronizerComponent(const rclcpp::NodeOptions & node_options);
   virtual ~PointCloudConcatenateDataSynchronizerComponent() {}
-
   void publishClouds();
-
 private:
   struct Parameters
   {
     int maximum_queue_size;
     double timeout_sec;
-    double sensor_timestamp_threshold;
     bool publish_synchronized_pointcloud;
     bool keep_input_frame_in_synchronized_pointcloud;
     std::string synchronized_pointcloud_postfix;
     std::string input_twist_topic_type;
     std::string output_frame;
     std::vector<std::string> input_topics;
+    std::vector<double> lidar_timestamp_offsets;
+    double offset_tolerance;
   } params_;
 
   std::set<std::string> missed_cloud_;
   std::shared_ptr<CombineCloudHandler> combine_cloud_handler_;
   std::shared_ptr<CloudCollector> cloud_collector_;
-  std::vector<std::shared_ptr<CloudCollector>> cloud_collectors_;
+  std::list<std::shared_ptr<CloudCollector>> cloud_collectors_;
   std::mutex mutex_;
+  std::unordered_map<std::string, double> topic_to_offset_map_;
 
   // subscribers
   std::vector<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr> pointcloud_subs;

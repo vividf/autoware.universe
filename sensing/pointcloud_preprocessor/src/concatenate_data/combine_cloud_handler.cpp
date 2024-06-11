@@ -61,6 +61,9 @@
 #include <utility>
 #include <vector>
 
+// debug
+#include <chrono>
+
 namespace pointcloud_preprocessor
 {
 
@@ -192,6 +195,8 @@ void CombineCloudHandler::combinePointClouds(
   std::sort(pc_stamps.begin(), pc_stamps.end(), std::greater<rclcpp::Time>());
   const auto oldest_stamp = pc_stamps.back();
 
+
+  
   sensor_msgs::msg::PointCloud2::SharedPtr transformed_cloud_ptr(
     new sensor_msgs::msg::PointCloud2());
   for (const auto & pair : topic_to_cloud_map_) {
@@ -199,11 +204,26 @@ void CombineCloudHandler::combinePointClouds(
     sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud = pair.second;
     std::cout << "in combination topic: " << topic_name << std::endl;
 
+    auto start1 = std::chrono::high_resolution_clock::now();
+    // sensor frame to baselink
     transformPointCloud(cloud, transformed_cloud_ptr);
     // calculate transforms to oldest stamp
+          // 記錄結束時間
+    auto end1 = std::chrono::high_resolution_clock::now();
+
+    // 計算執行時間
+    std::chrono::duration<double> duration1 = end1 - start1;
+
+    // 輸出執行時間
+    std::cout << "transformation 時間: " << duration1.count() << " 秒" << std::endl;
+
 
     // TODO(vivid): speed optimization: there is no reason we need to calculate transforms one by
     // one.
+
+    auto start = std::chrono::high_resolution_clock::now();
+    
+    // conpensate the motion
     Eigen::Matrix4f adjust_to_old_data_transform = Eigen::Matrix4f::Identity();
     rclcpp::Time transformed_stamp = rclcpp::Time(cloud->header.stamp);
     for (const auto & stamp : pc_stamps) {
@@ -217,6 +237,16 @@ void CombineCloudHandler::combinePointClouds(
     pcl_ros::transformPointCloud(
       adjust_to_old_data_transform, *transformed_cloud_ptr,
       *transformed_delay_compensated_cloud_ptr);
+
+
+      // 記錄結束時間
+    auto end = std::chrono::high_resolution_clock::now();
+
+    // 計算執行時間
+    std::chrono::duration<double> duration = end - start;
+
+    // 輸出執行時間
+    std::cout << "motion compensation: " << duration.count() << " 秒" << std::endl;
 
     // concatenate
     if (concatenate_cloud_ptr_ == nullptr) {
@@ -252,6 +282,8 @@ void CombineCloudHandler::transformPointCloud(
   sensor_msgs::msg::PointCloud2::SharedPtr & output_cloud)
 {
   // Transform the point clouds into the specified output frame
+  std::cout << "output_frame_: " << output_frame_ << std::endl;
+  std::cout << "input_cloud->header.frame_id: " << input_cloud->header.frame_id << std::endl;
   if (output_frame_ != input_cloud->header.frame_id) {
     if (!pcl_ros::transformPointCloud(output_frame_, *input_cloud, *output_cloud, tf_buffer_)) {
       RCLCPP_ERROR(
@@ -261,6 +293,7 @@ void CombineCloudHandler::transformPointCloud(
       return;
     }
   } else {
+    std::cout << "hi" << std::endl;
     output_cloud = std::make_shared<sensor_msgs::msg::PointCloud2>(*input_cloud);
   }
 }
