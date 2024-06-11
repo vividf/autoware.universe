@@ -101,6 +101,7 @@ private:
   {
     int maximum_queue_size;
     double timeout_sec;
+    bool is_motion_compensated;
     bool publish_synchronized_pointcloud;
     bool keep_input_frame_in_synchronized_pointcloud;
     std::string synchronized_pointcloud_postfix;

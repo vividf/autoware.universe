@@ -97,9 +97,13 @@ public:
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
 
+  
   std::vector<std::string> input_topics_;
-  bool keep_input_frame_in_synchronized_pointcloud_;
   std::string output_frame_;
+  bool is_motion_compensated_;
+  bool keep_input_frame_in_synchronized_pointcloud_;
+  
+  
 
   sensor_msgs::msg::PointCloud2::SharedPtr concatenate_cloud_ptr_;
   // TODO(vivid): also check the boolen flag
@@ -108,8 +112,7 @@ public:
   std::deque<geometry_msgs::msg::TwistStamped::ConstSharedPtr> twist_ptr_queue_;
 
   CombineCloudHandler(
-    rclcpp::Node * node, std::vector<std::string> input_topics,
-    bool keep_input_frame_in_synchronized_pointcloud, std::string output_frame);
+    rclcpp::Node * node, std::vector<std::string> input_topics, std::string output_frame, bool is_motion_compensated, bool keep_input_frame_in_synchronized_pointcloud);
   void processTwist(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr & input);
   void processOdometry(const nav_msgs::msg::Odometry::ConstSharedPtr & input);
   void convertToXYZICloud(

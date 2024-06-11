@@ -67,15 +67,18 @@
 namespace pointcloud_preprocessor
 {
 
+
 CombineCloudHandler::CombineCloudHandler(
-  rclcpp::Node * node, std::vector<std::string> input_topics,
-  bool keep_input_frame_in_synchronized_pointcloud, std::string output_frame)
+    rclcpp::Node * node, std::vector<std::string> input_topics,
+     std::string output_frame, 
+    bool is_motion_compensated, bool keep_input_frame_in_synchronized_pointcloud)
 : node_(node),
   tf_buffer_(node_->get_clock()),
   tf_listener_(tf_buffer_),
   input_topics_(input_topics),
-  keep_input_frame_in_synchronized_pointcloud_(keep_input_frame_in_synchronized_pointcloud),
-  output_frame_(output_frame)
+  output_frame_(output_frame),
+  is_motion_compensated_(is_motion_compensated),
+  keep_input_frame_in_synchronized_pointcloud_(keep_input_frame_in_synchronized_pointcloud)
 {
   for (size_t topic_id = 0; topic_id < input_topics_.size(); ++topic_id) {
     topic_to_transformed_cloud_map_.insert(std::make_pair(input_topics_[topic_id], nullptr));
@@ -195,17 +198,10 @@ void CombineCloudHandler::combinePointClouds(
   std::sort(pc_stamps.begin(), pc_stamps.end(), std::greater<rclcpp::Time>());
   const auto oldest_stamp = pc_stamps.back();
 
-
-  
-  sensor_msgs::msg::PointCloud2::SharedPtr transformed_cloud_ptr(
-    new sensor_msgs::msg::PointCloud2());
   for (const auto & pair : topic_to_cloud_map_) {
     std::string topic_name = pair.first;
-    // TODO: should I keep it back to const?
     sensor_msgs::msg::PointCloud2::SharedPtr cloud = pair.second;
     std::cout << "in combination topic: " << topic_name << std::endl;
-
-
 
 
     auto start1 = std::chrono::high_resolution_clock::now();
@@ -213,8 +209,7 @@ void CombineCloudHandler::combinePointClouds(
     // TODO: if condition for this, casue 1.2 ms for this function with VLS128
     auto transformed_cloud_ptr = std::make_shared<sensor_msgs::msg::PointCloud2>();
     if (output_frame_ != cloud->header.frame_id) {
-      std::cout << "in" << std::endl;
-      //output_cloud = std::make_shared<sensor_msgs::msg::PointCloud2>(*input_cloud);
+      // TODO: this need to look up the transform every time
       if (!pcl_ros::transformPointCloud(output_frame_, *cloud, *transformed_cloud_ptr, tf_buffer_)) {
         RCLCPP_ERROR(
           node_->get_logger(),
@@ -227,8 +222,6 @@ void CombineCloudHandler::combinePointClouds(
       transformed_cloud_ptr = cloud;
     }
 
-    // calculate transforms to oldest stamp
-          // 記錄結束時間
     auto end1 = std::chrono::high_resolution_clock::now();
 
     // 計算執行時間
@@ -238,27 +231,32 @@ void CombineCloudHandler::combinePointClouds(
     std::cout << "transformation 時間: " << duration1.count() << " 秒" << std::endl;
 
 
+    // calculate transforms to oldest stamp
     // TODO(vivid): speed optimization: there is no reason we need to calculate transforms one by
     // one. current implementation spend 1.5 ms
 
     auto start = std::chrono::high_resolution_clock::now();
-    
-    // conpensate the motion
-    Eigen::Matrix4f adjust_to_old_data_transform = Eigen::Matrix4f::Identity();
-    rclcpp::Time transformed_stamp = rclcpp::Time(cloud->header.stamp);
-    for (const auto & stamp : pc_stamps) {
-      const auto new_to_old_transform =
-        computeTransformToAdjustForOldTimestamp(stamp, transformed_stamp);
-      adjust_to_old_data_transform = new_to_old_transform * adjust_to_old_data_transform;
-      transformed_stamp = std::min(transformed_stamp, stamp);
+    auto transformed_delay_compensated_cloud_ptr = std::make_shared<sensor_msgs::msg::PointCloud2>();
+    // sensor_msgs::msg::PointCloud2::SharedPtr transformed_delay_compensated_cloud_ptr(
+    //     new sensor_msgs::msg::PointCloud2());
+    if(is_motion_compensated_) {
+      // conpensate the motion
+      Eigen::Matrix4f adjust_to_old_data_transform = Eigen::Matrix4f::Identity();
+      rclcpp::Time transformed_stamp = rclcpp::Time(cloud->header.stamp);
+      for (const auto & stamp : pc_stamps) {
+        const auto new_to_old_transform =
+          computeTransformToAdjustForOldTimestamp(stamp, transformed_stamp);
+        adjust_to_old_data_transform = new_to_old_transform * adjust_to_old_data_transform;
+        transformed_stamp = std::min(transformed_stamp, stamp);
+      }
+      pcl_ros::transformPointCloud(
+        adjust_to_old_data_transform, *transformed_cloud_ptr,
+        *transformed_delay_compensated_cloud_ptr);
+
     }
-    sensor_msgs::msg::PointCloud2::SharedPtr transformed_delay_compensated_cloud_ptr(
-      new sensor_msgs::msg::PointCloud2());
-    pcl_ros::transformPointCloud(
-      adjust_to_old_data_transform, *transformed_cloud_ptr,
-      *transformed_delay_compensated_cloud_ptr);
-
-
+    else {
+      transformed_delay_compensated_cloud_ptr = transformed_cloud_ptr;
+    }
       // 記錄結束時間
     auto end = std::chrono::high_resolution_clock::now();
 

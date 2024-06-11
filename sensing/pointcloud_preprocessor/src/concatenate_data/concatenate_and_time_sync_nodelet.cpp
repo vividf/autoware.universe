@@ -117,6 +117,9 @@ PointCloudConcatenateDataSynchronizerComponent::PointCloudConcatenateDataSynchro
   params_.maximum_queue_size = static_cast<int>(declare_parameter("maximum_queue_size", 5));
   params_.timeout_sec = declare_parameter<double>("timeout_sec");
 
+  params_.is_motion_compensated =
+    declare_parameter("is_motion_compensated", true);
+
   params_.publish_synchronized_pointcloud =
     declare_parameter("publish_synchronized_pointcloud", true);
   params_.keep_input_frame_in_synchronized_pointcloud =
@@ -185,8 +188,9 @@ PointCloudConcatenateDataSynchronizerComponent::PointCloudConcatenateDataSynchro
 
   // Cloud handler
   combine_cloud_handler_ = std::make_shared<CombineCloudHandler>(
-    this, params_.input_topics, params_.keep_input_frame_in_synchronized_pointcloud,
-    params_.output_frame);
+    this, params_.input_topics, 
+    params_.output_frame, params_.is_motion_compensated,
+    params_.keep_input_frame_in_synchronized_pointcloud);
 }
 
 std::string PointCloudConcatenateDataSynchronizerComponent::replaceSyncTopicNamePostfix(
