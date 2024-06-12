@@ -198,18 +198,16 @@ void CombineCloudHandler::combinePointClouds(
   std::sort(pc_stamps.begin(), pc_stamps.end(), std::greater<rclcpp::Time>());
   const auto oldest_stamp = pc_stamps.back();
 
+
+  std::unordered_map<rclcpp::Time, Eigen::Matrix4f, RclcppTimeHash_> transform_memo;
+
   for (const auto & pair : topic_to_cloud_map_) {
     std::string topic_name = pair.first;
     sensor_msgs::msg::PointCloud2::SharedPtr cloud = pair.second;
-    std::cout << "in combination topic: " << topic_name << std::endl;
+    //std::cout << "in combination topic: " << topic_name << std::endl;
 
-
-    auto start1 = std::chrono::high_resolution_clock::now();
-    // sensor frame to baselink
-    // TODO: if condition for this, casue 1.2 ms for this function with VLS128
     auto transformed_cloud_ptr = std::make_shared<sensor_msgs::msg::PointCloud2>();
     if (output_frame_ != cloud->header.frame_id) {
-      // TODO: this need to look up the transform every time
       if (!pcl_ros::transformPointCloud(output_frame_, *cloud, *transformed_cloud_ptr, tf_buffer_)) {
         RCLCPP_ERROR(
           node_->get_logger(),
@@ -222,32 +220,25 @@ void CombineCloudHandler::combinePointClouds(
       transformed_cloud_ptr = cloud;
     }
 
-    auto end1 = std::chrono::high_resolution_clock::now();
-
-    // 計算執行時間
-    std::chrono::duration<double> duration1 = end1 - start1;
-
-    // 輸出執行時間
-    std::cout << "transformation 時間: " << duration1.count() << " 秒" << std::endl;
-
-
-    // calculate transforms to oldest stamp
-    // TODO(vivid): speed optimization: there is no reason we need to calculate transforms one by
-    // one. current implementation spend 1.5 ms
-
     auto start = std::chrono::high_resolution_clock::now();
     auto transformed_delay_compensated_cloud_ptr = std::make_shared<sensor_msgs::msg::PointCloud2>();
-    // sensor_msgs::msg::PointCloud2::SharedPtr transformed_delay_compensated_cloud_ptr(
-    //     new sensor_msgs::msg::PointCloud2());
+    
     if(is_motion_compensated_) {
-      // conpensate the motion
       Eigen::Matrix4f adjust_to_old_data_transform = Eigen::Matrix4f::Identity();
-      rclcpp::Time transformed_stamp = rclcpp::Time(cloud->header.stamp);
+      rclcpp::Time current_cloud_stamp = rclcpp::Time(cloud->header.stamp);
       for (const auto & stamp : pc_stamps) {
-        const auto new_to_old_transform =
-          computeTransformToAdjustForOldTimestamp(stamp, transformed_stamp);
+        if(stamp >= current_cloud_stamp)
+          continue;
+
+        Eigen::Matrix4f new_to_old_transform;
+        if (transform_memo.find(stamp) != transform_memo.end()) {
+            new_to_old_transform = transform_memo[stamp];
+        } else {
+            new_to_old_transform = computeTransformToAdjustForOldTimestamp(stamp, current_cloud_stamp);
+            transform_memo[stamp] = new_to_old_transform;
+        }
         adjust_to_old_data_transform = new_to_old_transform * adjust_to_old_data_transform;
-        transformed_stamp = std::min(transformed_stamp, stamp);
+        current_cloud_stamp = stamp;
       }
       pcl_ros::transformPointCloud(
         adjust_to_old_data_transform, *transformed_cloud_ptr,
@@ -257,14 +248,6 @@ void CombineCloudHandler::combinePointClouds(
     else {
       transformed_delay_compensated_cloud_ptr = transformed_cloud_ptr;
     }
-      // 記錄結束時間
-    auto end = std::chrono::high_resolution_clock::now();
-
-    // 計算執行時間
-    std::chrono::duration<double> duration = end - start;
-
-    // 輸出執行時間
-    std::cout << "motion compensation: " << duration.count() << " 秒" << std::endl;
 
     // concatenate
     if (concatenate_cloud_ptr_ == nullptr) {
@@ -308,14 +291,6 @@ Eigen::Matrix4f CombineCloudHandler::computeTransformToAdjustForOldTimestamp(
     return Eigen::Matrix4f::Identity();
   }
 
-  // return identity if old_stamp is newer than new_stamp
-  if (old_stamp > new_stamp) {
-    RCLCPP_WARN_STREAM_THROTTLE(
-      node_->get_logger(), *node_->get_clock(), std::chrono::milliseconds(10000).count(),
-      "old_stamp is newer than new_stamp,");
-    return Eigen::Matrix4f::Identity();
-  }
-
   auto old_twist_ptr_it = std::lower_bound(
     std::begin(twist_ptr_queue_), std::end(twist_ptr_queue_), old_stamp,
     [](const geometry_msgs::msg::TwistStamped::ConstSharedPtr & x_ptr, const rclcpp::Time & t) {
@@ -332,11 +307,11 @@ Eigen::Matrix4f CombineCloudHandler::computeTransformToAdjustForOldTimestamp(
   new_twist_ptr_it =
     new_twist_ptr_it == twist_ptr_queue_.end() ? (twist_ptr_queue_.end() - 1) : new_twist_ptr_it;
 
-  // TODO(vivid): this is same as distortion correction function. unify them
   auto prev_time = old_stamp;
   double x = 0.0;
   double y = 0.0;
   double yaw = 0.0;
+  tf2::Quaternion baselink_quat{};
   for (auto twist_ptr_it = old_twist_ptr_it; twist_ptr_it != new_twist_ptr_it + 1; ++twist_ptr_it) {
     const double dt =
       (twist_ptr_it != new_twist_ptr_it)
@@ -353,17 +328,24 @@ Eigen::Matrix4f CombineCloudHandler::computeTransformToAdjustForOldTimestamp(
 
     const double dis = (*twist_ptr_it)->twist.linear.x * dt;
     yaw += (*twist_ptr_it)->twist.angular.z * dt;
-    // TODO(vivid): change to tier4 sin cos?
     x += dis * std::cos(yaw);
     y += dis * std::sin(yaw);
     prev_time = (*twist_ptr_it)->header.stamp;
   }
-  Eigen::AngleAxisf rotation_x(0, Eigen::Vector3f::UnitX());
-  Eigen::AngleAxisf rotation_y(0, Eigen::Vector3f::UnitY());
-  Eigen::AngleAxisf rotation_z(yaw, Eigen::Vector3f::UnitZ());
-  Eigen::Translation3f translation(x, y, 0);
-  Eigen::Matrix4f rotation_matrix = (translation * rotation_z * rotation_y * rotation_x).matrix();
-  return rotation_matrix;
+
+  Eigen::Matrix4f transformation_matrix = Eigen::Matrix4f::Identity();
+  
+  float cos_yaw = std::cos(yaw);
+  float sin_yaw = std::sin(yaw);
+  
+  transformation_matrix(0, 3) = x;
+  transformation_matrix(1, 3) = y;
+  transformation_matrix(0, 0) = cos_yaw;
+  transformation_matrix(0, 1) = -sin_yaw;
+  transformation_matrix(1, 0) = sin_yaw;
+  transformation_matrix(1, 1) = cos_yaw;
+
+  return transformation_matrix;
 }
 
 std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr>

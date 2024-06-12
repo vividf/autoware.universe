@@ -103,7 +103,11 @@ public:
   bool is_motion_compensated_;
   bool keep_input_frame_in_synchronized_pointcloud_;
   
-  
+  struct RclcppTimeHash_ {
+    std::size_t operator()(const rclcpp::Time& t) const {
+        return std::hash<int64_t>()(t.nanoseconds());
+    }
+  };
 
   sensor_msgs::msg::PointCloud2::SharedPtr concatenate_cloud_ptr_;
   // TODO(vivid): also check the boolen flag

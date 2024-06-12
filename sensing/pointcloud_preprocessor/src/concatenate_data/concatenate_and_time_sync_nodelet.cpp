@@ -225,7 +225,7 @@ std::string PointCloudConcatenateDataSynchronizerComponent::replaceSyncTopicName
 void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
   const sensor_msgs::msg::PointCloud2::SharedPtr & input_ptr, const std::string & topic_name)
 {
-  std::cout << "topic name pointcloud arrive: " << topic_name << std::fixed << std::setprecision(9) << rclcpp::Time(input_ptr->header.stamp).seconds() << std::endl;
+  //std::cout << "topic name pointcloud arrive: " << topic_name << std::fixed << std::setprecision(9) << rclcpp::Time(input_ptr->header.stamp).seconds() << std::endl;
   sensor_msgs::msg::PointCloud2::SharedPtr xyzi_input_ptr(new sensor_msgs::msg::PointCloud2());
   auto input = std::make_shared<sensor_msgs::msg::PointCloud2>(*input_ptr);
   if (input->data.empty()) {
@@ -240,25 +240,25 @@ void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
   
   bool collector_found = false;
 
-  std::cout << "topic_to_offset_map_[topic_name]:  " << topic_to_offset_map_[topic_name]  << std::endl;
+  //std::cout << "topic_to_offset_map_[topic_name]:  " << topic_to_offset_map_[topic_name]  << std::endl;
   if(!cloud_collectors_.empty()) {
-    std::cout << "Searching collect in size:  " << cloud_collectors_.size() << std::endl;
+    //std::cout << "Searching collect in size:  " << cloud_collectors_.size() << std::endl;
     for (const auto & cloud_collector : cloud_collectors_) {
-      std::cout << "collector timestamp:  " << cloud_collector->getTimeStamp()  << std::endl;
+      //std::cout << "collector timestamp:  " << cloud_collector->getTimeStamp()  << std::endl;
       cloud_collector->printTimer();
       if (std::abs(rclcpp::Time(input_ptr->header.stamp).seconds() - topic_to_offset_map_[topic_name] - cloud_collector->getTimeStamp()) <
         params_.offset_tolerance) {
         lock.unlock();
         cloud_collector->processCloud(topic_name, input_ptr);
         collector_found = true;
-        std::cout << "find collector " << cloud_collector << std::endl;
+        //std::cout << "find collector " << cloud_collector << std::endl;
         break;
       } 
     }
   }
   // if collecotrs is empty or didn't find matched collector.
   if(!collector_found) {
-    std::cout << "create new collector " << std::endl;
+    //std::cout << "create new collector " << std::endl;
     auto new_cloud_collector = std::make_shared<CloudCollector>(std::dynamic_pointer_cast<PointCloudConcatenateDataSynchronizerComponent>(
       shared_from_this()),
     cloud_collectors_, combine_cloud_handler_, params_.input_topics.size(), params_.timeout_sec);
@@ -284,7 +284,7 @@ void PointCloudConcatenateDataSynchronizerComponent::odom_callback(
 
 void PointCloudConcatenateDataSynchronizerComponent::publishClouds()
 {
-  std::cout << "in publishClouds" << std::endl;
+  //std::cout << "in publishClouds" << std::endl;
   stop_watch_ptr_->toc("processing_time", true);
 
   missed_cloud_.clear();

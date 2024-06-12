@@ -119,7 +119,7 @@ void CloudCollector::deleteCollector()
 // debug
 void CloudCollector::printTimer()
 {
-  std::cout << "time to ended: " << timer_->time_until_trigger().count() << std::endl;
+  //std::cout << "time to ended: " << timer_->time_until_trigger().count() << std::endl;
 }
 
 
