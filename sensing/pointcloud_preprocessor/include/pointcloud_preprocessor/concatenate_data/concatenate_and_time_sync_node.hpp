@@ -49,17 +49,17 @@
  *
  */
 
-#ifndef POINTCLOUD_PREPROCESSOR__CONCATENATE_DATA__CONCATENATE_AND_TIME_SYNC_NODELET_HPP_
-#define POINTCLOUD_PREPROCESSOR__CONCATENATE_DATA__CONCATENATE_AND_TIME_SYNC_NODELET_HPP_
+#ifndef POINTCLOUD_PREPROCESSOR__CONCATENATE_DATA__CONCATENATE_AND_TIME_SYNC_NODE_HPP_
+#define POINTCLOUD_PREPROCESSOR__CONCATENATE_DATA__CONCATENATE_AND_TIME_SYNC_NODE_HPP_
 
 #include <deque>
+#include <list>
 #include <memory>
 #include <mutex>
 #include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <list>
 
 // ROS includes
 #include "autoware_point_types/types.hpp"
@@ -92,24 +92,24 @@ namespace pointcloud_preprocessor
 class PointCloudConcatenateDataSynchronizerComponent : public rclcpp::Node
 {
 public:
-
   explicit PointCloudConcatenateDataSynchronizerComponent(const rclcpp::NodeOptions & node_options);
   virtual ~PointCloudConcatenateDataSynchronizerComponent() {}
   void publishClouds();
+
 private:
   struct Parameters
   {
     int maximum_queue_size;
     double timeout_sec;
+    double offset_tolerance;
     bool is_motion_compensated;
     bool publish_synchronized_pointcloud;
     bool keep_input_frame_in_synchronized_pointcloud;
     std::string synchronized_pointcloud_postfix;
     std::string input_twist_topic_type;
-    std::string output_frame;
     std::vector<std::string> input_topics;
+    std::string output_frame;
     std::vector<double> lidar_timestamp_offsets;
-    double offset_tolerance;
   } params_;
 
   std::set<std::string> missed_cloud_;
@@ -134,8 +134,7 @@ private:
   diagnostic_updater::Updater updater_{this};
 
   void cloud_callback(
-    const sensor_msgs::msg::PointCloud2::SharedPtr & input_ptr,
-    const std::string & topic_name);
+    const sensor_msgs::msg::PointCloud2::SharedPtr & input_ptr, const std::string & topic_name);
   void twist_callback(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr input);
   void odom_callback(const nav_msgs::msg::Odometry::ConstSharedPtr input);
   void checkConcatStatus(diagnostic_updater::DiagnosticStatusWrapper & stat);
@@ -145,4 +144,4 @@ private:
 
 }  // namespace pointcloud_preprocessor
 
-#endif  // POINTCLOUD_PREPROCESSOR__CONCATENATE_DATA__CONCATENATE_AND_TIME_SYNC_NODELET_HPP_
+#endif  // POINTCLOUD_PREPROCESSOR__CONCATENATE_DATA__CONCATENATE_AND_TIME_SYNC_NODE_HPP_

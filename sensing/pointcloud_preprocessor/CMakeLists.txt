@@ -58,7 +58,7 @@ ament_target_dependencies(faster_voxel_grid_downsample_filter
 
 ament_auto_add_library(pointcloud_preprocessor_filter SHARED
   src/utility/utilities.cpp
-  src/concatenate_data/concatenate_and_time_sync_nodelet.cpp
+  src/concatenate_data/concatenate_and_time_sync_node.cpp
   src/concatenate_data/combine_cloud_handler.cpp
   src/concatenate_data/cloud_collector.cpp
   src/concatenate_data/concatenate_pointclouds.cpp
@@ -104,7 +104,7 @@ rclcpp_components_register_node(pointcloud_preprocessor_filter
 # ========== Concatenate and Sync data ==========
 rclcpp_components_register_node(pointcloud_preprocessor_filter
   PLUGIN "pointcloud_preprocessor::PointCloudConcatenateDataSynchronizerComponent"
-  EXECUTABLE concatenate_data_node)
+  EXECUTABLE concatenate_and_time_sync_node)
 
 # ========== CropBox ==========
 rclcpp_components_register_node(pointcloud_preprocessor_filter

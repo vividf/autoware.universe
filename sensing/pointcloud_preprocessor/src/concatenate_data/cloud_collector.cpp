@@ -52,7 +52,7 @@
 #include "pointcloud_preprocessor/concatenate_data/cloud_collector.hpp"
 
 #include "pointcloud_preprocessor/concatenate_data/combine_cloud_handler.hpp"
-#include "pointcloud_preprocessor/concatenate_data/concatenate_and_time_sync_nodelet.hpp"
+#include "pointcloud_preprocessor/concatenate_data/concatenate_and_time_sync_node.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -71,12 +71,12 @@ CloudCollector::CloudCollector(
 {
   timestamp_ = 0.0;
   const auto period_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-   std::chrono::duration<double>(timeout_sec_));
-  
-  timer_ = rclcpp::create_timer(
-   concatenate_node_, concatenate_node_->get_clock(), period_ns, std::bind(&CloudCollector::combineClouds, this));
-}
+    std::chrono::duration<double>(timeout_sec_));
 
+  timer_ = rclcpp::create_timer(
+    concatenate_node_, concatenate_node_->get_clock(), period_ns,
+    std::bind(&CloudCollector::combineClouds, this));
+}
 
 void CloudCollector::setTimeStamp(double timestamp)
 {
@@ -91,10 +91,9 @@ double CloudCollector::getTimeStamp()
 void CloudCollector::processCloud(
   std::string topic_name, sensor_msgs::msg::PointCloud2::SharedPtr cloud)
 {
+  // TODO(vivid): do I need a check here to see if map already exists for same topic?
   topic_cloud_map_[topic_name] = cloud;
   if (topic_cloud_map_.size() == num_of_clouds_) combineClouds();
-
-
 }
 
 void CloudCollector::combineClouds()
@@ -103,7 +102,6 @@ void CloudCollector::combineClouds()
   concatenate_node_->publishClouds();
   std::lock_guard<std::mutex> lock(mutex_);
   deleteCollector();
-
 }
 
 void CloudCollector::deleteCollector()
@@ -119,8 +117,7 @@ void CloudCollector::deleteCollector()
 // debug
 void CloudCollector::printTimer()
 {
-  //std::cout << "time to ended: " << timer_->time_until_trigger().count() << std::endl;
+  std::cout << "time to ended: " << timer_->time_until_trigger().count() << std::endl;
 }
-
 
 }  // namespace pointcloud_preprocessor

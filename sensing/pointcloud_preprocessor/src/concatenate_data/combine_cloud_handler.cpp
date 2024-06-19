@@ -67,11 +67,9 @@
 namespace pointcloud_preprocessor
 {
 
-
 CombineCloudHandler::CombineCloudHandler(
-    rclcpp::Node * node, std::vector<std::string> input_topics,
-     std::string output_frame, 
-    bool is_motion_compensated, bool keep_input_frame_in_synchronized_pointcloud)
+  rclcpp::Node * node, std::vector<std::string> input_topics, std::string output_frame,
+  bool is_motion_compensated, bool keep_input_frame_in_synchronized_pointcloud)
 : node_(node),
   tf_buffer_(node_->get_clock()),
   tf_listener_(tf_buffer_),
@@ -110,7 +108,6 @@ void CombineCloudHandler::processTwist(
   twist_ptr->header = input->header;
   twist_ptr->twist = input->twist.twist;
   twist_ptr_queue_.push_back(twist_ptr);
-
 }
 
 void CombineCloudHandler::processOdometry(const nav_msgs::msg::Odometry::ConstSharedPtr & input)
@@ -187,8 +184,7 @@ void CombineCloudHandler::resetCloud()
 }
 
 void CombineCloudHandler::combinePointClouds(
-  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> &
-    topic_to_cloud_map_)
+  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> & topic_to_cloud_map_)
 {
   std::vector<rclcpp::Time> pc_stamps;
   for (const auto & pair : topic_to_cloud_map_) {
@@ -198,44 +194,43 @@ void CombineCloudHandler::combinePointClouds(
   std::sort(pc_stamps.begin(), pc_stamps.end(), std::greater<rclcpp::Time>());
   const auto oldest_stamp = pc_stamps.back();
 
-
   std::unordered_map<rclcpp::Time, Eigen::Matrix4f, RclcppTimeHash_> transform_memo;
 
   for (const auto & pair : topic_to_cloud_map_) {
     std::string topic_name = pair.first;
     sensor_msgs::msg::PointCloud2::SharedPtr cloud = pair.second;
-    //std::cout << "in combination topic: " << topic_name << std::endl;
+    // std::cout << "in combination topic: " << topic_name << std::endl;
 
     auto transformed_cloud_ptr = std::make_shared<sensor_msgs::msg::PointCloud2>();
     if (output_frame_ != cloud->header.frame_id) {
-      if (!pcl_ros::transformPointCloud(output_frame_, *cloud, *transformed_cloud_ptr, tf_buffer_)) {
+      if (!pcl_ros::transformPointCloud(
+            output_frame_, *cloud, *transformed_cloud_ptr, tf_buffer_)) {
         RCLCPP_ERROR(
           node_->get_logger(),
           "[transformPointCloud] Error converting first input dataset from %s to %s.",
           cloud->header.frame_id.c_str(), output_frame_.c_str());
         return;
       }
-    }
-    else {
+    } else {
       transformed_cloud_ptr = cloud;
     }
 
-    auto start = std::chrono::high_resolution_clock::now();
-    auto transformed_delay_compensated_cloud_ptr = std::make_shared<sensor_msgs::msg::PointCloud2>();
-    
-    if(is_motion_compensated_) {
+    auto transformed_delay_compensated_cloud_ptr =
+      std::make_shared<sensor_msgs::msg::PointCloud2>();
+
+    if (is_motion_compensated_) {
       Eigen::Matrix4f adjust_to_old_data_transform = Eigen::Matrix4f::Identity();
       rclcpp::Time current_cloud_stamp = rclcpp::Time(cloud->header.stamp);
       for (const auto & stamp : pc_stamps) {
-        if(stamp >= current_cloud_stamp)
-          continue;
+        if (stamp >= current_cloud_stamp) continue;
 
         Eigen::Matrix4f new_to_old_transform;
         if (transform_memo.find(stamp) != transform_memo.end()) {
-            new_to_old_transform = transform_memo[stamp];
+          new_to_old_transform = transform_memo[stamp];
         } else {
-            new_to_old_transform = computeTransformToAdjustForOldTimestamp(stamp, current_cloud_stamp);
-            transform_memo[stamp] = new_to_old_transform;
+          new_to_old_transform =
+            computeTransformToAdjustForOldTimestamp(stamp, current_cloud_stamp);
+          transform_memo[stamp] = new_to_old_transform;
         }
         adjust_to_old_data_transform = new_to_old_transform * adjust_to_old_data_transform;
         current_cloud_stamp = stamp;
@@ -244,8 +239,7 @@ void CombineCloudHandler::combinePointClouds(
         adjust_to_old_data_transform, *transformed_cloud_ptr,
         *transformed_delay_compensated_cloud_ptr);
 
-    }
-    else {
+    } else {
       transformed_delay_compensated_cloud_ptr = transformed_cloud_ptr;
     }
 
@@ -277,8 +271,6 @@ void CombineCloudHandler::combinePointClouds(
   }
   concatenate_cloud_ptr_->header.stamp = oldest_stamp;
 }
-
-
 
 Eigen::Matrix4f CombineCloudHandler::computeTransformToAdjustForOldTimestamp(
   const rclcpp::Time & old_stamp, const rclcpp::Time & new_stamp)
@@ -334,10 +326,10 @@ Eigen::Matrix4f CombineCloudHandler::computeTransformToAdjustForOldTimestamp(
   }
 
   Eigen::Matrix4f transformation_matrix = Eigen::Matrix4f::Identity();
-  
+
   float cos_yaw = std::cos(yaw);
   float sin_yaw = std::sin(yaw);
-  
+
   transformation_matrix(0, 3) = x;
   transformation_matrix(1, 3) = y;
   transformation_matrix(0, 0) = cos_yaw;
