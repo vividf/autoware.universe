@@ -62,7 +62,9 @@ ament_target_dependencies(faster_voxel_grid_downsample_filter
 )
 
 ament_auto_add_library(pointcloud_preprocessor_filter SHARED
-  src/concatenate_data/concatenate_and_time_sync_nodelet.cpp
+  src/concatenate_data/concatenate_and_time_sync_node.cpp
+  src/concatenate_data/combine_cloud_handler.cpp
+  src/concatenate_data/cloud_collector.cpp
   src/concatenate_data/concatenate_pointclouds.cpp
   src/time_synchronizer/time_synchronizer_nodelet.cpp
   src/crop_box_filter/crop_box_filter_nodelet.cpp
@@ -109,7 +111,7 @@ rclcpp_components_register_node(pointcloud_preprocessor_filter
 # ========== Concatenate and Sync data ==========
 rclcpp_components_register_node(pointcloud_preprocessor_filter
   PLUGIN "pointcloud_preprocessor::PointCloudConcatenateDataSynchronizerComponent"
-  EXECUTABLE concatenate_data_node)
+  EXECUTABLE concatenate_and_time_sync_node)
 
 # ========== CropBox ==========
 rclcpp_components_register_node(pointcloud_preprocessor_filter
@@ -228,6 +230,11 @@ ament_auto_package(INSTALL_TO_SHARE
 )
 
 if(BUILD_TESTING)
+
+  add_ros_test(
+    test/test_concatenate_node.py
+    TIMEOUT "50")
+
   find_package(ament_lint_auto REQUIRED)
   find_package(ament_cmake_gtest)
 

@@ -49,19 +49,22 @@
  *
  */
 
-#ifndef POINTCLOUD_PREPROCESSOR__CONCATENATE_DATA__CONCATENATE_AND_TIME_SYNC_NODELET_HPP_
-#define POINTCLOUD_PREPROCESSOR__CONCATENATE_DATA__CONCATENATE_AND_TIME_SYNC_NODELET_HPP_
+#ifndef POINTCLOUD_PREPROCESSOR__CONCATENATE_DATA__CONCATENATE_AND_TIME_SYNC_NODE_HPP_
+#define POINTCLOUD_PREPROCESSOR__CONCATENATE_DATA__CONCATENATE_AND_TIME_SYNC_NODE_HPP_
 
 #include <deque>
-#include <map>
+#include <list>
 #include <memory>
 #include <mutex>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // ROS includes
 #include "autoware_point_types/types.hpp"
+#include "cloud_collector.hpp"
+#include "combine_cloud_handler.hpp"
 
 #include <autoware/universe_utils/ros/debug_publisher.hpp>
 #include <autoware/universe_utils/system/stop_watch.hpp>
@@ -82,113 +85,67 @@
 #include <message_filters/sync_policies/approximate_time.h>
 #include <message_filters/sync_policies/exact_time.h>
 #include <message_filters/synchronizer.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 namespace pointcloud_preprocessor
 {
-using autoware_point_types::PointXYZIRC;
-using point_cloud_msg_wrapper::PointCloud2Modifier;
 
-/** \brief @b PointCloudConcatenateDataSynchronizerComponent is a special form of data
- * synchronizer: it listens for a set of input PointCloud messages on the same topic,
- * checks their timestamps, and concatenates their fields together into a single
- * PointCloud output message.
- * \author Radu Bogdan Rusu
- */
 class PointCloudConcatenateDataSynchronizerComponent : public rclcpp::Node
 {
 public:
-  typedef sensor_msgs::msg::PointCloud2 PointCloud2;
-
-  /** \brief constructor. */
   explicit PointCloudConcatenateDataSynchronizerComponent(const rclcpp::NodeOptions & node_options);
-
-  /** \brief constructor.
-   * \param queue_size the maximum queue size
-   */
-  PointCloudConcatenateDataSynchronizerComponent(
-    const rclcpp::NodeOptions & node_options, int queue_size);
-
-  /** \brief Empty destructor. */
   virtual ~PointCloudConcatenateDataSynchronizerComponent() {}
+  void publishClouds();
 
 private:
-  /** \brief The output PointCloud publisher. */
-  rclcpp::Publisher<PointCloud2>::SharedPtr pub_output_;
-  /** \brief Delay Compensated PointCloud publisher*/
-  std::map<std::string, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr>
-    transformed_raw_pc_publisher_map_;
+  struct Parameters
+  {
+    int maximum_queue_size;
+    double timeout_sec;
+    bool is_motion_compensated;
+    bool publish_synchronized_pointcloud;
+    bool keep_input_frame_in_synchronized_pointcloud;
+    std::string synchronized_pointcloud_postfix;
+    std::string input_twist_topic_type;
+    std::vector<std::string> input_topics;
+    std::string output_frame;
+    std::vector<double> lidar_timestamp_offsets;
+    std::vector<double> lidar_timestamp_noise_window;
+  } params_;
 
-  /** \brief The maximum number of messages that we can store in the queue. */
-  int maximum_queue_size_ = 3;
+  // remove this later
+  // rclcpp::Clock::SharedPtr debug_clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
 
-  double timeout_sec_ = 0.1;
+  std::set<std::string> missed_cloud_;
+  std::shared_ptr<CombineCloudHandler> combine_cloud_handler_;
+  std::shared_ptr<CloudCollector> cloud_collector_;
+  std::list<std::shared_ptr<CloudCollector>> cloud_collectors_;
+  std::mutex mutex_;
+  std::unordered_map<std::string, double> topic_to_offset_map_;
+  std::unordered_map<std::string, double> topic_to_noise_window_map;
 
-  bool publish_synchronized_pointcloud_;
-  bool keep_input_frame_in_synchronized_pointcloud_;
-  std::string synchronized_pointcloud_postfix_;
+  // subscribers
+  std::vector<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr> pointcloud_subs;
+  rclcpp::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr twist_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
 
-  std::set<std::string> not_subscribed_topic_names_;
+  // publishers
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr concatenate_cloud_publisher_;
+  std::unordered_map<std::string, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr>
+    topic_to_transformed_cloud_publisher_map_;
+  std::unique_ptr<autoware::universe_utils::DebugPublisher> debug_publisher_;
 
-  /** \brief A vector of subscriber. */
-  std::vector<rclcpp::Subscription<PointCloud2>::SharedPtr> filters_;
-
-  rclcpp::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr sub_twist_;
-  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odom_;
-
-  rclcpp::TimerBase::SharedPtr timer_;
+  std::unique_ptr<autoware::universe_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
   diagnostic_updater::Updater updater_{this};
 
-  const std::string input_twist_topic_type_;
-
-  /** \brief Output TF frame the concatenated points should be transformed to. */
-  std::string output_frame_;
-
-  /** \brief Input point cloud topics. */
-  // XmlRpc::XmlRpcValue input_topics_;
-  std::vector<std::string> input_topics_;
-
-  /** \brief TF listener object. */
-  std::shared_ptr<tf2_ros::Buffer> tf2_buffer_;
-  std::shared_ptr<tf2_ros::TransformListener> tf2_listener_;
-
-  std::deque<geometry_msgs::msg::TwistStamped::ConstSharedPtr> twist_ptr_queue_;
-
-  std::map<std::string, sensor_msgs::msg::PointCloud2::ConstSharedPtr> cloud_stdmap_;
-  std::map<std::string, sensor_msgs::msg::PointCloud2::ConstSharedPtr> cloud_stdmap_tmp_;
-  std::mutex mutex_;
-
-  std::vector<double> input_offset_;
-  std::map<std::string, double> offset_map_;
-
-  void transformPointCloud(const PointCloud2::ConstSharedPtr & in, PointCloud2::SharedPtr & out);
-  Eigen::Matrix4f computeTransformToAdjustForOldTimestamp(
-    const rclcpp::Time & old_stamp, const rclcpp::Time & new_stamp);
-  std::map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> combineClouds(
-    sensor_msgs::msg::PointCloud2::SharedPtr & concat_cloud_ptr);
-  void publish();
-
-  void convertToXYZIRCCloud(
-    const sensor_msgs::msg::PointCloud2::SharedPtr & input_ptr,
-    sensor_msgs::msg::PointCloud2::SharedPtr & output_ptr);
-  void setPeriod(const int64_t new_period);
   void cloud_callback(
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_ptr,
-    const std::string & topic_name);
+    const sensor_msgs::msg::PointCloud2::SharedPtr & input_ptr, const std::string & topic_name);
   void twist_callback(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr input);
   void odom_callback(const nav_msgs::msg::Odometry::ConstSharedPtr input);
-  void timer_callback();
-
   void checkConcatStatus(diagnostic_updater::DiagnosticStatusWrapper & stat);
   std::string replaceSyncTopicNamePostfix(
     const std::string & original_topic_name, const std::string & postfix);
-
-  /** \brief processing time publisher. **/
-  std::unique_ptr<autoware::universe_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
-  std::unique_ptr<autoware::universe_utils::DebugPublisher> debug_publisher_;
 };
 
 }  // namespace pointcloud_preprocessor
 
-#endif  // POINTCLOUD_PREPROCESSOR__CONCATENATE_DATA__CONCATENATE_AND_TIME_SYNC_NODELET_HPP_
+#endif  // POINTCLOUD_PREPROCESSOR__CONCATENATE_DATA__CONCATENATE_AND_TIME_SYNC_NODE_HPP_
