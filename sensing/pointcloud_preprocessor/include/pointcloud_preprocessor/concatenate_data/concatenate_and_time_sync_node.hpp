@@ -104,6 +104,7 @@ private:
     bool is_motion_compensated;
     bool publish_synchronized_pointcloud;
     bool keep_input_frame_in_synchronized_pointcloud;
+    bool publish_previous_but_late_pointcloud;
     std::string synchronized_pointcloud_postfix;
     std::string input_twist_topic_type;
     std::vector<std::string> input_topics;
@@ -115,9 +116,10 @@ private:
   // remove this later
   // rclcpp::Clock::SharedPtr debug_clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
 
-  // diagnostics
+  double lastest_concat_cloud_timestamp_{0.0};
   double diagnostic_reference_timestamp_min_{0.0};
   double diagnostic_reference_timestamp_max_{0.0};
+  bool drop_previous_but_late_pointcloud_{false};
   bool publish_pointcloud_{false};
 
   std::shared_ptr<CombineCloudHandler> combine_cloud_handler_;

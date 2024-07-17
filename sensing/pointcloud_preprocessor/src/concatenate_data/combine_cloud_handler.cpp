@@ -218,15 +218,13 @@ void CombineCloudHandler::combinePointClouds(
   for (const auto & pair : topic_to_cloud_map_) {
     std::string topic = pair.first;
     sensor_msgs::msg::PointCloud2::SharedPtr cloud = pair.second;
-    // std::cout << "in combination topic: " << topic << std::endl;
 
     auto transformed_cloud_ptr = std::make_shared<sensor_msgs::msg::PointCloud2>();
     if (output_frame_ != cloud->header.frame_id) {
       if (!pcl_ros::transformPointCloud(
             output_frame_, *cloud, *transformed_cloud_ptr, tf_buffer_)) {
         RCLCPP_ERROR(
-          node_->get_logger(),
-          "[transformPointCloud] Error converting first input dataset from %s to %s.",
+          node_->get_logger(), "Transform pointcloud from %s to %s failed.",
           cloud->header.frame_id.c_str(), output_frame_.c_str());
         return;
       }
