@@ -58,6 +58,7 @@
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -78,8 +79,9 @@ CombineCloudHandler::CombineCloudHandler(
   is_motion_compensated_(is_motion_compensated),
   keep_input_frame_in_synchronized_pointcloud_(keep_input_frame_in_synchronized_pointcloud)
 {
-  for (size_t topic_id = 0; topic_id < input_topics_.size(); ++topic_id) {
-    topic_to_transformed_cloud_map_.insert(std::make_pair(input_topics_[topic_id], nullptr));
+  for (auto topic : input_topics) {
+    topic_to_original_stamp_map_.insert(std::make_pair(topic, -1));
+    topic_to_transformed_cloud_map_.insert(std::make_pair(topic, nullptr));
   }
 }
 
@@ -195,6 +197,9 @@ void CombineCloudHandler::resetCloud()
   std::for_each(
     std::begin(topic_to_transformed_cloud_map_), std::end(topic_to_transformed_cloud_map_),
     [](auto & pair) { pair.second = nullptr; });
+  std::for_each(
+    std::begin(topic_to_original_stamp_map_), std::end(topic_to_original_stamp_map_),
+    [](auto & pair) { pair.second = -1; });
 }
 
 void CombineCloudHandler::combinePointClouds(
@@ -211,9 +216,9 @@ void CombineCloudHandler::combinePointClouds(
   std::unordered_map<rclcpp::Time, Eigen::Matrix4f, RclcppTimeHash_> transform_memo;
 
   for (const auto & pair : topic_to_cloud_map_) {
-    std::string topic_name = pair.first;
+    std::string topic = pair.first;
     sensor_msgs::msg::PointCloud2::SharedPtr cloud = pair.second;
-    // std::cout << "in combination topic: " << topic_name << std::endl;
+    // std::cout << "in combination topic: " << topic << std::endl;
 
     auto transformed_cloud_ptr = std::make_shared<sensor_msgs::msg::PointCloud2>();
     if (output_frame_ != cloud->header.frame_id) {
@@ -228,6 +233,8 @@ void CombineCloudHandler::combinePointClouds(
     } else {
       transformed_cloud_ptr = cloud;
     }
+
+    topic_to_original_stamp_map_[topic] = rclcpp::Time(cloud->header.stamp).seconds();
 
     auto transformed_delay_compensated_cloud_ptr =
       std::make_shared<sensor_msgs::msg::PointCloud2>();
@@ -276,11 +283,11 @@ void CombineCloudHandler::combinePointClouds(
         *transformed_cloud_ptr_in_sensor_frame, tf_buffer_);
       transformed_cloud_ptr_in_sensor_frame->header.stamp = oldest_stamp;
       transformed_cloud_ptr_in_sensor_frame->header.frame_id = cloud->header.frame_id;
-      topic_to_transformed_cloud_map_[topic_name] = transformed_cloud_ptr_in_sensor_frame;
+      topic_to_transformed_cloud_map_[topic] = transformed_cloud_ptr_in_sensor_frame;
     } else {
       transformed_delay_compensated_cloud_ptr->header.stamp = oldest_stamp;
       transformed_delay_compensated_cloud_ptr->header.frame_id = output_frame_;
-      topic_to_transformed_cloud_map_[topic_name] = transformed_delay_compensated_cloud_ptr;
+      topic_to_transformed_cloud_map_[topic] = transformed_delay_compensated_cloud_ptr;
     }
   }
   concatenate_cloud_ptr_->header.stamp = oldest_stamp;
@@ -360,9 +367,27 @@ CombineCloudHandler::getTopicToTransformedCloudMap()
   return topic_to_transformed_cloud_map_;
 }
 
+std::unordered_map<std::string, double> CombineCloudHandler::getTopicToOriginalStampMap()
+{
+  return topic_to_original_stamp_map_;
+}
+
 sensor_msgs::msg::PointCloud2::SharedPtr CombineCloudHandler::getConcatenatePointcloud()
 {
   return concatenate_cloud_ptr_;
+}
+
+// for diagnostic output
+void CombineCloudHandler::setReferenceTimeStampBoundary(
+  double reference_timestamp_min, double reference_timestamp_max)
+{
+  reference_timestamp_min_ = reference_timestamp_min;
+  reference_timestamp_max_ = reference_timestamp_max;
+}
+
+std::tuple<double, double> CombineCloudHandler::getReferenceTimeStampBoundary()
+{
+  return std::make_tuple(reference_timestamp_min_, reference_timestamp_max_);
 }
 
 }  // namespace pointcloud_preprocessor

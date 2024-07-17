@@ -57,6 +57,7 @@
 #include <mutex>
 #include <set>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -100,6 +101,9 @@ public:
   bool is_motion_compensated_;
   bool keep_input_frame_in_synchronized_pointcloud_;
 
+  double reference_timestamp_min_;
+  double reference_timestamp_max_;
+
   struct RclcppTimeHash_
   {
     std::size_t operator()(const rclcpp::Time & t) const
@@ -112,6 +116,7 @@ public:
   // TODO(vivid): also check the boolen flag
   std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr>
     topic_to_transformed_cloud_map_;
+  std::unordered_map<std::string, double> topic_to_original_stamp_map_;
   std::deque<geometry_msgs::msg::TwistStamped::ConstSharedPtr> twist_ptr_queue_;
 
   CombineCloudHandler(
@@ -129,9 +134,14 @@ public:
   Eigen::Matrix4f computeTransformToAdjustForOldTimestamp(
     const rclcpp::Time & old_stamp, const rclcpp::Time & new_stamp);
 
+  std::unordered_map<std::string, double> getTopicToOriginalStampMap();
   std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr>
   getTopicToTransformedCloudMap();
+
   sensor_msgs::msg::PointCloud2::SharedPtr getConcatenatePointcloud();
+  void setReferenceTimeStampBoundary(
+    double reference_timestamp_min, double reference_timestamp_max);
+  std::tuple<double, double> getReferenceTimeStampBoundary();
 };
 
 }  // namespace pointcloud_preprocessor

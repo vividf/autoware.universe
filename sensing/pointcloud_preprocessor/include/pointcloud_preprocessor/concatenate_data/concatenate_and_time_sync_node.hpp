@@ -115,7 +115,11 @@ private:
   // remove this later
   // rclcpp::Clock::SharedPtr debug_clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
 
-  std::set<std::string> missed_cloud_;
+  // diagnostics
+  double diagnostic_reference_timestamp_min_{0.0};
+  double diagnostic_reference_timestamp_max_{0.0};
+  bool publish_pointcloud_{false};
+
   std::shared_ptr<CombineCloudHandler> combine_cloud_handler_;
   std::shared_ptr<CloudCollector> cloud_collector_;
   std::list<std::shared_ptr<CloudCollector>> cloud_collectors_;
@@ -141,6 +145,8 @@ private:
     const sensor_msgs::msg::PointCloud2::SharedPtr & input_ptr, const std::string & topic_name);
   void twist_callback(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr input);
   void odom_callback(const nav_msgs::msg::Odometry::ConstSharedPtr input);
+
+  std::string formatTimestamp(double timestamp);
   void checkConcatStatus(diagnostic_updater::DiagnosticStatusWrapper & stat);
   std::string replaceSyncTopicNamePostfix(
     const std::string & original_topic_name, const std::string & postfix);

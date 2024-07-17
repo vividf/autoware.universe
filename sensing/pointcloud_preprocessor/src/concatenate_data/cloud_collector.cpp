@@ -101,9 +101,12 @@ void CloudCollector::processCloud(
 
 void CloudCollector::combineClouds()
 {
+  // lock for protecting collector list and also concatenated pointcloud
+  std::lock_guard<std::mutex> lock(mutex_);
+  combine_cloud_handler_->setReferenceTimeStampBoundary(
+    reference_timestamp_min_, reference_timestamp_max_);
   combine_cloud_handler_->combinePointClouds(topic_cloud_map_);
   concatenate_node_->publishClouds();
-  std::lock_guard<std::mutex> lock(mutex_);
   deleteCollector();
 }
 
