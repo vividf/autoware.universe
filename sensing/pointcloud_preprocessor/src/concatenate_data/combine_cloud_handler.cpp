@@ -177,6 +177,8 @@ void CombineCloudHandler::convertToXYZIRCCloud(
       point.y = *it_y;
       point.z = *it_z;
       point.intensity = *it_i;
+      point.return_type = *it_r;
+      point.channel = *it_c;
       output_modifier.push_back(std::move(point));
     }
   } else {

@@ -258,7 +258,7 @@ void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
     combine_cloud_handler_->convertToXYZIRCCloud(input, xyzirc_input_ptr);
   }
 
-  // protect colloect list
+  // protect collect list
   std::unique_lock<std::mutex> lock(mutex_);
 
   // For each callback, check whether there is a exist collector that matches this cloud
