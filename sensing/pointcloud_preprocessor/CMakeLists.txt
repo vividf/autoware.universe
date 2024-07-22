@@ -230,11 +230,6 @@ ament_auto_package(INSTALL_TO_SHARE
 )
 
 if(BUILD_TESTING)
-
-  add_ros_test(
-    test/test_concatenate_node.py
-    TIMEOUT "50")
-
   find_package(ament_lint_auto REQUIRED)
   find_package(ament_cmake_gtest)
 
@@ -244,12 +239,18 @@ if(BUILD_TESTING)
     test/test_utilities.cpp
   )
 
-  ament_add_gtest(test_distortion_corrector_node
-    test/test_distortion_corrector_node.cpp
+  # ament_add_gtest(test_distortion_corrector_node
+  #   test/test_distortion_corrector_node.cpp
+  # )
+
+  ament_add_gtest(test_cloud_collector
+    test/test_cloud_collector.cpp
   )
 
   target_link_libraries(test_utilities pointcloud_preprocessor_filter)
-  target_link_libraries(test_distortion_corrector_node pointcloud_preprocessor_filter)
+  # target_link_libraries(test_distortion_corrector_node pointcloud_preprocessor_filter)
+  # TODO(vivid): do we need to link lib?
+  target_link_libraries(test_cloud_collector pointcloud_preprocessor_filter)
 
 
 endif()

@@ -83,7 +83,7 @@ public:
   // for debugging
   void printTimer();
 
-private:
+  // private:
   std::shared_ptr<PointCloudConcatenateDataSynchronizerComponent> concatenate_node_;
   std::list<std::shared_ptr<CloudCollector>> & collectors_;
   std::shared_ptr<CombineCloudHandler> combine_cloud_handler_;

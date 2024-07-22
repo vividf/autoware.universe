@@ -113,7 +113,6 @@ public:
   };
 
   sensor_msgs::msg::PointCloud2::SharedPtr concatenate_cloud_ptr_;
-  // TODO(vivid): also check the boolen flag
   std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr>
     topic_to_transformed_cloud_map_;
   std::unordered_map<std::string, double> topic_to_original_stamp_map_;

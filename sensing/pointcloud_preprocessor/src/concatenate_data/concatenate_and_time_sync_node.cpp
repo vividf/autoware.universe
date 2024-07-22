@@ -262,16 +262,11 @@ void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
   std::unique_lock<std::mutex> lock(mutex_);
 
   // For each callback, check whether there is a exist collector that matches this cloud
-
   bool collector_found = false;
 
-  // std::cout << "topic_to_offset_map_[topic_name]:  " << topic_to_offset_map_[topic_name]  <<
-  // std::endl;
   if (!cloud_collectors_.empty()) {
     std::cout << "Searching collect in size:  " << cloud_collectors_.size() << std::endl;
     for (const auto & cloud_collector : cloud_collectors_) {
-      // std::cout << "collector timestamp:  " <<  std::fixed << std::setprecision(9) <<
-      // cloud_collector->getTimeStamp()  << std::endl; cloud_collector->printTimer();
       auto [reference_timestamp_min, reference_timestamp_max] =
         cloud_collector->getReferenceTimeStampBoundary();
 
@@ -318,7 +313,6 @@ void PointCloudConcatenateDataSynchronizerComponent::odom_callback(
 
 void PointCloudConcatenateDataSynchronizerComponent::publishClouds()
 {
-  // std::cout << "in publishClouds" << std::endl;
   stop_watch_ptr_->toc("processing_time", true);
 
   auto topic_to_transformed_cloud_map = combine_cloud_handler_->getTopicToTransformedCloudMap();

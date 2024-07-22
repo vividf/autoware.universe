@@ -94,14 +94,21 @@ std::tuple<double, double> CloudCollector::getReferenceTimeStampBoundary()
 void CloudCollector::processCloud(
   std::string topic_name, sensor_msgs::msg::PointCloud2::SharedPtr cloud)
 {
-  // TODO(vivid): do I need a check here to see if map already exists for same topic?
+  // Check if the map already contains an entry for the same topic, shouldn't happened if the
+  // parameter set correctly.
+  if (topic_cloud_map_.find(topic_name) != topic_cloud_map_.end()) {
+    RCLCPP_WARN(
+      concatenate_node_->get_logger(),
+      "Topic '%s' already exists in the collector. Check the timestamp of the pointcloud.",
+      topic_name.c_str());
+  }
   topic_cloud_map_[topic_name] = cloud;
   if (topic_cloud_map_.size() == num_of_clouds_) combineClouds();
 }
 
 void CloudCollector::combineClouds()
 {
-  // lock for protecting collector list and also concatenated pointcloud
+  // lock for protecting collector list and concatenated pointcloud
   std::lock_guard<std::mutex> lock(mutex_);
   combine_cloud_handler_->setReferenceTimeStampBoundary(
     reference_timestamp_min_, reference_timestamp_max_);
