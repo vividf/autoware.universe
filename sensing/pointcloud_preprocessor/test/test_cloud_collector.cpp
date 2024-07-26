@@ -38,16 +38,11 @@ class PointCloudConcatenateDataSynchronizerComponent : public rclcpp::Node
 {
 public:
   PointCloudConcatenateDataSynchronizerComponent() : Node("test_node") {}
-
-  void publishClouds()
-  {
-    // Mock implementation for testing purposes
-  }
 };
 
 }  // namespace pointcloud_preprocessor
 
-class CloudCollectorTest : public ::testing::Test
+class ConcatenateCloudTest : public ::testing::Test
 {
 protected:
   void SetUp() override
@@ -56,13 +51,13 @@ protected:
       std::make_shared<pointcloud_preprocessor::PointCloudConcatenateDataSynchronizerComponent>();
     combine_cloud_handler_ = std::make_shared<pointcloud_preprocessor::CombineCloudHandler>(
       concatenate_node_.get(), std::vector<std::string>{"lidar_top", "lidar_left", "lidar_right"},
-      "base_link", false, true);
+      "base_link", true, true);
 
     collector_ = std::make_shared<pointcloud_preprocessor::CloudCollector>(
       std::dynamic_pointer_cast<
         pointcloud_preprocessor::PointCloudConcatenateDataSynchronizerComponent>(
         concatenate_node_->shared_from_this()),
-      collectors_, combine_cloud_handler_, 3, 1);
+      collectors_, combine_cloud_handler_, number_of_pointcloud_, timeout_sec_);
 
     collectors_.push_back(collector_);
 
@@ -169,63 +164,253 @@ protected:
   static constexpr int32_t timestamp_seconds_{10};
   static constexpr uint32_t timestamp_nanoseconds_{100000000};
   static constexpr size_t number_of_points_{3};
+  static constexpr float standard_tolerance_{1e-4};
+  static constexpr int number_of_pointcloud_{3};
+  static constexpr float timeout_sec_{3};
   bool debug_{true};
 };
 
-TEST_F(CloudCollectorTest, SetAndGetReferenceTimeStampBoundary)
+TEST_F(ConcatenateCloudTest, SetAndGetReferenceTimeStampBoundary)
 {
   double reference_timestamp = 10.0;
   double noise_window = 0.1;
   collector_->setReferenceTimeStamp(reference_timestamp, noise_window);
   auto [min, max] = collector_->getReferenceTimeStampBoundary();
-  EXPECT_DOUBLE_EQ(min, reference_timestamp - noise_window);
-  EXPECT_DOUBLE_EQ(max, reference_timestamp + noise_window);
+  EXPECT_DOUBLE_EQ(min, 9.9);
+  EXPECT_DOUBLE_EQ(max, 10.1);
 }
 
-TEST_F(CloudCollectorTest, ProcessCloud)
+TEST_F(ConcatenateCloudTest, concatenateAndPublishClouds)
 {
-  rclcpp::Time timestamp(timestamp_seconds_, timestamp_nanoseconds_, RCL_ROS_TIME);
+  rclcpp::Time top_timestamp(timestamp_seconds_, timestamp_nanoseconds_, RCL_ROS_TIME);
+  rclcpp::Time left_timestamp(timestamp_seconds_, timestamp_nanoseconds_ + 40000000, RCL_ROS_TIME);
+  rclcpp::Time right_timestamp(timestamp_seconds_, timestamp_nanoseconds_ + 80000000, RCL_ROS_TIME);
   sensor_msgs::msg::PointCloud2 top_pointcloud =
-    generatePointCloudMsg(true, false, "lidar_top", timestamp);
-  collector_->processCloud(
-    "lidar_top", std::make_shared<sensor_msgs::msg::PointCloud2>(top_pointcloud));
-  EXPECT_EQ(collector_->topic_cloud_map_.size(), 1);
-}
-
-TEST_F(CloudCollectorTest, CombineClouds)
-{
-  rclcpp::Time timestamp(timestamp_seconds_, timestamp_nanoseconds_, RCL_ROS_TIME);
-  sensor_msgs::msg::PointCloud2 top_pointcloud =
-    generatePointCloudMsg(true, false, "lidar_top", timestamp);
-  collector_->processCloud(
-    "lidar_top", std::make_shared<sensor_msgs::msg::PointCloud2>(top_pointcloud));
+    generatePointCloudMsg(true, false, "lidar_top", top_timestamp);
   sensor_msgs::msg::PointCloud2 left_pointcloud =
-    generatePointCloudMsg(true, false, "lidar_left", timestamp);
-  collector_->processCloud(
-    "lidar_left", std::make_shared<sensor_msgs::msg::PointCloud2>(left_pointcloud));
+    generatePointCloudMsg(true, false, "lidar_left", left_timestamp);
   sensor_msgs::msg::PointCloud2 right_pointcloud =
-    generatePointCloudMsg(true, false, "lidar_right", timestamp);
-  collector_->processCloud(
-    "lidar_right", std::make_shared<sensor_msgs::msg::PointCloud2>(right_pointcloud));
+    generatePointCloudMsg(true, false, "lidar_right", right_timestamp);
 
-  // This should trigger combineClouds
-  collector_->combineClouds();
+  sensor_msgs::msg::PointCloud2::SharedPtr top_pointcloud_ptr =
+    std::make_shared<sensor_msgs::msg::PointCloud2>(top_pointcloud);
+  sensor_msgs::msg::PointCloud2::SharedPtr left_pointcloud_ptr =
+    std::make_shared<sensor_msgs::msg::PointCloud2>(left_pointcloud);
+  sensor_msgs::msg::PointCloud2::SharedPtr right_pointcloud_ptr =
+    std::make_shared<sensor_msgs::msg::PointCloud2>(right_pointcloud);
 
-  // Validate that combinePointClouds was called
-  auto concatenated_cloud = combine_cloud_handler_->getConcatenatePointcloud();
-  EXPECT_NE(concatenated_cloud, nullptr);
+  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> topic_to_cloud_map;
+  topic_to_cloud_map["lidar_top"] = top_pointcloud_ptr;
+  topic_to_cloud_map["lidar_left"] = left_pointcloud_ptr;
+  topic_to_cloud_map["lidar_right"] = right_pointcloud_ptr;
+
+  auto [concatenate_cloud_ptr, topic_to_transformed_cloud_map, topic_to_original_stamp_map] =
+    collector_->concatenateClouds(topic_to_cloud_map);
+
+  // test output concatenate cloud
+  // No input twist, so it will not do the motion compensation
+  std::array<Eigen::Vector3f, 10> expected_pointcloud = {
+    {Eigen::Vector3f(10.0f, 0.0f, 0.0f), Eigen::Vector3f(0.0f, 10.0f, 0.0f),
+     Eigen::Vector3f(0.0f, 0.0f, 10.0f), Eigen::Vector3f(10.0f, 0.0f, 0.0f),
+     Eigen::Vector3f(0.0f, 10.0f, 0.0f), Eigen::Vector3f(0.0f, 0.0f, 10.0f),
+     Eigen::Vector3f(10.0f, 0.0f, 0.0f), Eigen::Vector3f(0.0f, 10.0f, 0.0f),
+     Eigen::Vector3f(0.0f, 0.0f, 10.0f)}};
+
+  size_t i = 0;
+  std::ostringstream oss;
+  oss << "Concatenated pointcloud:\n";
+
+  sensor_msgs::PointCloud2Iterator<float> iter_x(*concatenate_cloud_ptr, "x");
+  sensor_msgs::PointCloud2Iterator<float> iter_y(*concatenate_cloud_ptr, "y");
+  sensor_msgs::PointCloud2Iterator<float> iter_z(*concatenate_cloud_ptr, "z");
+
+  for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z, ++i) {
+    oss << "Concatenated point " << i << ": (" << *iter_x << ", " << *iter_y << ", " << *iter_z
+        << ")\n";
+    EXPECT_FLOAT_EQ(*iter_x, expected_pointcloud[i].x());
+    EXPECT_FLOAT_EQ(*iter_y, expected_pointcloud[i].y());
+    EXPECT_FLOAT_EQ(*iter_z, expected_pointcloud[i].z());
+  }
+
+  // concatenate cloud should have the oldest pointcloud's timestamp
+  EXPECT_FLOAT_EQ(
+    top_timestamp.seconds(), rclcpp::Time(concatenate_cloud_ptr->header.stamp).seconds());
+
+  if (debug_) {
+    RCLCPP_INFO(concatenate_node_->get_logger(), "%s", oss.str().c_str());
+  }
+
+  // test seperated transformed cloud
+  std::array<Eigen::Vector3f, 10> expected_top_pointcloud = {
+    {Eigen::Vector3f(10.0f, 0.0f, 0.0f), Eigen::Vector3f(0.0f, 10.0f, 0.0f),
+     Eigen::Vector3f(0.0f, 0.0f, 10.0f)}};
+  std::array<Eigen::Vector3f, 10> expected_left_pointcloud = {
+    {Eigen::Vector3f(10.0f, 0.0f, 0.0f), Eigen::Vector3f(0.0f, 10.0f, 0.0f),
+     Eigen::Vector3f(0.0f, 0.0f, 10.0f)}};
+  std::array<Eigen::Vector3f, 10> expected_right_pointcloud = {
+    {Eigen::Vector3f(10.0f, 0.0f, 0.0f), Eigen::Vector3f(0.0f, 10.0f, 0.0f),
+     Eigen::Vector3f(0.0f, 0.0f, 10.0f)}};
+
+  oss.clear();
+  oss.str("");
+  i = 0;
+  sensor_msgs::PointCloud2Iterator<float> top_pc_iter_x(
+    *topic_to_transformed_cloud_map["lidar_top"], "x");
+  sensor_msgs::PointCloud2Iterator<float> top_pc_iter_y(
+    *topic_to_transformed_cloud_map["lidar_top"], "y");
+  sensor_msgs::PointCloud2Iterator<float> top_pc_iter_z(
+    *topic_to_transformed_cloud_map["lidar_top"], "z");
+
+  for (; top_pc_iter_x != top_pc_iter_x.end();
+       ++top_pc_iter_x, ++top_pc_iter_y, ++top_pc_iter_z, ++i) {
+    oss << "Top point " << i << ": (" << *top_pc_iter_x << ", " << *top_pc_iter_y << ", "
+        << *top_pc_iter_z << ")\n";
+    EXPECT_FLOAT_EQ(*top_pc_iter_x, expected_top_pointcloud[i].x());
+    EXPECT_FLOAT_EQ(*top_pc_iter_y, expected_top_pointcloud[i].y());
+    EXPECT_FLOAT_EQ(*top_pc_iter_z, expected_top_pointcloud[i].z());
+  }
+
+  if (debug_) {
+    RCLCPP_INFO(concatenate_node_->get_logger(), "%s", oss.str().c_str());
+  }
+
+  oss.clear();
+  oss.str("");
+  i = 0;
+  sensor_msgs::PointCloud2Iterator<float> left_pc_iter_x(
+    *topic_to_transformed_cloud_map["lidar_left"], "x");
+  sensor_msgs::PointCloud2Iterator<float> left_pc_iter_y(
+    *topic_to_transformed_cloud_map["lidar_left"], "y");
+  sensor_msgs::PointCloud2Iterator<float> left_pc_iter_z(
+    *topic_to_transformed_cloud_map["lidar_left"], "z");
+
+  for (; left_pc_iter_x != left_pc_iter_x.end();
+       ++left_pc_iter_x, ++left_pc_iter_y, ++left_pc_iter_z, ++i) {
+    oss << "Left point " << i << ": (" << *left_pc_iter_x << ", " << *left_pc_iter_y << ", "
+        << *left_pc_iter_z << ")\n";
+    EXPECT_FLOAT_EQ(*left_pc_iter_x, expected_left_pointcloud[i].x());
+    EXPECT_FLOAT_EQ(*left_pc_iter_y, expected_left_pointcloud[i].y());
+    EXPECT_FLOAT_EQ(*left_pc_iter_z, expected_left_pointcloud[i].z());
+  }
+
+  if (debug_) {
+    RCLCPP_INFO(concatenate_node_->get_logger(), "%s", oss.str().c_str());
+  }
+
+  oss.clear();
+  oss.str("");
+  i = 0;
+  sensor_msgs::PointCloud2Iterator<float> right_pc_iter_x(
+    *topic_to_transformed_cloud_map["lidar_right"], "x");
+  sensor_msgs::PointCloud2Iterator<float> right_pc_iter_y(
+    *topic_to_transformed_cloud_map["lidar_right"], "y");
+  sensor_msgs::PointCloud2Iterator<float> right_pc_iter_z(
+    *topic_to_transformed_cloud_map["lidar_right"], "z");
+
+  for (; right_pc_iter_x != right_pc_iter_x.end();
+       ++right_pc_iter_x, ++right_pc_iter_y, ++right_pc_iter_z, ++i) {
+    oss << "Right point " << i << ": (" << *right_pc_iter_x << ", " << *right_pc_iter_y << ", "
+        << *right_pc_iter_z << ")\n";
+    EXPECT_FLOAT_EQ(*right_pc_iter_x, expected_right_pointcloud[i].x());
+    EXPECT_FLOAT_EQ(*right_pc_iter_y, expected_right_pointcloud[i].y());
+    EXPECT_FLOAT_EQ(*right_pc_iter_z, expected_right_pointcloud[i].z());
+  }
+
+  if (debug_) {
+    RCLCPP_INFO(concatenate_node_->get_logger(), "%s", oss.str().c_str());
+  }
+
+  // test original cloud's timestamps
+  EXPECT_FLOAT_EQ(top_timestamp.seconds(), topic_to_original_stamp_map["lidar_top"]);
+  EXPECT_FLOAT_EQ(left_timestamp.seconds(), topic_to_original_stamp_map["lidar_left"]);
+  EXPECT_FLOAT_EQ(right_timestamp.seconds(), topic_to_original_stamp_map["lidar_right"]);
 }
 
-TEST_F(CloudCollectorTest, DeleteCollector)
+TEST_F(ConcatenateCloudTest, DeleteCollector)
 {
   collector_->deleteCollector();
   EXPECT_TRUE(collectors_.empty());
 }
 
-TEST_F(CloudCollectorTest, PrintTimer)
+TEST_F(ConcatenateCloudTest, ProcessSingleCloud)
 {
-  // This test simply calls the printTimer method to ensure it runs without error
-  collector_->printTimer();
+  rclcpp::Time timestamp(timestamp_seconds_, timestamp_nanoseconds_, RCL_ROS_TIME);
+  sensor_msgs::msg::PointCloud2 top_pointcloud =
+    generatePointCloudMsg(true, false, "lidar_top", timestamp);
+  sensor_msgs::msg::PointCloud2::SharedPtr top_pointcloud_ptr =
+    std::make_shared<sensor_msgs::msg::PointCloud2>(top_pointcloud);
+  collector_->processCloud("lidar_top", top_pointcloud_ptr);
+
+  auto topic_to_cloud_map = collector_->get_topic_to_cloud_map();
+  EXPECT_EQ(topic_to_cloud_map["lidar_top"], top_pointcloud_ptr);
+}
+
+//////////////////////////////// Test combine_cloud_handler ////////////////////////////////
+TEST_F(ConcatenateCloudTest, ProcessTwist)
+{
+  auto twist_msg = std::make_shared<geometry_msgs::msg::TwistWithCovarianceStamped>();
+  twist_msg->header.stamp = rclcpp::Time(10, 0);
+  twist_msg->twist.twist.linear.x = 1.0;
+  twist_msg->twist.twist.angular.z = 0.1;
+
+  combine_cloud_handler_->processTwist(twist_msg);
+
+  ASSERT_FALSE(combine_cloud_handler_->twist_ptr_queue_.empty());
+  EXPECT_EQ(combine_cloud_handler_->twist_ptr_queue_.front()->twist.linear.x, 1.0);
+  EXPECT_EQ(combine_cloud_handler_->twist_ptr_queue_.front()->twist.angular.z, 0.1);
+}
+
+TEST_F(ConcatenateCloudTest, ProcessOdometry)
+{
+  auto odom_msg = std::make_shared<nav_msgs::msg::Odometry>();
+  odom_msg->header.stamp = rclcpp::Time(10, 0);
+  odom_msg->twist.twist.linear.x = 1.0;
+  odom_msg->twist.twist.angular.z = 0.1;
+
+  combine_cloud_handler_->processOdometry(odom_msg);
+
+  ASSERT_FALSE(combine_cloud_handler_->twist_ptr_queue_.empty());
+  EXPECT_EQ(combine_cloud_handler_->twist_ptr_queue_.front()->twist.linear.x, 1.0);
+  EXPECT_EQ(combine_cloud_handler_->twist_ptr_queue_.front()->twist.angular.z, 0.1);
+}
+
+TEST_F(ConcatenateCloudTest, ComputeTransformToAdjustForOldTimestamp)
+{
+  rclcpp::Time old_stamp(10, 100000000, RCL_ROS_TIME);
+  rclcpp::Time new_stamp(10, 150000000, RCL_ROS_TIME);
+
+  // Time difference between twist msg is more than 100 miliseconds, won't calculate the difference
+  auto twist_msg1 = std::make_shared<geometry_msgs::msg::TwistStamped>();
+  twist_msg1->header.stamp = rclcpp::Time(10, 130000000, RCL_ROS_TIME);
+  twist_msg1->twist.linear.x = 1.0;
+  twist_msg1->twist.angular.z = 0.1;
+  combine_cloud_handler_->twist_ptr_queue_.push_back(twist_msg1);
+
+  auto twist_msg2 = std::make_shared<geometry_msgs::msg::TwistStamped>();
+  twist_msg2->header.stamp = rclcpp::Time(10, 160000000, RCL_ROS_TIME);
+  twist_msg2->twist.linear.x = 1.0;
+  twist_msg2->twist.angular.z = 0.1;
+  combine_cloud_handler_->twist_ptr_queue_.push_back(twist_msg2);
+
+  Eigen::Matrix4f transform =
+    combine_cloud_handler_->computeTransformToAdjustForOldTimestamp(old_stamp, new_stamp);
+
+  // translation
+  EXPECT_NEAR(transform(0, 3), 0.0499996, standard_tolerance_);
+  EXPECT_NEAR(transform(1, 3), 0.000189999, standard_tolerance_);
+
+  // rotation, yaw = 0.005
+  EXPECT_NEAR(transform(0, 0), 0.999987, standard_tolerance_);
+  EXPECT_NEAR(transform(0, 1), -0.00499998, standard_tolerance_);
+  EXPECT_NEAR(transform(1, 0), 0.00499998, standard_tolerance_);
+  EXPECT_NEAR(transform(1, 1), 0.999987, standard_tolerance_);
+
+  std::ostringstream oss;
+  oss << "Transformation matrix:\n" << transform;
+
+  if (debug_) {
+    RCLCPP_INFO(concatenate_node_->get_logger(), "%s", oss.str().c_str());
+  }
 }
 
 int main(int argc, char ** argv)
@@ -236,28 +421,3 @@ int main(int argc, char ** argv)
   rclcpp::shutdown();
   return ret;
 }
-
-// sensor_msgs::PointCloud2ConstIterator<float> iter_x(*concatenated_cloud, "x");
-// sensor_msgs::PointCloud2ConstIterator<float> iter_y(*concatenated_cloud, "y");
-// sensor_msgs::PointCloud2ConstIterator<float> iter_z(*concatenated_cloud, "z");
-
-// // Expected undistorted point cloud values
-// std::array<Eigen::Vector3f, 3> expected_pointcloud = {
-//   {Eigen::Vector3f(10.0f, 0.0f, 0.0f), Eigen::Vector3f(0.0f, 10.0f, 0.0f),
-//     Eigen::Vector3f(0.0f, 0.0f, 10.0f)}};
-
-// // Verify each point in the undistorted point cloud
-// size_t i = 0;
-// std::ostringstream oss;
-// oss << "Expected pointcloud:\n";
-
-// for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z, ++i) {
-//   oss << "Point " << i << ": (" << *iter_x << ", " << *iter_y << ", " << *iter_z << ")\n";
-//   EXPECT_FLOAT_EQ(*iter_x, expected_pointcloud[i].x());
-//   EXPECT_FLOAT_EQ(*iter_y, expected_pointcloud[i].y());
-//   EXPECT_FLOAT_EQ(*iter_z, expected_pointcloud[i].z());
-// }
-
-// if (debug_) {
-//   RCLCPP_INFO(concatenate_node_->get_logger(), "%s", oss.str().c_str());
-// }

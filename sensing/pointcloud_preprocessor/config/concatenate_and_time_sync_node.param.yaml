@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     maximum_queue_size: 5
-    timeout_sec: 0.15
+    timeout_sec: 0.2
     is_motion_compensated: true
     publish_synchronized_pointcloud: true
     keep_input_frame_in_synchronized_pointcloud: true

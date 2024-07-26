@@ -89,12 +89,20 @@
 namespace pointcloud_preprocessor
 {
 
+using autoware_point_types::PointXYZIRC;
+using point_cloud_msg_wrapper::PointCloud2Modifier;
+
 class PointCloudConcatenateDataSynchronizerComponent : public rclcpp::Node
 {
 public:
   explicit PointCloudConcatenateDataSynchronizerComponent(const rclcpp::NodeOptions & node_options);
   virtual ~PointCloudConcatenateDataSynchronizerComponent() {}
-  void publishClouds();
+  void publishClouds(
+    sensor_msgs::msg::PointCloud2::SharedPtr concatenate_cloud_ptr,
+    std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> &
+      topic_to_transformed_cloud_map,
+    std::unordered_map<std::string, double> & topic_to_original_stamp_map,
+    double reference_timestamp_min, double reference_timestamp_max);
 
 private:
   struct Parameters
@@ -113,21 +121,20 @@ private:
     std::vector<double> lidar_timestamp_noise_window;
   } params_;
 
-  // remove this later
-  // rclcpp::Clock::SharedPtr debug_clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
-
+  double current_concat_cloud_timestamp_{0.0};
   double lastest_concat_cloud_timestamp_{0.0};
-  double diagnostic_reference_timestamp_min_{0.0};
-  double diagnostic_reference_timestamp_max_{0.0};
   bool drop_previous_but_late_pointcloud_{false};
   bool publish_pointcloud_{false};
+  double diagnostic_reference_timestamp_min_{0.0};
+  double diagnostic_reference_timestamp_max_{0.0};
+  std::unordered_map<std::string, double> diagnostic_topic_to_original_stamp_map_;
 
   std::shared_ptr<CombineCloudHandler> combine_cloud_handler_;
   std::shared_ptr<CloudCollector> cloud_collector_;
   std::list<std::shared_ptr<CloudCollector>> cloud_collectors_;
   std::mutex mutex_;
   std::unordered_map<std::string, double> topic_to_offset_map_;
-  std::unordered_map<std::string, double> topic_to_noise_window_map;
+  std::unordered_map<std::string, double> topic_to_noise_window_map_;
 
   // subscribers
   std::vector<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr> pointcloud_subs;
@@ -152,6 +159,9 @@ private:
   void checkConcatStatus(diagnostic_updater::DiagnosticStatusWrapper & stat);
   std::string replaceSyncTopicNamePostfix(
     const std::string & original_topic_name, const std::string & postfix);
+  void convertToXYZIRCCloud(
+    const sensor_msgs::msg::PointCloud2::SharedPtr & input_ptr,
+    sensor_msgs::msg::PointCloud2::SharedPtr & output_ptr);
 };
 
 }  // namespace pointcloud_preprocessor

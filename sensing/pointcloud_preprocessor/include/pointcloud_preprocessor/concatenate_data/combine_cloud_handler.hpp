@@ -86,12 +86,10 @@
 
 namespace pointcloud_preprocessor
 {
-using autoware_point_types::PointXYZIRC;
-using point_cloud_msg_wrapper::PointCloud2Modifier;
 
 class CombineCloudHandler
 {
-public:
+private:
   rclcpp::Node * node_;
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
@@ -101,9 +99,6 @@ public:
   bool is_motion_compensated_;
   bool keep_input_frame_in_synchronized_pointcloud_;
 
-  double reference_timestamp_min_;
-  double reference_timestamp_max_;
-
   struct RclcppTimeHash_
   {
     std::size_t operator()(const rclcpp::Time & t) const
@@ -112,10 +107,7 @@ public:
     }
   };
 
-  sensor_msgs::msg::PointCloud2::SharedPtr concatenate_cloud_ptr_;
-  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr>
-    topic_to_transformed_cloud_map_;
-  std::unordered_map<std::string, double> topic_to_original_stamp_map_;
+public:
   std::deque<geometry_msgs::msg::TwistStamped::ConstSharedPtr> twist_ptr_queue_;
 
   CombineCloudHandler(
@@ -123,24 +115,16 @@ public:
     bool is_motion_compensated, bool keep_input_frame_in_synchronized_pointcloud);
   void processTwist(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr & input);
   void processOdometry(const nav_msgs::msg::Odometry::ConstSharedPtr & input);
-  void convertToXYZIRCCloud(
-    const sensor_msgs::msg::PointCloud2::SharedPtr & input_ptr,
-    sensor_msgs::msg::PointCloud2::SharedPtr & output_ptr);
 
-  void resetCloud();
-  void combinePointClouds(
-    std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> & topic_cloud_map_);
+  std::tuple<
+    sensor_msgs::msg::PointCloud2::SharedPtr,
+    std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr>,
+    std::unordered_map<std::string, double>>
+  combinePointClouds(std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> &
+                       topic_to_cloud_map_);
+
   Eigen::Matrix4f computeTransformToAdjustForOldTimestamp(
     const rclcpp::Time & old_stamp, const rclcpp::Time & new_stamp);
-
-  std::unordered_map<std::string, double> getTopicToOriginalStampMap();
-  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr>
-  getTopicToTransformedCloudMap();
-
-  sensor_msgs::msg::PointCloud2::SharedPtr getConcatenatePointcloud();
-  void setReferenceTimeStampBoundary(
-    double reference_timestamp_min, double reference_timestamp_max);
-  std::tuple<double, double> getReferenceTimeStampBoundary();
 };
 
 }  // namespace pointcloud_preprocessor

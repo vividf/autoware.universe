@@ -78,8 +78,25 @@ public:
   void setReferenceTimeStamp(double timestamp, double noise_window);
   std::tuple<double, double> getReferenceTimeStampBoundary();
   void processCloud(std::string topic_name, sensor_msgs::msg::PointCloud2::SharedPtr cloud);
-  void combineClouds();
+  void concatenateCallback();
+  std::tuple<
+    sensor_msgs::msg::PointCloud2::SharedPtr,
+    std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr>,
+    std::unordered_map<std::string, double>>
+  concatenateClouds(
+    std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> topic_to_cloud_map);
+
+  void publishClouds(
+    sensor_msgs::msg::PointCloud2::SharedPtr concatenate_cloud_ptr,
+    std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr>
+      topic_to_transformed_cloud_map,
+    std::unordered_map<std::string, double> topic_to_original_stamp_map);
+
   void deleteCollector();
+
+  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr>
+  get_topic_to_cloud_map();
+
   // for debugging
   void printTimer();
 
@@ -88,7 +105,7 @@ public:
   std::list<std::shared_ptr<CloudCollector>> & collectors_;
   std::shared_ptr<CombineCloudHandler> combine_cloud_handler_;
   rclcpp::TimerBase::SharedPtr timer_;
-  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> topic_cloud_map_;
+  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> topic_to_cloud_map_;
   uint64_t num_of_clouds_;
   double timeout_sec_;
   double reference_timestamp_min_;

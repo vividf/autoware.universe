@@ -77,7 +77,7 @@ CloudCollector::CloudCollector(
 
   timer_ = rclcpp::create_timer(
     concatenate_node_, concatenate_node_->get_clock(), period_ns,
-    std::bind(&CloudCollector::combineClouds, this));
+    std::bind(&CloudCollector::concatenateCallback, this));
 }
 
 void CloudCollector::setReferenceTimeStamp(double timestamp, double noise_window)
@@ -96,25 +96,47 @@ void CloudCollector::processCloud(
 {
   // Check if the map already contains an entry for the same topic, shouldn't happened if the
   // parameter set correctly.
-  if (topic_cloud_map_.find(topic_name) != topic_cloud_map_.end()) {
+  if (topic_to_cloud_map_.find(topic_name) != topic_to_cloud_map_.end()) {
     RCLCPP_WARN(
       concatenate_node_->get_logger(),
       "Topic '%s' already exists in the collector. Check the timestamp of the pointcloud.",
       topic_name.c_str());
   }
-  topic_cloud_map_[topic_name] = cloud;
-  if (topic_cloud_map_.size() == num_of_clouds_) combineClouds();
+  topic_to_cloud_map_[topic_name] = cloud;
+  if (topic_to_cloud_map_.size() == num_of_clouds_) concatenateCallback();
 }
 
-void CloudCollector::combineClouds()
+void CloudCollector::concatenateCallback()
 {
   // lock for protecting collector list and concatenated pointcloud
   std::lock_guard<std::mutex> lock(mutex_);
-  combine_cloud_handler_->setReferenceTimeStampBoundary(
-    reference_timestamp_min_, reference_timestamp_max_);
-  combine_cloud_handler_->combinePointClouds(topic_cloud_map_);
-  concatenate_node_->publishClouds();
+  auto [concatenate_cloud_ptr, topic_to_transformed_cloud_map, topic_to_original_stamp_map] =
+    concatenateClouds(topic_to_cloud_map_);
+  std::cout << "ready to publish cloud" << std::endl;
+  publishClouds(concatenate_cloud_ptr, topic_to_transformed_cloud_map, topic_to_original_stamp_map);
+  std::cout << "finish publishing cloud" << std::endl;
   deleteCollector();
+}
+
+std::tuple<
+  sensor_msgs::msg::PointCloud2::SharedPtr,
+  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr>,
+  std::unordered_map<std::string, double>>
+CloudCollector::concatenateClouds(
+  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> topic_to_cloud_map)
+{
+  return combine_cloud_handler_->combinePointClouds(topic_to_cloud_map);
+}
+
+void CloudCollector::publishClouds(
+  sensor_msgs::msg::PointCloud2::SharedPtr concatenate_cloud_ptr,
+  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr>
+    topic_to_transformed_cloud_map,
+  std::unordered_map<std::string, double> topic_to_original_stamp_map)
+{
+  concatenate_node_->publishClouds(
+    concatenate_cloud_ptr, topic_to_transformed_cloud_map, topic_to_original_stamp_map,
+    reference_timestamp_min_, reference_timestamp_max_);
 }
 
 void CloudCollector::deleteCollector()
@@ -125,6 +147,12 @@ void CloudCollector::deleteCollector()
   if (it != collectors_.end()) {
     collectors_.erase(it);
   }
+}
+
+std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr>
+CloudCollector::get_topic_to_cloud_map()
+{
+  return topic_to_cloud_map_;
 }
 
 // debug
