@@ -373,9 +373,7 @@ void PointCloudConcatenateDataSynchronizerComponent::publishClouds(
   std::unordered_map<std::string, double> & topic_to_original_stamp_map,
   double reference_timestamp_min, double reference_timestamp_max)
 {
-  std::cout << "in function " << std::endl;
   stop_watch_ptr_->toc("processing_time", true);
-  std::cout << "hi " << std::endl;
   current_concat_cloud_timestamp_ = rclcpp::Time(concatenate_cloud_ptr->header.stamp).seconds();
 
   if (
@@ -386,9 +384,7 @@ void PointCloudConcatenateDataSynchronizerComponent::publishClouds(
     publish_pointcloud_ = true;
     lastest_concat_cloud_timestamp_ = current_concat_cloud_timestamp_;
     auto concat_output = std::make_unique<sensor_msgs::msg::PointCloud2>(*concatenate_cloud_ptr);
-    std::cout << "before pub" << std::endl;
     concatenate_cloud_publisher_->publish(std::move(concat_output));
-    std::cout << "after pub" << std::endl;
     // publish transformed raw pointclouds
     for (const auto & pair : topic_to_transformed_cloud_map) {
       if (pair.second) {

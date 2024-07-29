@@ -97,10 +97,7 @@ public:
   std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr>
   get_topic_to_cloud_map();
 
-  // for debugging
-  void printTimer();
-
-  // private:
+private:
   std::shared_ptr<PointCloudConcatenateDataSynchronizerComponent> concatenate_node_;
   std::list<std::shared_ptr<CloudCollector>> & collectors_;
   std::shared_ptr<CombineCloudHandler> combine_cloud_handler_;

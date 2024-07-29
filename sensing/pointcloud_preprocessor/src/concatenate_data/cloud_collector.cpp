@@ -71,7 +71,6 @@ CloudCollector::CloudCollector(
   num_of_clouds_(num_of_clouds),
   timeout_sec_(timeout_sec)
 {
-  // timestamp_ = 0.0;
   const auto period_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
     std::chrono::duration<double>(timeout_sec_));
 
@@ -112,9 +111,7 @@ void CloudCollector::concatenateCallback()
   std::lock_guard<std::mutex> lock(mutex_);
   auto [concatenate_cloud_ptr, topic_to_transformed_cloud_map, topic_to_original_stamp_map] =
     concatenateClouds(topic_to_cloud_map_);
-  std::cout << "ready to publish cloud" << std::endl;
   publishClouds(concatenate_cloud_ptr, topic_to_transformed_cloud_map, topic_to_original_stamp_map);
-  std::cout << "finish publishing cloud" << std::endl;
   deleteCollector();
 }
 
@@ -153,12 +150,6 @@ std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr>
 CloudCollector::get_topic_to_cloud_map()
 {
   return topic_to_cloud_map_;
-}
-
-// debug
-void CloudCollector::printTimer()
-{
-  std::cout << "time to ended: " << timer_->time_until_trigger().count() << std::endl;
 }
 
 }  // namespace pointcloud_preprocessor
