@@ -252,6 +252,7 @@ void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
   if (input->data.empty()) {
     RCLCPP_WARN_STREAM_THROTTLE(
       this->get_logger(), *this->get_clock(), 1000, "Empty sensor points!");
+    return;
   } else {
     // convert to XYZIRC pointcloud if pointcloud is not empty
     convertToXYZIRCCloud(input, xyzirc_input_ptr);

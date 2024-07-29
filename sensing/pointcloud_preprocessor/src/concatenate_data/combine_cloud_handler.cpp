@@ -132,18 +132,6 @@ void CombineCloudHandler::processOdometry(const nav_msgs::msg::Odometry::ConstSh
   twist_ptr_queue_.push_back(twist_ptr);
 }
 
-// void CombineCloudHandler::resetCloud()
-// {
-//   // reset the pointcloud and map
-//   concatenate_cloud_ptr_ = nullptr;
-//   std::for_each(
-//     std::begin(topic_to_transformed_cloud_map_), std::end(topic_to_transformed_cloud_map_),
-//     [](auto & pair) { pair.second = nullptr; });
-//   std::for_each(
-//     std::begin(topic_to_original_stamp_map_), std::end(topic_to_original_stamp_map_),
-//     [](auto & pair) { pair.second = -1; });
-// }
-
 std::tuple<
   sensor_msgs::msg::PointCloud2::SharedPtr,
   std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr>,
@@ -168,10 +156,6 @@ CombineCloudHandler::combinePointClouds(
   for (const auto & pair : topic_to_cloud_map) {
     std::string topic = pair.first;
     sensor_msgs::msg::PointCloud2::SharedPtr cloud = pair.second;
-
-    if (cloud->data.size() == 0) {
-      continue;
-    }
 
     auto transformed_cloud_ptr = std::make_shared<sensor_msgs::msg::PointCloud2>();
     if (output_frame_ != cloud->header.frame_id) {
