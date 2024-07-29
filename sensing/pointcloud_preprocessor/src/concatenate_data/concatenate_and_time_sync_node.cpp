@@ -245,16 +245,15 @@ void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
   // rclcpp::Time now = debug_clock->now();
   // std::cout << "Current time: " << now.seconds() << " seconds" << std::endl;
 
-  // std::cout << "pointcloud name and timestamp: " << topic_name << " " << std::fixed
-  //             << std::setprecision(9) << rclcpp::Time(input_ptr->header.stamp).seconds() <<
-  //             std::endl;
+  std::cout << "pointcloud name and timestamp: " << topic_name << " " << std::fixed
+            << std::setprecision(9) << rclcpp::Time(input_ptr->header.stamp).seconds() << std::endl;
   sensor_msgs::msg::PointCloud2::SharedPtr xyzirc_input_ptr(new sensor_msgs::msg::PointCloud2());
   auto input = std::make_shared<sensor_msgs::msg::PointCloud2>(*input_ptr);
   if (input->data.empty()) {
     RCLCPP_WARN_STREAM_THROTTLE(
       this->get_logger(), *this->get_clock(), 1000, "Empty sensor points!");
   } else {
-    // convert to XYZI pointcloud if pointcloud is not empty
+    // convert to XYZIRC pointcloud if pointcloud is not empty
     convertToXYZIRCCloud(input, xyzirc_input_ptr);
   }
 
@@ -278,7 +277,7 @@ void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
         lock.unlock();
         cloud_collector->processCloud(topic_name, input_ptr);
         collector_found = true;
-        std::cout << "find collector " << cloud_collector << std::endl;
+        std::cout << "find collector " << cloud_collector << std::flush;
         break;
       }
     }
@@ -373,6 +372,7 @@ void PointCloudConcatenateDataSynchronizerComponent::publishClouds(
   std::unordered_map<std::string, double> & topic_to_original_stamp_map,
   double reference_timestamp_min, double reference_timestamp_max)
 {
+  std::cout << "on publishClouds" << std::endl;
   stop_watch_ptr_->toc("processing_time", true);
   current_concat_cloud_timestamp_ = rclcpp::Time(concatenate_cloud_ptr->header.stamp).seconds();
 

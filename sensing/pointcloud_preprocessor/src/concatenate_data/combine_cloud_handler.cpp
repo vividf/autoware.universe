@@ -160,7 +160,6 @@ CombineCloudHandler::combinePointClouds(
   for (const auto & pair : topic_to_cloud_map) {
     pc_stamps.push_back(rclcpp::Time(pair.second->header.stamp));
   }
-
   std::sort(pc_stamps.begin(), pc_stamps.end(), std::greater<rclcpp::Time>());
   const auto oldest_stamp = pc_stamps.back();
 
@@ -169,6 +168,10 @@ CombineCloudHandler::combinePointClouds(
   for (const auto & pair : topic_to_cloud_map) {
     std::string topic = pair.first;
     sensor_msgs::msg::PointCloud2::SharedPtr cloud = pair.second;
+
+    if (cloud->data.size() == 0) {
+      continue;
+    }
 
     auto transformed_cloud_ptr = std::make_shared<sensor_msgs::msg::PointCloud2>();
     if (output_frame_ != cloud->header.frame_id) {

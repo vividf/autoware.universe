@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import struct
 import time
 import unittest
 
@@ -37,6 +38,7 @@ from rclpy.qos import QoSDurabilityPolicy
 from rclpy.qos import QoSHistoryPolicy
 from rclpy.qos import QoSProfile
 from rclpy.qos import QoSReliabilityPolicy
+from rclpy.time import Time
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs.msg import PointField
 from std_msgs.msg import Header
@@ -55,10 +57,11 @@ FRAME_ID_LISTS = [
     "top_lidar",
 ]
 
-TIMEOUT_SEC = 0.01
+TIMEOUT_SEC = 0.2
 NUM_OF_POINTS = 3
 # write a code that can fixed this value without moving as the number of point is always 3
-TIMESTAMP_OFFSET_PER_POINT = 0.010
+
+global_timestamp = Time(seconds=10, nanoseconds=100000000).to_msg()
 
 
 @pytest.mark.launch_test
@@ -69,17 +72,25 @@ def generate_test_description():
         ComposableNode(
             package="pointcloud_preprocessor",
             plugin="pointcloud_preprocessor::PointCloudConcatenateDataSynchronizerComponent",
-            name="synchoronize_concatenate_node",
+            name="test_concatenate_node",
             remappings=[
                 ("~/input/twist", "/test/sensing/vehicle_velocity_converter/twist_with_covariance"),
                 ("output", "/test/sensing/lidar/concatenated/pointcloud"),
             ],
             parameters=[
                 {
-                    "input_topics": INPUT_LIDAR_TOPICS,
+                    "maximum_queue_size": 5,
                     "timeout_sec": TIMEOUT_SEC,
-                    "output_frame": "base_link",
+                    "is_motion_compensated": True,
+                    "publish_synchronized_pointcloud": True,
+                    "keep_input_frame_in_synchronized_pointcloud": True,
+                    "publish_previous_but_late_pointcloud": False,
+                    "synchronized_pointcloud_postfix": "pointcloud",
                     "input_twist_topic_type": "twist",
+                    "input_topics": INPUT_LIDAR_TOPICS,
+                    "output_frame": "base_link",
+                    "lidar_timestamp_offsets": [0.0, 0.0, 0.0],
+                    "lidar_timestamp_noise_window": [0.01, 0.01, 0.01],
                 }
             ],
             extra_arguments=[{"use_intra_process_comms": True}],
@@ -106,61 +117,71 @@ def generate_test_description():
 
 def create_header(frame_id_index):
     header = Header()
-    header.stamp = rclpy.clock.Clock().now().to_msg()
+    header.stamp = global_timestamp
     header.frame_id = FRAME_ID_LISTS[frame_id_index]
-
+    # header.frame_id = "base_link"
     return header
 
 
-def create_points(flag: bool):
-    if flag:
-        list_points = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
-    else:
-        list_points = []
-
-    np_points = np.array(list_points, dtype=np.float32).reshape(-1, 3)
-    points = np_points.tobytes()
-    return points
+def create_points(is_generate_points):
+    if is_generate_points:
+        return [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)]
+    return []
 
 
-def create_timestamps(flag: bool, header):
-
-    if flag:
-        np_timestamps = np.array(
-            [
-                header.stamp.sec + header.stamp.nanosec * 1e-9 + TIMESTAMP_OFFSET_PER_POINT * i
-                for i in range(NUM_OF_POINTS)
-            ]
-        ).astype(np.float64)
-    else:
-        np_timestamps = np.array([]).astype(np.float64)
-
-    timestamps = np_timestamps.tobytes()
-    return timestamps
+def create_fields(is_generate_points):
+    # The values of the fields do not influence the results.
+    if is_generate_points:
+        intensities = [255] * NUM_OF_POINTS
+        return_types = [1] * NUM_OF_POINTS
+        channels = [1] * NUM_OF_POINTS
+        azimuths = [0.0] * NUM_OF_POINTS
+        elevations = [0.0] * NUM_OF_POINTS
+        distances = [1.0] * NUM_OF_POINTS
+        timestamps = [0] * NUM_OF_POINTS
+        return intensities, return_types, channels, azimuths, elevations, distances, timestamps
+    return [], [], [], [], [], [], []
 
 
 def get_pointcloud_msg(is_generate_points: bool, frame_id_index: int):
     header = create_header(frame_id_index)
     points = create_points(is_generate_points)
-    timestamps = create_timestamps(is_generate_points, header)
-
-    pointcloud_data = b"".join(
-        points[i * 12 : i * 12 + 12] + timestamps[i * 8 : i * 8 + 8] for i in range(len(points))
+    intensities, return_types, channels, azimuths, elevations, distances, timestamps = (
+        create_fields(is_generate_points)
     )
+
+    pointcloud_data = bytearray()
+    for i in range(NUM_OF_POINTS):
+        pointcloud_data += struct.pack("fff", points[i][0], points[i][1], points[i][2])
+        pointcloud_data += struct.pack("B", intensities[i])
+        pointcloud_data += struct.pack("B", return_types[i])
+        pointcloud_data += struct.pack("H", channels[i])
+        pointcloud_data += struct.pack("f", azimuths[i])
+        pointcloud_data += struct.pack("f", elevations[i])
+        pointcloud_data += struct.pack("f", distances[i])
+        pointcloud_data += struct.pack("I", timestamps[i])
+
     fields = [
         PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
         PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
         PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
-        PointField(name="time_stamp", offset=12, datatype=PointField.FLOAT64, count=1),
+        PointField(name="intensity", offset=12, datatype=PointField.UINT8, count=1),
+        PointField(name="return_type", offset=13, datatype=PointField.UINT8, count=1),
+        PointField(name="channel", offset=14, datatype=PointField.UINT16, count=1),
+        PointField(name="azimuth", offset=16, datatype=PointField.FLOAT32, count=1),
+        PointField(name="elevation", offset=20, datatype=PointField.FLOAT32, count=1),
+        PointField(name="distance", offset=24, datatype=PointField.FLOAT32, count=1),
+        PointField(name="time_stamp", offset=28, datatype=PointField.UINT32, count=1),
     ]
+
     pointcloud_msg = PointCloud2(
         header=header,
         height=1,
-        width=10,
+        width=NUM_OF_POINTS,
         is_dense=True,
         is_bigendian=False,
-        point_step=20,  # 4 float32 fields * 4 bytes/field
-        row_step=20 * NUM_OF_POINTS,  # point_step * width
+        point_step=32,  # 3*4 + 1 + 1 + 2 + 4 + 4 + 4 + 4 = 32 bytes per point
+        row_step=32 * NUM_OF_POINTS,
         fields=fields,
         data=pointcloud_data,
     )
@@ -170,7 +191,7 @@ def get_pointcloud_msg(is_generate_points: bool, frame_id_index: int):
 
 def generate_static_transform_msg():
     tf_top_lidar_msg = TransformStamped()
-    tf_top_lidar_msg.header.stamp = rclpy.clock.Clock().now().to_msg()
+    tf_top_lidar_msg.header.stamp = global_timestamp
     tf_top_lidar_msg.header.frame_id = "base_link"
     tf_top_lidar_msg.child_frame_id = FRAME_ID_LISTS[0]
     tf_top_lidar_msg.transform.translation.x = 0.0
@@ -182,7 +203,7 @@ def generate_static_transform_msg():
     tf_top_lidar_msg.transform.rotation.w = 1.0
 
     tf_right_lidar_msg = TransformStamped()
-    tf_right_lidar_msg.header.stamp = rclpy.clock.Clock().now().to_msg()
+    tf_right_lidar_msg.header.stamp = global_timestamp
     tf_right_lidar_msg.header.frame_id = "base_link"
     tf_right_lidar_msg.child_frame_id = FRAME_ID_LISTS[1]
     tf_right_lidar_msg.transform.translation.x = 0.0
@@ -194,7 +215,7 @@ def generate_static_transform_msg():
     tf_right_lidar_msg.transform.rotation.w = 1.0
 
     tf_left_lidar_msg = TransformStamped()
-    tf_left_lidar_msg.header.stamp = rclpy.clock.Clock().now().to_msg()
+    tf_left_lidar_msg.header.stamp = global_timestamp
     tf_left_lidar_msg.header.frame_id = "base_link"
     tf_left_lidar_msg.child_frame_id = FRAME_ID_LISTS[2]
     tf_left_lidar_msg.transform.translation.x = 0.0
@@ -312,7 +333,9 @@ class TestConcatenateNode(unittest.TestCase):
         for frame_idx in range(len(INPUT_LIDAR_TOPICS)):
             pointcloud_msg = get_pointcloud_msg(True, frame_idx)
             self.pointcloud_publishers[frame_idx].publish(pointcloud_msg)
-            time.sleep(0.001)
+            time.sleep(0.01)
+        # pointcloud_msg = get_pointcloud_msg(True, 0)
+        # self.pointcloud_publishers[0].publish(pointcloud_msg)
 
         rclpy.spin_once(self.node, timeout_sec=0.1)
 
@@ -320,7 +343,7 @@ class TestConcatenateNode(unittest.TestCase):
         self.assertEqual(
             len(self.msg_buffer),
             1,
-            "The number of concatenate pointscloud has different number as expected.",
+            "The number of concatenate pointcloud has different number as expected.",
         )
         self.assertEqual(
             calculate_number_of_points(self.msg_buffer[0]),
@@ -338,15 +361,15 @@ class TestConcatenateNode(unittest.TestCase):
         # test transformed points
         expected_array = np.array(
             [
-                [1.0, 0.0, 5.0],
-                [0.0, 1.0, 5.0],
-                [0.0, 0.0, 6.0],
-                [1.0208441, 5.0, 5.0],
-                [0.02084414, 6.0, 5.0],
-                [0.02084414, 5.0, 6.0],
-                [1.0419736, -5.0, 5.0],
-                [0.04197362, -4.0, 5.0],
-                [0.04197362, -5.0, 6.0],
+                [1, -5, 5],
+                [0, -4, 5],
+                [0, -5, 6],
+                [1, 5, 5],
+                [0, 6, 5],
+                [0, 5, 6],
+                [1, 0, 5],
+                [0, 1, 5],
+                [0, 0, 6],
             ],
             dtype=np.float32,
         )
@@ -359,12 +382,7 @@ class TestConcatenateNode(unittest.TestCase):
         )
 
     # def test_abnormal_null_pointcloud(self):
-    #     """
-    #     Test normal situation.
-    #     One of the coming pointcloud have no data.
-    #     input: pointclouds from three different topics.
-    #     output: concatenate pointcloud
-    #     """
+
     #     # wait for the node to be ready
     #     time.sleep(3)
 
@@ -374,12 +392,11 @@ class TestConcatenateNode(unittest.TestCase):
 
     #     for frame_idx in range(len(INPUT_LIDAR_TOPICS) - 1):
     #         pointcloud_msg = get_pointcloud_msg(True, frame_idx)
-    #         #print("pointcloud_msg ", str(frame_idx), " : ", pointcloud_msg)
     #         self.pointcloud_publishers[frame_idx].publish(pointcloud_msg)
     #         time.sleep(0.01)
 
     #     pointcloud_msg = get_pointcloud_msg(False, len(INPUT_LIDAR_TOPICS) - 1)
-    #     #print("pointcloud_msg ", str(len(INPUT_LIDAR_TOPICS) - 1), " : ", pointcloud_msg)
+    #     print("pointcloud_msg ", str(len(INPUT_LIDAR_TOPICS) - 1), " : ", pointcloud_msg)
     #     self.pointcloud_publishers[len(INPUT_LIDAR_TOPICS) - 1].publish(pointcloud_msg)
 
     #     rclpy.spin_once(self.node, timeout_sec=0.1)
@@ -388,7 +405,7 @@ class TestConcatenateNode(unittest.TestCase):
     #     self.assertEqual(
     #         len(self.msg_buffer),
     #         1,
-    #         "The number of concatenate pointscloud has different number as expected.",
+    #         "The number of concatenate pointcloud has different number as expected.",
     #     )
     #     self.assertEqual(
     #         calculate_number_of_points(self.msg_buffer[0]),
@@ -416,13 +433,14 @@ class TestConcatenateNode(unittest.TestCase):
     #         self.pointcloud_publishers[frame_idx].publish(pointcloud_msg)
     #         time.sleep(0.02)
 
+    #     time.sleep(TIMEOUT_SEC) # timeout threshold
     #     rclpy.spin_once(self.node, timeout_sec=0.1)
 
     #     # Should receive only one concatenate pointcloud
     #     self.assertEqual(
     #         len(self.msg_buffer),
     #         1,
-    #         "The number of concatenate pointscloud has different number as expected.",
+    #         "The number of concatenate pointcloud has different number as expected.",
     #     )
 
     #     self.assertEqual(
@@ -452,14 +470,14 @@ class TestConcatenateNode(unittest.TestCase):
     #         self.pointcloud_publishers[frame_idx].publish(pointcloud_msg)
     #         time.sleep(0.02)
 
-    #     time.sleep(0.1)
+    #     time.sleep(TIMEOUT_SEC) # timeout threshold
     #     rclpy.spin_once(self.node, timeout_sec=0.1)
 
     #     pointcloud_msg = get_pointcloud_msg(True, len(INPUT_LIDAR_TOPICS) - 1)
     #     #print("pointcloud_msg ", str(frame_idx), " : ", pointcloud_msg)
     #     self.pointcloud_publishers[len(INPUT_LIDAR_TOPICS) - 1].publish(pointcloud_msg)
-    #     time.sleep(0.1)
 
+    #     time.sleep(TIMEOUT_SEC) # timeout threshold
     #     rclpy.spin_once(self.node, timeout_sec=0.1)
 
     #     print("len of msg buffer: ", len(self.msg_buffer))
@@ -467,7 +485,7 @@ class TestConcatenateNode(unittest.TestCase):
     #     self.assertEqual(
     #         len(self.msg_buffer),
     #         2,
-    #         "The number of concatenate pointscloud has different number as expected.",
+    #         "The number of concatenate pointcloud has different number as expected.",
     #     )
 
     #     self.assertEqual(
@@ -504,7 +522,8 @@ class TestConcatenateNode(unittest.TestCase):
     #         self.pointcloud_publishers[frame_idx].publish(pointcloud_msg)
     #         time.sleep(0.01)
 
-    #     time.sleep(0.01)
+    #     time.sleep(TIMEOUT_SEC)
+    #     rclpy.spin_once(self.node)
 
     #     for frame_idx in range(len(INPUT_LIDAR_TOPICS)):
     #         pointcloud_msg = get_pointcloud_msg(True, frame_idx)
@@ -513,13 +532,12 @@ class TestConcatenateNode(unittest.TestCase):
     #         time.sleep(0.01)
 
     #     rclpy.spin_once(self.node)
-
     #     print("len of msg buffer: ", len(self.msg_buffer))
     #     # Should receive only one concatenate pointcloud
     #     self.assertEqual(
     #         len(self.msg_buffer),
     #         2,
-    #         "The number of concatenate pointscloud has different number as expected.",
+    #         "The number of concatenate pointcloud has different number as expected.",
     #     )
 
     #     self.assertEqual(
