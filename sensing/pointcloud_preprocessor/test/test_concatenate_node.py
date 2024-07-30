@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import random
 import struct
 import time
 import unittest
@@ -331,18 +332,15 @@ class TestConcatenateNode(unittest.TestCase):
         return twist_publisher, pointcloud_publishers
 
     def test_1_normal_inputs(self):
-        """Test normal situation.
+        """Test the normal situation when no pointcloud is delayed or dropped.
 
-        Test the normal situation when no pointcloud is delayed or dropped.
-        This can test
+        This can test that
         1. Concatenate works fine when all pointclouds are arrived in time.
         2. The motion compensation of concatenation works well.
         """
-        # wait for the node to be ready
-        time.sleep(2)
+        time.sleep(1)
         global global_seconds
 
-        # fill the twist msg
         twist_msg = generate_twist_msg()
         self.twist_publisher.publish(twist_msg)
 
@@ -363,7 +361,6 @@ class TestConcatenateNode(unittest.TestCase):
 
         rclpy.spin_once(self.node, timeout_sec=0.1)
 
-        # test normal situation
         self.assertEqual(
             len(self.msg_buffer),
             1,
@@ -372,18 +369,17 @@ class TestConcatenateNode(unittest.TestCase):
         self.assertEqual(
             len(get_output_points(self.msg_buffer[0])),
             NUM_OF_POINTS * len(FRAME_ID_LISTS),
-            "The concatendate pointcloud has a different number of point as expected",
+            "The concatenate pointcloud has a different number of point as expected",
         )
 
         # test tf
         self.assertEqual(
             self.msg_buffer[0].header.frame_id,
             "base_link",
-            "The concatendate pointcloud frame id is not base_link",
+            "The concatenate pointcloud frame id is not base_link",
         )
 
-        # test transformed points
-        expected_array = np.array(
+        expected_pointcloud = np.array(
             [
                 [1.08, -5, 5],
                 [0.08, -4, 5],
@@ -401,24 +397,94 @@ class TestConcatenateNode(unittest.TestCase):
         cloud_arr = get_output_points(self.msg_buffer[0])
         print("cloud_arr: ", cloud_arr)
         self.assertTrue(
-            np.allclose(cloud_arr, expected_array, atol=1e-3),
+            np.allclose(cloud_arr, expected_pointcloud, atol=1e-3),
             "The concatenation node have wierd output",
         )
 
         global_seconds += 1
 
-    def test_2_abnormal_null_pointcloud(self):
-        """Test abnormal situation.
+    def test_2_normal_inputs_with_noise(self):
+        """Test the normal situation when no pointcloud is delayed or dropped. Additionally, the pointcloud's timestamp is not ideal which has some noise.
 
-        Test the abnormal situation when a pointcloud has empty.
-        This can test
-        1. The concatenate node ignore empty pointcloud and concatenate the remain pointcloud.
+        This can test that
+        1. Concatenate works fine when pointclouds' timestamp has noise.
         """
-        # wait for the node to be ready
-        time.sleep(2)
+        time.sleep(1)
         global global_seconds
 
-        # fill the twist msg
+        twist_msg = generate_twist_msg()
+        self.twist_publisher.publish(twist_msg)
+
+        for frame_idx, _ in enumerate(INPUT_LIDAR_TOPICS):
+            noise = random.uniform(-10, 10) * milliseconds
+            pointcloud_seconds = global_seconds
+            pointcloud_nanoseconds = (
+                global_nanosceonds + frame_idx * milliseconds * 40 + noise
+            )  # add 40 ms and noise (-10 to 10 ms)
+            pointcloud_timestamp = Time(
+                seconds=pointcloud_seconds, nanoseconds=pointcloud_nanoseconds
+            ).to_msg()
+            pointcloud_msg = get_pointcloud_msg(
+                timestamp=pointcloud_timestamp,
+                is_generate_points=True,
+                frame_id_index=frame_idx,
+                is_base_link=False,
+            )
+            self.pointcloud_publishers[frame_idx].publish(pointcloud_msg)
+            time.sleep(0.01)
+
+        rclpy.spin_once(self.node, timeout_sec=0.1)
+
+        self.assertEqual(
+            len(self.msg_buffer),
+            1,
+            "The number of concatenate pointcloud has different number as expected.",
+        )
+        self.assertEqual(
+            len(get_output_points(self.msg_buffer[0])),
+            NUM_OF_POINTS * len(FRAME_ID_LISTS),
+            "The concatenate pointcloud has a different number of point as expected",
+        )
+
+        # test tf
+        self.assertEqual(
+            self.msg_buffer[0].header.frame_id,
+            "base_link",
+            "The concatenate pointcloud frame id is not base_link",
+        )
+
+        # test transformed points
+        expected_pointcloud = np.array(
+            [
+                [1.08, -5, 5],
+                [0.08, -4, 5],
+                [0.08, -5, 6],
+                [1.04, 5, 5],
+                [0.04, 6, 5],
+                [0.04, 5, 6],
+                [1, 0, 5],
+                [0, 1, 5],
+                [0, 0, 6],
+            ],
+            dtype=np.float32,
+        )
+
+        cloud_arr = get_output_points(self.msg_buffer[0])
+        print("cloud_arr: ", cloud_arr)
+        self.assertTrue(
+            np.allclose(cloud_arr, expected_pointcloud, atol=1e-2),
+            "The concatenation node have wierd output",
+        )
+
+    def test_3_abnormal_null_pointcloud(self):
+        """Test the abnormal situation when a pointcloud is empty.
+
+        This can test that
+        1. The concatenate node ignore empty pointcloud and concatenate the remain pointcloud.
+        """
+        time.sleep(1)
+        global global_seconds
+
         twist_msg = generate_twist_msg()
         self.twist_publisher.publish(twist_msg)
 
@@ -450,7 +516,6 @@ class TestConcatenateNode(unittest.TestCase):
         time.sleep(TIMEOUT_SEC)
         rclpy.spin_once(self.node, timeout_sec=0.1)
 
-        # test normal situation
         self.assertEqual(
             len(self.msg_buffer),
             1,
@@ -459,24 +524,100 @@ class TestConcatenateNode(unittest.TestCase):
         self.assertEqual(
             len(get_output_points(self.msg_buffer[0])),
             NUM_OF_POINTS * (len(FRAME_ID_LISTS) - 1),
-            "The concatendate pointcloud has a different number of point as expected",
+            "The concatenate pointcloud has a different number of point as expected",
         )
 
         global_seconds += 1
 
-    def test_3_abnormal_pointcloud_drop(self):
-        """Test abnormal situation.
+    def test_4_abnormal_null_pointcloud_and_drop(self):
+        """Test the abnormal situation when a pointcloud is empty and other pointclouds are dropped.
 
-        Test the abnormal situation when a pointcloud was dropped.
-        This can test
-        1. The concatenate node concatenate the remain pointcloud after the timeout.
+        This can test that
+        1. The concatenate node ignore empty pointcloud and do not publish any pointcloud.
         """
-        # wait for the node to be ready
-
-        time.sleep(3)
+        time.sleep(1)
         global global_seconds
 
-        # fill the twist msg
+        twist_msg = generate_twist_msg()
+        self.twist_publisher.publish(twist_msg)
+
+        pointcloud_seconds = global_seconds
+        pointcloud_nanoseconds = global_nanosceonds
+        pointcloud_timestamp = Time(
+            seconds=pointcloud_seconds, nanoseconds=pointcloud_nanoseconds
+        ).to_msg()
+
+        pointcloud_msg = get_pointcloud_msg(
+            timestamp=pointcloud_timestamp,
+            is_generate_points=False,
+            frame_id_index=0,
+            is_base_link=False,
+        )
+
+        self.pointcloud_publishers[0].publish(pointcloud_msg)
+        time.sleep(0.01)
+
+        time.sleep(TIMEOUT_SEC)
+        rclpy.spin_once(self.node, timeout_sec=0.1)
+
+        self.assertEqual(
+            len(self.msg_buffer),
+            0,
+            "The number of concatenate pointcloud has different number as expected.",
+        )
+
+        global_seconds += 1
+
+    def test_5_abnormal_multiple_pointcloud_drop(self):
+        """Test the abnormal situation when a pointcloud was dropped.
+
+        This can test that
+        1. The concatenate node concatenates the remaining pointcloud after the timeout.
+        """
+        time.sleep(1)
+        global global_seconds
+
+        twist_msg = generate_twist_msg()
+        self.twist_publisher.publish(twist_msg)
+
+        pointcloud_seconds = global_seconds
+        pointcloud_nanoseconds = global_nanosceonds
+        pointcloud_timestamp = Time(
+            seconds=pointcloud_seconds, nanoseconds=pointcloud_nanoseconds
+        ).to_msg()
+
+        pointcloud_msg = get_pointcloud_msg(
+            timestamp=pointcloud_timestamp,
+            is_generate_points=True,
+            frame_id_index=0,
+            is_base_link=False,
+        )
+
+        self.pointcloud_publishers[0].publish(pointcloud_msg)
+        time.sleep(0.01)
+
+        time.sleep(TIMEOUT_SEC)
+        rclpy.spin_once(self.node, timeout_sec=0.1)
+
+        self.assertEqual(
+            len(self.msg_buffer),
+            1,
+            "The number of concatenate pointcloud has different number as expected.",
+        )
+        self.assertEqual(
+            len(get_output_points(self.msg_buffer[0])),
+            3,
+            "The concatenate pointcloud has a different number of point as expected",
+        )
+
+    def test_6_abnormal_single_pointcloud_drop(self):
+        """Test the abnormal situation when a pointcloud was dropped.
+
+        This can test that
+        1. The concatenate node concatenate the remain pointcloud after the timeout.
+        """
+        time.sleep(1)
+        global global_seconds
 
         twist_msg = generate_twist_msg()
         self.twist_publisher.publish(twist_msg)
@@ -496,7 +637,7 @@ class TestConcatenateNode(unittest.TestCase):
             self.pointcloud_publishers[frame_idx].publish(pointcloud_msg)
             time.sleep(0.02)
 
-        time.sleep(TIMEOUT_SEC)  # timeout threshold
+        time.sleep(TIMEOUT_SEC)
         rclpy.spin_once(self.node, timeout_sec=0.1)
 
         # Should receive only one concatenate pointcloud
@@ -509,24 +650,21 @@ class TestConcatenateNode(unittest.TestCase):
         self.assertEqual(
             len(get_output_points(self.msg_buffer[0])),
             NUM_OF_POINTS * (len(FRAME_ID_LISTS) - 1),
-            "The concatendate pointcloud has a different number of point as expected",
+            "The concatenate pointcloud has a different number of point as expected",
         )
 
         global_seconds += 1
 
-    def test_4_abnormal_pointcloud_delay(self):
-        """Test abnormal situation.
+    def test_7_abnormal_pointcloud_delay(self):
+        """Test the abnormal situation when a pointcloud was delayed after the timeout.
 
-        Test the abnormal situation when a pointcloud was delayed after the timeout.
-        This can test
+        This can test that
         1. The concatenate node concatenate the remain pointcloud after the timeout.
         2. The concatenate node will publish the delayed pointcloud after the timeout.
         """
-        # wait for the node to be ready
-        time.sleep(3)
+        time.sleep(1)
         global global_seconds
 
-        # fill the twist msg
         twist_msg = generate_twist_msg()
         self.twist_publisher.publish(twist_msg)
 
@@ -577,31 +715,27 @@ class TestConcatenateNode(unittest.TestCase):
         self.assertEqual(
             len(get_output_points(self.msg_buffer[0])),
             NUM_OF_POINTS * (len(FRAME_ID_LISTS) - 1),
-            "The concatendate pointcloud has a different number of point as expected",
+            "The concatenate pointcloud has a different number of point as expected",
         )
 
         self.assertEqual(
             len(get_output_points(self.msg_buffer[1])),
             NUM_OF_POINTS,
-            "The concatendate pointcloud has a different number of point as expected",
+            "The concatenate pointcloud has a different number of point as expected",
         )
 
         global_seconds += 1
 
-    def test_5_abnormal_pointcloud_drop_continue_normal(self):
-        """Test abnormal situation.
+    def test_8_abnormal_pointcloud_drop_continue_normal(self):
+        """Test the abnormal situation when a pointcloud was dropped. Afterward, next iteration of pointclouds comes normally.
 
-        Test the abnormal situation when a pointcloud was dropped.
-        Afterward, next iteration of pointclouds comes normally.
-        This can test
+        This can test that
         1. The concatenate node concatenate the remain pointcloud after the timeout.
         2. The concatenate node concatenate next iteration pointclouds when all of the pointcloud arrived.
         """
-        # wait for the node to be ready
         time.sleep(1)
         global global_seconds
 
-        # fill the twist msg
         twist_msg = generate_twist_msg()
         self.twist_publisher.publish(twist_msg)
 
@@ -653,13 +787,13 @@ class TestConcatenateNode(unittest.TestCase):
         self.assertEqual(
             len(get_output_points(self.msg_buffer[0])),
             NUM_OF_POINTS * (len(FRAME_ID_LISTS) - 1),
-            "The concatendate pointcloud has a different number of point as expected",
+            "The concatenate pointcloud has a different number of point as expected",
         )
 
         self.assertEqual(
             len(get_output_points(self.msg_buffer[1])),
             NUM_OF_POINTS * len(FRAME_ID_LISTS),
-            "The concatendate pointcloud has a different number of point as expected",
+            "The concatenate pointcloud has a different number of point as expected",
         )
 
         global_seconds += 1
