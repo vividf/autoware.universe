@@ -111,10 +111,10 @@ void CloudCollector::concatenateCallback()
 {
   // lock for protecting collector list and concatenated pointcloud
   std::lock_guard<std::mutex> lock(mutex_);
-  std::cout << "on concatenateCallback" << std::endl;
+  // std::cout << "on concatenateCallback" << std::endl;
   auto [concatenate_cloud_ptr, topic_to_transformed_cloud_map, topic_to_original_stamp_map] =
     concatenateClouds(topic_to_cloud_map_);
-  std::cout << "finish concatenated pointcloud" << std::endl;
+  // std::cout << "finish concatenated pointcloud" << std::endl;
   publishClouds(concatenate_cloud_ptr, topic_to_transformed_cloud_map, topic_to_original_stamp_map);
   deleteCollector();
 }

@@ -245,8 +245,9 @@ void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
   // rclcpp::Time now = debug_clock->now();
   // std::cout << "Current time: " << now.seconds() << " seconds" << std::endl;
 
-  std::cout << "pointcloud name and timestamp: " << topic_name << " " << std::fixed
-            << std::setprecision(9) << rclcpp::Time(input_ptr->header.stamp).seconds() << std::endl;
+  // std::cout << "pointcloud name and timestamp: " << topic_name << " " << std::fixed
+  //           << std::setprecision(9) << rclcpp::Time(input_ptr->header.stamp).seconds() <<
+  //           std::endl;
   sensor_msgs::msg::PointCloud2::SharedPtr xyzirc_input_ptr(new sensor_msgs::msg::PointCloud2());
   auto input = std::make_shared<sensor_msgs::msg::PointCloud2>(*input_ptr);
   if (input->data.empty()) {
@@ -265,7 +266,7 @@ void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
   bool collector_found = false;
 
   if (!cloud_collectors_.empty()) {
-    std::cout << "Searching collect in size:  " << cloud_collectors_.size() << std::endl;
+    // std::cout << "Searching collect in size:  " << cloud_collectors_.size() << std::endl;
     for (const auto & cloud_collector : cloud_collectors_) {
       auto [reference_timestamp_min, reference_timestamp_max] =
         cloud_collector->getReferenceTimeStampBoundary();
@@ -278,14 +279,14 @@ void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
         lock.unlock();
         cloud_collector->processCloud(topic_name, input_ptr);
         collector_found = true;
-        std::cout << "find collector " << cloud_collector << std::flush;
+        // std::cout << "find collector " << cloud_collector << std::flush;
         break;
       }
     }
   }
   // if collecotrs is empty or didn't find matched collector.
   if (!collector_found) {
-    std::cout << "create new collector " << std::endl;
+    // std::cout << "create new collector " << std::endl;
     auto new_cloud_collector = std::make_shared<CloudCollector>(
       std::dynamic_pointer_cast<PointCloudConcatenateDataSynchronizerComponent>(shared_from_this()),
       cloud_collectors_, combine_cloud_handler_, params_.input_topics.size(), params_.timeout_sec);
@@ -373,7 +374,7 @@ void PointCloudConcatenateDataSynchronizerComponent::publishClouds(
   std::unordered_map<std::string, double> & topic_to_original_stamp_map,
   double reference_timestamp_min, double reference_timestamp_max)
 {
-  std::cout << "on publishClouds" << std::endl;
+  // std::cout << "on publishClouds" << std::endl;
   stop_watch_ptr_->toc("processing_time", true);
   current_concat_cloud_timestamp_ = rclcpp::Time(concatenate_cloud_ptr->header.stamp).seconds();
 
