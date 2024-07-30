@@ -62,9 +62,6 @@
 #include <utility>
 #include <vector>
 
-// debug
-#include <chrono>
-
 namespace pointcloud_preprocessor
 {
 

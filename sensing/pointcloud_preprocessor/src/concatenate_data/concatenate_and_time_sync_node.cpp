@@ -242,13 +242,6 @@ void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
     return;
   }
 
-  // Get the current time
-  // rclcpp::Time now = debug_clock->now();
-  // std::cout << "Current time: " << now.seconds() << " seconds" << std::endl;
-
-  // std::cout << "pointcloud name and timestamp: " << topic_name << " " << std::fixed
-  //           << std::setprecision(9) << rclcpp::Time(input_ptr->header.stamp).seconds() <<
-  //           std::endl;
   sensor_msgs::msg::PointCloud2::SharedPtr xyzirc_input_ptr(new sensor_msgs::msg::PointCloud2());
   auto input = std::make_shared<sensor_msgs::msg::PointCloud2>(*input_ptr);
   if (input->data.empty()) {
@@ -260,14 +253,13 @@ void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
     convertToXYZIRCCloud(input, xyzirc_input_ptr);
   }
 
-  // protect collect list
+  // protect cloud collectors list
   std::unique_lock<std::mutex> lock(mutex_);
 
   // For each callback, check whether there is a exist collector that matches this cloud
   bool collector_found = false;
 
   if (!cloud_collectors_.empty()) {
-    // std::cout << "Searching collect in size:  " << cloud_collectors_.size() << std::endl;
     for (const auto & cloud_collector : cloud_collectors_) {
       auto [reference_timestamp_min, reference_timestamp_max] =
         cloud_collector->getReferenceTimeStampBoundary();
@@ -280,14 +272,13 @@ void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
         lock.unlock();
         cloud_collector->processCloud(topic_name, input_ptr);
         collector_found = true;
-        // std::cout << "find collector " << cloud_collector << std::flush;
         break;
       }
     }
   }
-  // if collecotrs is empty or didn't find matched collector.
+
+  // if point cloud didn't find matched collector, create a new collector.
   if (!collector_found) {
-    // std::cout << "create new collector " << std::endl;
     auto new_cloud_collector = std::make_shared<CloudCollector>(
       std::dynamic_pointer_cast<PointCloudConcatenateDataSynchronizerComponent>(shared_from_this()),
       cloud_collectors_, combine_cloud_handler_, params_.input_topics.size(), params_.timeout_sec);
@@ -313,61 +304,6 @@ void PointCloudConcatenateDataSynchronizerComponent::odom_callback(
   combine_cloud_handler_->processOdometry(input);
 }
 
-void PointCloudConcatenateDataSynchronizerComponent::convertToXYZIRCCloud(
-  const sensor_msgs::msg::PointCloud2::SharedPtr & input_ptr,
-  sensor_msgs::msg::PointCloud2::SharedPtr & output_ptr)
-{
-  output_ptr->header = input_ptr->header;
-
-  PointCloud2Modifier<PointXYZIRC, autoware_point_types::PointXYZIRCGenerator> output_modifier{
-    *output_ptr, input_ptr->header.frame_id};
-  output_modifier.reserve(input_ptr->width);
-
-  bool has_valid_intensity =
-    std::any_of(input_ptr->fields.begin(), input_ptr->fields.end(), [](auto & field) {
-      return field.name == "intensity" && field.datatype == sensor_msgs::msg::PointField::UINT8;
-    });
-
-  bool has_valid_return_type =
-    std::any_of(input_ptr->fields.begin(), input_ptr->fields.end(), [](auto & field) {
-      return field.name == "return_type" && field.datatype == sensor_msgs::msg::PointField::UINT8;
-    });
-
-  bool has_valid_channel =
-    std::any_of(input_ptr->fields.begin(), input_ptr->fields.end(), [](auto & field) {
-      return field.name == "channel" && field.datatype == sensor_msgs::msg::PointField::UINT16;
-    });
-
-  sensor_msgs::PointCloud2Iterator<float> it_x(*input_ptr, "x");
-  sensor_msgs::PointCloud2Iterator<float> it_y(*input_ptr, "y");
-  sensor_msgs::PointCloud2Iterator<float> it_z(*input_ptr, "z");
-
-  if (has_valid_intensity && has_valid_return_type && has_valid_channel) {
-    sensor_msgs::PointCloud2Iterator<std::uint8_t> it_i(*input_ptr, "intensity");
-    sensor_msgs::PointCloud2Iterator<std::uint8_t> it_r(*input_ptr, "return_type");
-    sensor_msgs::PointCloud2Iterator<std::uint16_t> it_c(*input_ptr, "channel");
-
-    for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z, ++it_i, ++it_r, ++it_c) {
-      PointXYZIRC point;
-      point.x = *it_x;
-      point.y = *it_y;
-      point.z = *it_z;
-      point.intensity = *it_i;
-      point.return_type = *it_r;
-      point.channel = *it_c;
-      output_modifier.push_back(std::move(point));
-    }
-  } else {
-    for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z) {
-      PointXYZIRC point;
-      point.x = *it_x;
-      point.y = *it_y;
-      point.z = *it_z;
-      output_modifier.push_back(std::move(point));
-    }
-  }
-}
-
 void PointCloudConcatenateDataSynchronizerComponent::publishClouds(
   sensor_msgs::msg::PointCloud2::SharedPtr concatenate_cloud_ptr,
   std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> &
@@ -375,7 +311,8 @@ void PointCloudConcatenateDataSynchronizerComponent::publishClouds(
   std::unordered_map<std::string, double> & topic_to_original_stamp_map,
   double reference_timestamp_min, double reference_timestamp_max)
 {
-  // std::cout << "on publishClouds" << std::endl;
+  // should never come to this state.
+  if (concatenate_cloud_ptr == nullptr) return;
 
   current_concat_cloud_timestamp_ = rclcpp::Time(concatenate_cloud_ptr->header.stamp).seconds();
 
@@ -429,6 +366,61 @@ void PointCloudConcatenateDataSynchronizerComponent::publishClouds(
         debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
           "debug" + pair.first + "/pipeline_latency_ms", pipeline_latency_ms);
       }
+    }
+  }
+}
+
+void PointCloudConcatenateDataSynchronizerComponent::convertToXYZIRCCloud(
+  const sensor_msgs::msg::PointCloud2::SharedPtr & input_ptr,
+  sensor_msgs::msg::PointCloud2::SharedPtr & output_ptr)
+{
+  output_ptr->header = input_ptr->header;
+
+  PointCloud2Modifier<PointXYZIRC, autoware_point_types::PointXYZIRCGenerator> output_modifier{
+    *output_ptr, input_ptr->header.frame_id};
+  output_modifier.reserve(input_ptr->width);
+
+  bool has_valid_intensity =
+    std::any_of(input_ptr->fields.begin(), input_ptr->fields.end(), [](auto & field) {
+      return field.name == "intensity" && field.datatype == sensor_msgs::msg::PointField::UINT8;
+    });
+
+  bool has_valid_return_type =
+    std::any_of(input_ptr->fields.begin(), input_ptr->fields.end(), [](auto & field) {
+      return field.name == "return_type" && field.datatype == sensor_msgs::msg::PointField::UINT8;
+    });
+
+  bool has_valid_channel =
+    std::any_of(input_ptr->fields.begin(), input_ptr->fields.end(), [](auto & field) {
+      return field.name == "channel" && field.datatype == sensor_msgs::msg::PointField::UINT16;
+    });
+
+  sensor_msgs::PointCloud2Iterator<float> it_x(*input_ptr, "x");
+  sensor_msgs::PointCloud2Iterator<float> it_y(*input_ptr, "y");
+  sensor_msgs::PointCloud2Iterator<float> it_z(*input_ptr, "z");
+
+  if (has_valid_intensity && has_valid_return_type && has_valid_channel) {
+    sensor_msgs::PointCloud2Iterator<std::uint8_t> it_i(*input_ptr, "intensity");
+    sensor_msgs::PointCloud2Iterator<std::uint8_t> it_r(*input_ptr, "return_type");
+    sensor_msgs::PointCloud2Iterator<std::uint16_t> it_c(*input_ptr, "channel");
+
+    for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z, ++it_i, ++it_r, ++it_c) {
+      PointXYZIRC point;
+      point.x = *it_x;
+      point.y = *it_y;
+      point.z = *it_z;
+      point.intensity = *it_i;
+      point.return_type = *it_r;
+      point.channel = *it_c;
+      output_modifier.push_back(std::move(point));
+    }
+  } else {
+    for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z) {
+      PointXYZIRC point;
+      point.x = *it_x;
+      point.y = *it_y;
+      point.z = *it_z;
+      output_modifier.push_back(std::move(point));
     }
   }
 }
