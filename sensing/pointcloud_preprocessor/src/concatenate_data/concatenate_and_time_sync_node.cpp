@@ -228,6 +228,7 @@ std::string PointCloudConcatenateDataSynchronizerComponent::replaceSyncTopicName
 void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
   const sensor_msgs::msg::PointCloud2::SharedPtr & input_ptr, const std::string & topic_name)
 {
+  stop_watch_ptr_->toc("processing_time", true);
   if (!utils::is_data_layout_compatible_with_point_xyzirc(*input_ptr)) {
     RCLCPP_ERROR(
       get_logger(), "The pointcloud layout is not compatible with PointXYZIRC. Aborting");
@@ -375,7 +376,7 @@ void PointCloudConcatenateDataSynchronizerComponent::publishClouds(
   double reference_timestamp_min, double reference_timestamp_max)
 {
   // std::cout << "on publishClouds" << std::endl;
-  stop_watch_ptr_->toc("processing_time", true);
+
   current_concat_cloud_timestamp_ = rclcpp::Time(concatenate_cloud_ptr->header.stamp).seconds();
 
   if (
