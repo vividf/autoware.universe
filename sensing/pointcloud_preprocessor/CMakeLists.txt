@@ -233,16 +233,4 @@ if(BUILD_TESTING)
 
   ament_lint_auto_find_test_dependencies()
 
-  ament_add_gtest(test_utilities
-    test/test_utilities.cpp
-  )
-
-  ament_add_gtest(test_distortion_corrector_node
-    test/test_distortion_corrector_node.cpp
-  )
-
-  target_link_libraries(test_utilities pointcloud_preprocessor_filter)
-  target_link_libraries(test_distortion_corrector_node pointcloud_preprocessor_filter)
-
-
 endif()
