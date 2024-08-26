@@ -8,20 +8,20 @@
       
       
       
-        <link rel="canonical" href="https://autowarefoundation.github.io/autoware.universe/main/map/map_height_fitter/">
+        <link rel="canonical" href="https://autowarefoundation.github.io/autoware.universe/main/localization/autoware_pose_estimator_arbiter/">
       
       
-        <link rel="prev" href="../../localization/yabloc/yabloc_pose_initializer/">
+        <link rel="prev" href="../autoware_pose_covariance_modifier/">
       
       
-        <link rel="next" href="../map_loader/">
+        <link rel="next" href="example_rule/">
       
       <link rel="icon" href="../../docs/assets/images/autoware-foundation.png">
       <meta name="generator" content="mkdocs-1.4.3, mkdocs-material-9.1.20">
     
     
       
-        <title>map_height_fitter - Autoware Universe Documentation</title>
+        <title>autoware_pose_estimator_arbiter - Autoware Universe Documentation</title>
       
     
     
@@ -77,7 +77,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#map_height_fitter" class="md-skip">
+        <a href="#autoware_pose_estimator_arbiter" class="md-skip">
           Skip to content
         </a>
       
@@ -116,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              map_height_fitter
+              autoware_pose_estimator_arbiter
             
           </span>
         </div>
@@ -293,6 +293,8 @@
         
   
   
+    
+  
 
 
   
@@ -304,7 +306,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../../localization/autoware_geo_pose_projector/" class="md-tabs__link">
+      <a href="../autoware_geo_pose_projector/" class="md-tabs__link md-tabs__link--active">
         Localization
       </a>
     </li>
@@ -316,8 +318,6 @@
         
   
   
-    
-  
 
 
   
@@ -329,7 +329,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="./" class="md-tabs__link md-tabs__link--active">
+      <a href="../../map/autoware_map_height_fitter/" class="md-tabs__link">
         Map
       </a>
     </li>
@@ -3598,16 +3598,16 @@
 
   
   
+    
+  
   
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
       
       
       
-        
-      
-      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
       
       
         
@@ -3648,7 +3648,7 @@
           <span class="md-nav__icon md-icon"></span>
         </label>
       
-      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
         <label class="md-nav__title" for="__nav_5">
           <span class="md-nav__icon md-icon"></span>
           Localization
@@ -3683,7 +3683,7 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/autoware_geo_pose_projector/">Autoware geo pose projector</a>
+          <a href="../autoware_geo_pose_projector/">Autoware geo pose projector</a>
           
         </div>
       
@@ -3726,74 +3726,22 @@
             
           
         
-          
-        
       
       
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/autoware_landmark_based_localizer/">Autoware landmark based localizer</a>
-          
-            <label for="__nav_5_2">
-              <span class="md-nav__icon md-icon"></span>
-            </label>
+          <a href="../autoware_gyro_odometer/">Autoware gyro odometer</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_2">
           <span class="md-nav__icon md-icon"></span>
-          Autoware landmark based localizer
+          Autoware gyro odometer
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
-            
-          
-            
-              
-  
-  
-  
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-      
-      
-      
-        
-      
-      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_2_2" >
-      
-      
-        
-          
-            
-          
-        
-      
-      
-        
-        
-        <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/autoware_landmark_based_localizer/autoware_ar_tag_based_localizer/">Autoware ar tag based localizer</a>
-          
-        </div>
-      
-      <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_2_2_label" aria-expanded="false">
-        <label class="md-nav__title" for="__nav_5_2_2">
-          <span class="md-nav__icon md-icon"></span>
-          Autoware ar tag based localizer
-        </label>
-        <ul class="md-nav__list" data-md-scrollfix>
-          
-            
-          
-        </ul>
-      </nav>
-    </li>
-  
-
             
           
         </ul>
@@ -3826,22 +3774,122 @@
             
           
         
+          
+        
+          
+        
       
       
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/autoware_pose2twist/">Autoware pose2twist</a>
+          <a href="../autoware_landmark_based_localizer/">Autoware landmark based localizer</a>
+          
+            <label for="__nav_5_3">
+              <span class="md-nav__icon md-icon"></span>
+            </label>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_3_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_3">
           <span class="md-nav__icon md-icon"></span>
-          Autoware pose2twist
+          Autoware landmark based localizer
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+        
+      
+      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_3_2" >
+      
+      
+        
+          
+            
+          
+        
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../autoware_landmark_based_localizer/autoware_ar_tag_based_localizer/">Autoware ar tag based localizer</a>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_3_2_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_5_3_2">
+          <span class="md-nav__icon md-icon"></span>
+          Autoware ar tag based localizer
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+        
+      
+      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_3_3" >
+      
+      
+        
+          
+            
+          
+        
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../autoware_landmark_based_localizer/autoware_lidar_marker_localizer/">Autoware lidar marker localizer</a>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_3_3_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_5_3_3">
+          <span class="md-nav__icon md-icon"></span>
+          Autoware lidar marker localizer
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
             
           
         </ul>
@@ -3879,14 +3927,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/autoware_pose_covariance_modifier/">Autoware pose covariance modifier</a>
+          <a href="../autoware_localization_error_monitor/">Autoware localization error monitor</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_4_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_4">
           <span class="md-nav__icon md-icon"></span>
-          Autoware pose covariance modifier
+          Autoware localization error monitor
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -3927,14 +3975,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/autoware_stop_filter/">Autoware stop filter</a>
+          <a href="../autoware_pose2twist/">Autoware pose2twist</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_5_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_5">
           <span class="md-nav__icon md-icon"></span>
-          Autoware stop filter
+          Autoware pose2twist
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -3975,14 +4023,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/autoware_twist2accel/">Autoware twist2accel</a>
+          <a href="../autoware_pose_covariance_modifier/">Autoware pose covariance modifier</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_6_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_6">
           <span class="md-nav__icon md-icon"></span>
-          Autoware twist2accel
+          Autoware pose covariance modifier
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -3999,18 +4047,63 @@
               
   
   
+    
+  
   
     
       
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" checked>
+      
+      
+        
+          
+            
+          
+        
+          
+        
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index md-nav__link--active">
+          <a href="./">Autoware pose estimator arbiter</a>
+          
+            <label for="__nav_5_7">
+              <span class="md-nav__icon md-icon"></span>
+            </label>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="true">
+        <label class="md-nav__title" for="__nav_5_7">
+          <span class="md-nav__icon md-icon"></span>
+          Autoware pose estimator arbiter
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
       
       
       
       
         
       
-      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_7" >
+      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_7_2" >
       
       
         
@@ -4023,17 +4116,24 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/ekf_localizer/">Ekf localizer</a>
+          <a href="example_rule/">Example rule</a>
           
         </div>
       
-      <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
-        <label class="md-nav__title" for="__nav_5_7">
+      <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_7_2_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_5_7_2">
           <span class="md-nav__icon md-icon"></span>
-          Ekf localizer
+          Example rule
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
             
           
         </ul>
@@ -4071,14 +4171,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/gyro_odometer/">Gyro odometer</a>
+          <a href="../autoware_pose_instability_detector/">Autoware pose instability detector</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_8">
           <span class="md-nav__icon md-icon"></span>
-          Gyro odometer
+          Autoware pose instability detector
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4119,14 +4219,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/localization_error_monitor/">Localization error monitor</a>
+          <a href="../autoware_stop_filter/">Autoware stop filter</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_9_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_9">
           <span class="md-nav__icon md-icon"></span>
-          Localization error monitor
+          Autoware stop filter
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4167,14 +4267,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/localization_util/">Localization util</a>
+          <a href="../autoware_twist2accel/">Autoware twist2accel</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_10_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_10">
           <span class="md-nav__icon md-icon"></span>
-          Localization util
+          Autoware twist2accel
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4215,14 +4315,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/ndt_scan_matcher/">Ndt scan matcher</a>
+          <a href="../ekf_localizer/">Ekf localizer</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_11_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_11">
           <span class="md-nav__icon md-icon"></span>
-          Ndt scan matcher
+          Ekf localizer
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4258,74 +4358,22 @@
             
           
         
-          
-        
       
       
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/pose_estimator_arbiter/">Pose estimator arbiter</a>
-          
-            <label for="__nav_5_12">
-              <span class="md-nav__icon md-icon"></span>
-            </label>
+          <a href="../localization_util/">Localization util</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_12_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_12">
           <span class="md-nav__icon md-icon"></span>
-          Pose estimator arbiter
+          Localization util
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
-            
-          
-            
-              
-  
-  
-  
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-      
-      
-      
-        
-      
-      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_12_2" >
-      
-      
-        
-          
-            
-          
-        
-      
-      
-        
-        
-        <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/pose_estimator_arbiter/example_rule/">Example rule</a>
-          
-        </div>
-      
-      <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_12_2_label" aria-expanded="false">
-        <label class="md-nav__title" for="__nav_5_12_2">
-          <span class="md-nav__icon md-icon"></span>
-          Example rule
-        </label>
-        <ul class="md-nav__list" data-md-scrollfix>
-          
-            
-          
-        </ul>
-      </nav>
-    </li>
-  
-
             
           
         </ul>
@@ -4363,14 +4411,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/pose_initializer/">Pose initializer</a>
+          <a href="../ndt_scan_matcher/">Ndt scan matcher</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_13_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_13">
           <span class="md-nav__icon md-icon"></span>
-          Pose initializer
+          Ndt scan matcher
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4411,14 +4459,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/pose_instability_detector/">Pose instability detector</a>
+          <a href="../pose_initializer/">Pose initializer</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_14_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_14">
           <span class="md-nav__icon md-icon"></span>
-          Pose instability detector
+          Pose initializer
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4469,7 +4517,7 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/yabloc/">Yabloc</a>
+          <a href="../yabloc/">Yabloc</a>
           
             <label for="__nav_5_15">
               <span class="md-nav__icon md-icon"></span>
@@ -4512,7 +4560,7 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/yabloc/yabloc_common/">Yabloc common</a>
+          <a href="../yabloc/yabloc_common/">Yabloc common</a>
           
         </div>
       
@@ -4558,7 +4606,7 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/yabloc/yabloc_image_processing/">Yabloc image processing</a>
+          <a href="../yabloc/yabloc_image_processing/">Yabloc image processing</a>
           
         </div>
       
@@ -4604,7 +4652,7 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/yabloc/yabloc_monitor/">Yabloc monitor</a>
+          <a href="../yabloc/yabloc_monitor/">Yabloc monitor</a>
           
         </div>
       
@@ -4650,7 +4698,7 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/yabloc/yabloc_particle_filter/">Yabloc particle filter</a>
+          <a href="../yabloc/yabloc_particle_filter/">Yabloc particle filter</a>
           
         </div>
       
@@ -4696,7 +4744,7 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../localization/yabloc/yabloc_pose_initializer/">Yabloc pose initializer</a>
+          <a href="../yabloc/yabloc_pose_initializer/">Yabloc pose initializer</a>
           
         </div>
       
@@ -4735,16 +4783,16 @@
 
   
   
-    
-  
   
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
       
       
       
-      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+      
+      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
       
       
         
@@ -4763,7 +4811,7 @@
           <span class="md-nav__icon md-icon"></span>
         </label>
       
-      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_6">
           <span class="md-nav__icon md-icon"></span>
           Map
@@ -4774,18 +4822,18 @@
               
   
   
-    
-  
   
     
       
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
       
       
       
-      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_1" checked>
+        
+      
+      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6_1" >
       
       
         
@@ -4797,15 +4845,15 @@
       
         
         
-        <div class="md-nav__link md-nav__link--index md-nav__link--active">
-          <a href="./">Map height fitter</a>
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../../map/autoware_map_height_fitter/">Autoware map height fitter</a>
           
         </div>
       
-      <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_1_label" aria-expanded="true">
+      <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_1_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_6_1">
           <span class="md-nav__icon md-icon"></span>
-          Map height fitter
+          Autoware map height fitter
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4846,14 +4894,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../map_loader/">Map loader</a>
+          <a href="../../map/autoware_map_tf_generator/">Autoware map tf generator</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_6_2">
           <span class="md-nav__icon md-icon"></span>
-          Map loader
+          Autoware map tf generator
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4894,14 +4942,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../map_projection_loader/">Map projection loader</a>
+          <a href="../../map/map_loader/">Map loader</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_3_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_6_3">
           <span class="md-nav__icon md-icon"></span>
-          Map projection loader
+          Map loader
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4942,14 +4990,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../map_tf_generator/">Map tf generator</a>
+          <a href="../../map/map_projection_loader/">Map projection loader</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_4_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_6_4">
           <span class="md-nav__icon md-icon"></span>
-          Map tf generator
+          Map projection loader
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -13054,22 +13102,84 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#parameters" class="md-nav__link">
-    Parameters
+  <a href="#abstract" class="md-nav__link">
+    Abstract
+  </a>
+  
+    <nav class="md-nav" aria-label="Abstract">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-do-we-need-a-stopresume-mechanism" class="md-nav__link">
+    Why do we need a stop/resume mechanism?
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#supporting-pose_estimators" class="md-nav__link">
+    Supporting pose_estimators
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#demonstration" class="md-nav__link">
+    Demonstration
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interfaces" class="md-nav__link">
+    Interfaces
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#topic-subscription" class="md-nav__link">
-    Topic subscription
+  <a href="#trouble-shooting" class="md-nav__link">
+    Trouble Shooting
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#service-client" class="md-nav__link">
-    Service client
+  <a href="#architecture" class="md-nav__link">
+    Architecture
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-launch" class="md-nav__link">
+    How to launch
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#switching-rules" class="md-nav__link">
+    Switching Rules
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pose-initialization" class="md-nav__link">
+    Pose Initialization
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#future-plans" class="md-nav__link">
+    Future Plans
   </a>
   
 </li>
@@ -13092,68 +13202,265 @@
   
 
 
-<div><h1 id="map_height_fitter">map_height_fitter<a class="headerlink" href="#map_height_fitter" title="Permanent link">#</a></h1>
-<p>This library fits the given point with the ground of the point cloud map.
-The map loading operation is switched by the parameter <code>enable_partial_load</code> of the node specified by <code>map_loader_name</code>.
-The node using this library must use multi thread executor.</p>
-<h2 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">#</a></h2>
-<table>
-<thead>
-<tr>
-<th>Name</th>
-<th>Type</th>
-<th>Description</th>
-<th>Default</th>
-<th>Range</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>map_loader_name</td>
-<td>string</td>
-<td>Node name of the map loader from which this map_height_fitter will retrieve its parameters</td>
-<td>/map/pointcloud_map_loader</td>
-<td>N/A</td>
-</tr>
-<tr>
-<td>target</td>
-<td>string</td>
-<td>Target map to fit (choose from 'pointcloud_map', 'vector_map')</td>
-<td>pointcloud_map</td>
-<td>N/A</td>
-</tr>
-</tbody>
-</table>
-<h2 id="topic-subscription">Topic subscription<a class="headerlink" href="#topic-subscription" title="Permanent link">#</a></h2>
-<table>
-<thead>
-<tr>
-<th>Topic Name</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>~/pointcloud_map</td>
-<td>The topic containing the whole pointcloud map (only used when <code>enable_partial_load = false</code>)</td>
-</tr>
-</tbody>
-</table>
-<h2 id="service-client">Service client<a class="headerlink" href="#service-client" title="Permanent link">#</a></h2>
-<table>
-<thead>
-<tr>
-<th>Service Name</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>~/partial_map_load</td>
-<td>The service to load the partial map</td>
-</tr>
-</tbody>
-</table></div>
+<div><h1 id="autoware_pose_estimator_arbiter">autoware_pose_estimator_arbiter<a class="headerlink" href="#autoware_pose_estimator_arbiter" title="Permanent link">#</a></h1>
+<p>Table of contents:</p>
+<ul>
+<li><a href="#abstract">Abstract</a></li>
+<li><a href="#interfaces">Interface</a></li>
+<li><a href="#architecture">Architecture</a></li>
+<li><a href="#how-to-launch">How to launch</a></li>
+<li><a href="#switching-rules">Switching Rules</a></li>
+<li><a href="#pose-initialization">Pose Initialization</a></li>
+<li><a href="#future-plans">Future Plans</a></li>
+</ul>
+<h2 id="abstract">Abstract<a class="headerlink" href="#abstract" title="Permanent link">#</a></h2>
+<p>This package launches multiple pose estimators and provides the capability to stop or resume specific pose estimators based on the situation.
+It provides provisional switching rules and will be adaptable to a wide variety of rules in the future.</p>
+<p>Please refer to <a href="https://github.com/orgs/autowarefoundation/discussions/3878">this discussion</a> about other ideas on implementation.</p>
+<h3 id="why-do-we-need-a-stopresume-mechanism">Why do we need a stop/resume mechanism?<a class="headerlink" href="#why-do-we-need-a-stopresume-mechanism" title="Permanent link">#</a></h3>
+<p>It is possible to launch multiple pose_estimators and fuse them using a Kalman filter by editing launch files.
+However, this approach is not preferable due to computational costs.</p>
+<p>Particularly, NDT and YabLoc are computationally intensive, and it's not recommended to run them simultaneously.
+Also, even if both can be activated at the same time, the Kalman Filter may be affected by one of them giving bad output.</p>
+<blockquote>
+<p>[!NOTE]
+Currently, <strong>there is ONLY A RULE implemented that always enables all pose_estimators.</strong>
+If users want to toggle pose_estimator with their own rules, they need to add new rules. by referring to example_rule.
+The <a href="example_rule/">example_rule</a> has source code that can be used as a reference for implementing the rules.</p>
+</blockquote>
+<h3 id="supporting-pose_estimators">Supporting pose_estimators<a class="headerlink" href="#supporting-pose_estimators" title="Permanent link">#</a></h3>
+<ul>
+<li><a href="https://github.com/autowarefoundation/autoware.universe/tree/main/localization/ndt_scan_matcher">ndt_scan_matcher</a></li>
+<li><a href="https://autowarefoundation.github.io/autoware-documentation/main/how-to-guides/integrating-autoware/launch-autoware/localization/eagleye/">eagleye</a></li>
+<li><a href="https://github.com/autowarefoundation/autoware.universe/tree/main/localization/yabloc">yabloc</a></li>
+<li><a href="https://github.com/autowarefoundation/autoware.universe/tree/main/localization/autoware_landmark_based_localizer">landmark_based_localizer</a></li>
+</ul>
+<h3 id="demonstration">Demonstration<a class="headerlink" href="#demonstration" title="Permanent link">#</a></h3>
+<p>The following video demonstrates the switching of four different pose estimators.</p>
+<div><video controls src="https://github.com/autowarefoundation/autoware.universe/assets/24854875/d4d48be4-748e-4ffc-bde2-d498911ed3a1" muted="false" width="800"></video></div>
+
+<p>Users can reproduce the demonstration using the following data and launch command:</p>
+<p><a href="https://drive.google.com/file/d/1ZNlkyCtwe04iKFREdeZ5xuMU_jWpwM3W/view">sample data (rosbag &amp; map)</a>
+The rosbag is simulated data created by <a href="https://tier4.github.io/AWSIM/">AWSIM</a>.
+The map is an edited version of the <a href="https://github.com/tier4/AWSIM/releases/download/v1.1.0/nishishinjuku_autoware_map.zip">original map data</a> published on the AWSIM documentation page to make it suitable for multiple pose_estimators.</p>
+<div class="highlight"><pre><span></span><code>ros2<span class="w"> </span>launch<span class="w"> </span>autoware_launch<span class="w"> </span>logging_simulator.launch.xml<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>map_path:<span class="o">=</span>&lt;your-map-path&gt;<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>vehicle_model:<span class="o">=</span>sample_vehicle<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>sensor_model:<span class="o">=</span>awsim_sensor_kit<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>pose_source:<span class="o">=</span>ndt_yabloc_artag_eagleye
+</code></pre></div>
+<h2 id="interfaces">Interfaces<a class="headerlink" href="#interfaces" title="Permanent link">#</a></h2>
+<details>
+<summary>Click to show details</summary>
+
+### Parameters
+
+There are no parameters.
+
+### Services
+
+| Name             | Type                            | Description                     |
+| ---------------- | ------------------------------- | ------------------------------- |
+| `/config_logger` | logging_demo::srv::ConfigLogger | service to modify logging level |
+
+### Clients
+
+| Name                  | Type                  | Description                       |
+| --------------------- | --------------------- | --------------------------------- |
+| `/yabloc_suspend_srv` | std_srv::srv::SetBool | service to stop or restart yabloc |
+
+### Subscriptions
+
+For pose estimator arbitration:
+
+| Name                                  | Type                                          | Description    |
+| ------------------------------------- | --------------------------------------------- | -------------- |
+| `/input/artag/image`                  | sensor_msgs::msg::Image                       | ArTag input    |
+| `/input/yabloc/image`                 | sensor_msgs::msg::Image                       | YabLoc input   |
+| `/input/eagleye/pose_with_covariance` | geometry_msgs::msg::PoseWithCovarianceStamped | Eagleye output |
+| `/input/ndt/pointcloud`               | sensor_msgs::msg::PointCloud2                 | NDT input      |
+
+For switching rule:
+
+| Name                          | Type                                                         | Description                       |
+| ----------------------------- | ------------------------------------------------------------ | --------------------------------- |
+| `/input/vector_map`           | autoware_map_msgs::msg::LaneletMapBin                        | vector map                        |
+| `/input/pose_with_covariance` | geometry_msgs::msg::PoseWithCovarianceStamped                | localization final output         |
+| `/input/initialization_state` | autoware_adapi_v1_msgs::msg::LocalizationInitializationState | localization initialization state |
+
+### Publications
+
+| Name                                   | Type                                          | Description                                            |
+| -------------------------------------- | --------------------------------------------- | ------------------------------------------------------ |
+| `/output/artag/image`                  | sensor_msgs::msg::Image                       | relayed ArTag input                                    |
+| `/output/yabloc/image`                 | sensor_msgs::msg::Image                       | relayed YabLoc input                                   |
+| `/output/eagleye/pose_with_covariance` | geometry_msgs::msg::PoseWithCovarianceStamped | relayed Eagleye output                                 |
+| `/output/ndt/pointcloud`               | sensor_msgs::msg::PointCloud2                 | relayed NDT input                                      |
+| `/output/debug/marker_array`           | visualization_msgs::msg::MarkerArray          | [debug topic] everything for visualization             |
+| `/output/debug/string`                 | visualization_msgs::msg::MarkerArray          | [debug topic] debug information such as current status |
+
+</details>
+
+<h2 id="trouble-shooting">Trouble Shooting<a class="headerlink" href="#trouble-shooting" title="Permanent link">#</a></h2>
+<p>If it does not seems to work, users can get more information in the following ways.</p>
+<blockquote>
+<p>[!TIP]</p>
+<div class="highlight"><pre><span></span><code>ros2<span class="w"> </span>service<span class="w"> </span>call<span class="w"> </span>/localization/autoware_pose_estimator_arbiter/config_logger<span class="w"> </span>logging_demo/srv/ConfigLogger<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s1">'{logger_name: localization.autoware_pose_estimator_arbiter, level: debug}'</span>
+</code></pre></div>
+</blockquote>
+<h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">#</a></h2>
+<details>
+<summary>Click to show details</summary>
+
+### Case of running a single pose estimator
+
+When each pose_estimator is run alone, this package does nothing.
+Following figure shows the node configuration when NDT, YabLoc Eagleye and AR-Tag are run independently.
+
+<img src="./media/single_pose_estimator.drawio.svg" alt="drawing" width="600">
+
+### Case of running multiple pose estimators
+
+When running multiple pose_estimators, autoware_pose_estimator_arbiter is executed.
+It comprises a **switching rule** and **stoppers** corresponding to each pose_estimator.
+
+- Stoppers control the pose_estimator activity by relaying inputs or outputs, or by requesting a suspend service.
+- Switching rules determine which pose_estimator to use.
+
+Which stoppers and switching rules are instantiated depends on the runtime arguments at startup.
+
+Following figure shows the node configuration when all pose_estimator are run simultaneously.
+
+<img src="./media/architecture.drawio.svg" alt="drawing" width="800">
+
+- **NDT**
+
+The NDT stopper relays topics in the front side of the point cloud pre-processor.
+
+- **YabLoc**
+
+The YabLoc stopper relays input image topics in the frontend of the image pre-processor.
+YabLoc includes a particle filter process that operates on a timer, and even when image topics are not streamed, the particle prediction process continues to work.
+To address this, the YabLoc stopper also has a service client for explicitly stopping and resuming YabLoc.
+
+- **Eagleye**
+
+The Eagleye stopper relays Eagleye's output pose topics in the backend of Eagleye's estimation process.
+Eagleye performs time-series processing internally, and it can't afford to stop the input stream.
+Furthermore, Eagleye's estimation process is lightweight enough to be run continuously without a significant load, so the relay is inserted in the backend.
+
+- **ArTag**
+
+The ArTag stopper relays image topics in the front side of the landmark localizer.
+
+</details>
+
+<h2 id="how-to-launch">How to launch<a class="headerlink" href="#how-to-launch" title="Permanent link">#</a></h2>
+<details>
+<summary>Click to show details</summary>
+
+The user can launch the desired pose_estimators by giving the pose_estimator names as a concatenation of underscores for the runtime argument `pose_source`.
+
+<div class="highlight"><pre><span></span><code>ros2<span class="w"> </span>launch<span class="w"> </span>autoware_launch<span class="w"> </span>logging_simulator.launch.xml<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>map_path:<span class="o">=</span>&lt;your-map-path&gt;<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>vehicle_model:<span class="o">=</span>sample_vehicle<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>sensor_model:<span class="o">=</span>awsim_sensor_kit<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>pose_source:<span class="o">=</span>ndt_yabloc_artag_eagleye
+</code></pre></div>
+
+Even if `pose_source` includes an unexpected string, it will be filtered appropriately.
+Please see the table below for details.
+
+| given runtime argument                      | parsed autoware_pose_estimator_arbiter's param (pose_sources) |
+| ------------------------------------------- | ------------------------------------------------------------- |
+| `pose_source:=ndt`                          | `["ndt"]`                                                     |
+| `pose_source:=nan`                          | `[]`                                                          |
+| `pose_source:=yabloc_ndt`                   | `["ndt","yabloc"]`                                            |
+| `pose_source:=yabloc_ndt_ndt_ndt`           | `["ndt","yabloc"]`                                            |
+| `pose_source:=ndt_yabloc_eagleye`           | `["ndt","yabloc","eagleye"]`                                  |
+| `pose_source:=ndt_yabloc_nan_eagleye_artag` | `["ndt","yabloc","eagleye","artag"]`                          |
+
+</details>
+
+<h2 id="switching-rules">Switching Rules<a class="headerlink" href="#switching-rules" title="Permanent link">#</a></h2>
+<details>
+<summary>Click to show details</summary>
+
+Currently, **ONLY ONE RULE** (`enable_all_rule`) is implemented.
+In the future, several rules will be implemented and users will be able to select rules.
+
+&gt; [!TIP]
+&gt; There are presets available to extend the rules. If you want to extend the rules, please see [example_rule](./example_rule/README.md).
+
+### Enable All Rule
+
+This is the default and simplest rule. This rule enables all pose_estimators regardless of their current state.
+
+<pre class="mermaid"><code>flowchart LR
+  A{ }
+  A --whatever --&gt; _A[enable all pose_estimators]</code></pre>
+
+</details>
+
+<h2 id="pose-initialization">Pose Initialization<a class="headerlink" href="#pose-initialization" title="Permanent link">#</a></h2>
+<p>When using multiple pose_estimators, it is necessary to appropriately adjust the parameters provided to the <code>pose_initializer</code>.</p>
+<details>
+<summary>Click to show details</summary>
+
+The following table is based on the runtime argument "pose_source" indicating which initial pose estimation methods are available and the parameters that should be provided to the pose_initialization node.
+To avoid making the application too complicated, a priority is established so that NDT is always used when it is available.
+(The pose_initializer will only perform NDT-based initial pose estimation when `ndt_enabled` and `yabloc_enabled` are both `true`).
+
+This table's usage is described from three perspectives:
+
+- **Autoware Users:** Autoware users do not need to consult this table.
+  They simply provide the desired combinations of pose_estimators, and the appropriate parameters are automatically provided to the pose_initializer.
+- **Autoware Developers:** Autoware developers can consult this table to know which parameters are assigned.
+- **Who implements New Pose Estimator Switching:**
+  Developers must extend this table and implement the assignment of appropriate parameters to the pose_initializer.
+
+|         pose_source         | invoked initialization method | `ndt_enabled` | `yabloc_enabled` | `gnss_enabled` | `sub_gnss_pose_cov`                          |
+| :-------------------------: | ----------------------------- | ------------- | ---------------- | -------------- | -------------------------------------------- |
+|             ndt             | ndt                           | true          | false            | true           | /sensing/gnss/pose_with_covariance           |
+|           yabloc            | yabloc                        | false         | true             | true           | /sensing/gnss/pose_with_covariance           |
+|           eagleye           | vehicle needs run for a while | false         | false            | true           | /localization/pose_estimator/eagleye/...     |
+|            artag            | 2D Pose Estimate (RViz)       | false         | false            | true           | /sensing/gnss/pose_with_covariance           |
+|         ndt, yabloc         | ndt                           | true          | true             | true           | /sensing/gnss/pose_with_covariance           |
+|        ndt, eagleye         | ndt                           | true          | false            | true           | /sensing/gnss/pose_with_covariance           |
+|         ndt, artag          | ndt                           | true          | false            | true           | /sensing/gnss/pose_with_covariance           |
+|       yabloc, eagleye       | yabloc                        | false         | true             | true           | /sensing/gnss/pose_with_covariance           |
+|        yabloc, artag        | yabloc                        | false         | true             | true           | /sensing/gnss/pose_with_covariance           |
+|       eagleye, artag        | vehicle needs run for a while | false         | false            | true           | /localization/pose_estimator/eagleye/pose... |
+|    ndt, yabloc, eagleye     | ndt                           | true          | true             | true           | /sensing/gnss/pose_with_covariance           |
+|     ndt, eagleye, artag     | ndt                           | true          | false            | true           | /sensing/gnss/pose_with_covariance           |
+|   yabloc, eagleye, artag    | yabloc                        | false         | true             | true           | /sensing/gnss/pose_with_covariance           |
+| ndt, yabloc, eagleye, artag | ndt                           | true          | true             | true           | /sensing/gnss/pose_with_covariance           |
+
+</details>
+
+<h2 id="future-plans">Future Plans<a class="headerlink" href="#future-plans" title="Permanent link">#</a></h2>
+<details>
+<summary>Click to show details</summary>
+
+### gradually switching
+
+In the future, this package will provide not only ON/OFF switching, but also a mechanism for low frequency operation, such as 50% NDT &amp; 50% YabLoc.
+
+### stopper for pose_estimators to be added in the future
+
+The basic strategy is to realize ON/OFF switching by relaying the input or output topics of that pose_estimator.
+If pose_estimator involves time-series processing with heavy computations, it's not possible to pause and resume with just topic relaying.
+
+In such cases, there may not be generally applicable solutions, but the following methods may help:
+
+1. Completely stop and **reinitialize** time-series processing, as seen in the case of YabLoc.
+2. Subscribe to `localization/kinematic_state` and **keep updating states** to ensure that the estimation does not break (relying on the output of the active pose_estimator).
+3. The multiple pose_estimator **does not support** that particular pose_estimator.
+
+Please note that this issue is fundamental to realizing multiple pose_estimators, and it will arise regardless of the architecture proposed in this case.
+
+</details></div>
 
 
 
@@ -13180,7 +13487,7 @@ The node using this library must use multi thread executor.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../../localization/yabloc/yabloc_pose_initializer/" class="md-footer__link md-footer__link--prev" aria-label="Previous: yabloc_pose_initializer" rel="prev">
+          <a href="../autoware_pose_covariance_modifier/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Autoware Pose Covariance Modifier Node" rel="prev">
             <div class="md-footer__button md-icon">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12Z"/></svg>
             </div>
@@ -13189,20 +13496,20 @@ The node using this library must use multi thread executor.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                yabloc_pose_initializer
+                Autoware Pose Covariance Modifier Node
               </div>
             </div>
           </a>
         
         
           
-          <a href="../map_loader/" class="md-footer__link md-footer__link--next" aria-label="Next: map_loader package" rel="next">
+          <a href="example_rule/" class="md-footer__link md-footer__link--next" aria-label="Next: example rule" rel="next">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                map_loader package
+                example rule
               </div>
             </div>
             <div class="md-footer__button md-icon">
