@@ -8,20 +8,20 @@
       
       
       
-        <link rel="canonical" href="https://autowarefoundation.github.io/autoware.universe/latest/localization/gyro_odometer/">
+        <link rel="canonical" href="https://autowarefoundation.github.io/autoware.universe/latest/map/autoware_map_tf_generator/">
       
       
-        <link rel="prev" href="../ekf_localizer/">
+        <link rel="prev" href="../autoware_map_height_fitter/">
       
       
-        <link rel="next" href="../localization_error_monitor/">
+        <link rel="next" href="../map_loader/">
       
       <link rel="icon" href="../../docs/assets/images/autoware-foundation.png">
       <meta name="generator" content="mkdocs-1.4.3, mkdocs-material-9.1.20">
     
     
       
-        <title>gyro_odometer - Autoware Universe Documentation</title>
+        <title>autoware_map_tf_generator - Autoware Universe Documentation</title>
       
     
     
@@ -77,7 +77,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#gyro_odometer" class="md-skip">
+        <a href="#autoware_map_tf_generator" class="md-skip">
           Skip to content
         </a>
       
@@ -116,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              gyro_odometer
+              autoware_map_tf_generator
             
           </span>
         </div>
@@ -293,8 +293,6 @@
         
   
   
-    
-  
 
 
   
@@ -306,7 +304,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../autoware_geo_pose_projector/" class="md-tabs__link md-tabs__link--active">
+      <a href="../../localization/autoware_geo_pose_projector/" class="md-tabs__link">
         Localization
       </a>
     </li>
@@ -318,6 +316,8 @@
         
   
   
+    
+  
 
 
   
@@ -329,7 +329,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../../map/map_height_fitter/" class="md-tabs__link">
+      <a href="../autoware_map_height_fitter/" class="md-tabs__link md-tabs__link--active">
         Map
       </a>
     </li>
@@ -3598,16 +3598,16 @@
 
   
   
-    
-  
   
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
       
       
       
-      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+      
+      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
       
       
         
@@ -3648,7 +3648,7 @@
           <span class="md-nav__icon md-icon"></span>
         </label>
       
-      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5">
           <span class="md-nav__icon md-icon"></span>
           Localization
@@ -3683,7 +3683,7 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../autoware_geo_pose_projector/">Autoware geo pose projector</a>
+          <a href="../../localization/autoware_geo_pose_projector/">Autoware geo pose projector</a>
           
         </div>
       
@@ -3726,74 +3726,22 @@
             
           
         
-          
-        
       
       
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../autoware_landmark_based_localizer/">Autoware landmark based localizer</a>
-          
-            <label for="__nav_5_2">
-              <span class="md-nav__icon md-icon"></span>
-            </label>
+          <a href="../../localization/autoware_gyro_odometer/">Autoware gyro odometer</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_2">
           <span class="md-nav__icon md-icon"></span>
-          Autoware landmark based localizer
+          Autoware gyro odometer
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
-            
-          
-            
-              
-  
-  
-  
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-      
-      
-      
-        
-      
-      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_2_2" >
-      
-      
-        
-          
-            
-          
-        
-      
-      
-        
-        
-        <div class="md-nav__link md-nav__link--index ">
-          <a href="../autoware_landmark_based_localizer/autoware_ar_tag_based_localizer/">Autoware ar tag based localizer</a>
-          
-        </div>
-      
-      <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_2_2_label" aria-expanded="false">
-        <label class="md-nav__title" for="__nav_5_2_2">
-          <span class="md-nav__icon md-icon"></span>
-          Autoware ar tag based localizer
-        </label>
-        <ul class="md-nav__list" data-md-scrollfix>
-          
-            
-          
-        </ul>
-      </nav>
-    </li>
-  
-
             
           
         </ul>
@@ -3826,22 +3774,122 @@
             
           
         
+          
+        
+          
+        
       
       
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../autoware_pose2twist/">Autoware pose2twist</a>
+          <a href="../../localization/autoware_landmark_based_localizer/">Autoware landmark based localizer</a>
+          
+            <label for="__nav_5_3">
+              <span class="md-nav__icon md-icon"></span>
+            </label>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_3_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_3">
           <span class="md-nav__icon md-icon"></span>
-          Autoware pose2twist
+          Autoware landmark based localizer
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+        
+      
+      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_3_2" >
+      
+      
+        
+          
+            
+          
+        
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../../localization/autoware_landmark_based_localizer/autoware_ar_tag_based_localizer/">Autoware ar tag based localizer</a>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_3_2_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_5_3_2">
+          <span class="md-nav__icon md-icon"></span>
+          Autoware ar tag based localizer
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+        
+      
+      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_3_3" >
+      
+      
+        
+          
+            
+          
+        
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../../localization/autoware_landmark_based_localizer/autoware_lidar_marker_localizer/">Autoware lidar marker localizer</a>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_3_3_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_5_3_3">
+          <span class="md-nav__icon md-icon"></span>
+          Autoware lidar marker localizer
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
             
           
         </ul>
@@ -3879,14 +3927,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../autoware_pose_covariance_modifier/">Autoware pose covariance modifier</a>
+          <a href="../../localization/autoware_localization_error_monitor/">Autoware localization error monitor</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_4_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_4">
           <span class="md-nav__icon md-icon"></span>
-          Autoware pose covariance modifier
+          Autoware localization error monitor
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -3927,14 +3975,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../autoware_stop_filter/">Autoware stop filter</a>
+          <a href="../../localization/autoware_pose2twist/">Autoware pose2twist</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_5_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_5">
           <span class="md-nav__icon md-icon"></span>
-          Autoware stop filter
+          Autoware pose2twist
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -3975,14 +4023,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../autoware_twist2accel/">Autoware twist2accel</a>
+          <a href="../../localization/autoware_pose_covariance_modifier/">Autoware pose covariance modifier</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_6_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_6">
           <span class="md-nav__icon md-icon"></span>
-          Autoware twist2accel
+          Autoware pose covariance modifier
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4018,22 +4066,74 @@
             
           
         
+          
+        
       
       
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../ekf_localizer/">Ekf localizer</a>
+          <a href="../../localization/autoware_pose_estimator_arbiter/">Autoware pose estimator arbiter</a>
+          
+            <label for="__nav_5_7">
+              <span class="md-nav__icon md-icon"></span>
+            </label>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_7">
           <span class="md-nav__icon md-icon"></span>
-          Ekf localizer
+          Autoware pose estimator arbiter
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+        
+      
+      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_7_2" >
+      
+      
+        
+          
+            
+          
+        
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../../localization/autoware_pose_estimator_arbiter/example_rule/">Example rule</a>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_7_2_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_5_7_2">
+          <span class="md-nav__icon md-icon"></span>
+          Example rule
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
             
           
         </ul>
@@ -4047,18 +4147,18 @@
               
   
   
-    
-  
   
     
       
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
       
       
       
-      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" checked>
+        
+      
+      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_8" >
       
       
         
@@ -4070,15 +4170,15 @@
       
         
         
-        <div class="md-nav__link md-nav__link--index md-nav__link--active">
-          <a href="./">Gyro odometer</a>
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../../localization/autoware_pose_instability_detector/">Autoware pose instability detector</a>
           
         </div>
       
-      <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="true">
+      <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_8">
           <span class="md-nav__icon md-icon"></span>
-          Gyro odometer
+          Autoware pose instability detector
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4119,14 +4219,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../localization_error_monitor/">Localization error monitor</a>
+          <a href="../../localization/autoware_stop_filter/">Autoware stop filter</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_9_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_9">
           <span class="md-nav__icon md-icon"></span>
-          Localization error monitor
+          Autoware stop filter
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4167,14 +4267,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../localization_util/">Localization util</a>
+          <a href="../../localization/autoware_twist2accel/">Autoware twist2accel</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_10_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_10">
           <span class="md-nav__icon md-icon"></span>
-          Localization util
+          Autoware twist2accel
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4215,14 +4315,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../ndt_scan_matcher/">Ndt scan matcher</a>
+          <a href="../../localization/ekf_localizer/">Ekf localizer</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_11_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_11">
           <span class="md-nav__icon md-icon"></span>
-          Ndt scan matcher
+          Ekf localizer
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4258,74 +4358,22 @@
             
           
         
-          
-        
       
       
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../pose_estimator_arbiter/">Pose estimator arbiter</a>
-          
-            <label for="__nav_5_12">
-              <span class="md-nav__icon md-icon"></span>
-            </label>
+          <a href="../../localization/localization_util/">Localization util</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_12_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_12">
           <span class="md-nav__icon md-icon"></span>
-          Pose estimator arbiter
+          Localization util
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
-            
-          
-            
-              
-  
-  
-  
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-      
-      
-      
-        
-      
-      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_12_2" >
-      
-      
-        
-          
-            
-          
-        
-      
-      
-        
-        
-        <div class="md-nav__link md-nav__link--index ">
-          <a href="../pose_estimator_arbiter/example_rule/">Example rule</a>
-          
-        </div>
-      
-      <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_12_2_label" aria-expanded="false">
-        <label class="md-nav__title" for="__nav_5_12_2">
-          <span class="md-nav__icon md-icon"></span>
-          Example rule
-        </label>
-        <ul class="md-nav__list" data-md-scrollfix>
-          
-            
-          
-        </ul>
-      </nav>
-    </li>
-  
-
             
           
         </ul>
@@ -4363,14 +4411,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../pose_initializer/">Pose initializer</a>
+          <a href="../../localization/ndt_scan_matcher/">Ndt scan matcher</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_13_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_13">
           <span class="md-nav__icon md-icon"></span>
-          Pose initializer
+          Ndt scan matcher
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4411,14 +4459,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../pose_instability_detector/">Pose instability detector</a>
+          <a href="../../localization/pose_initializer/">Pose initializer</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_14_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_5_14">
           <span class="md-nav__icon md-icon"></span>
-          Pose instability detector
+          Pose initializer
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4469,7 +4517,7 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../yabloc/">Yabloc</a>
+          <a href="../../localization/yabloc/">Yabloc</a>
           
             <label for="__nav_5_15">
               <span class="md-nav__icon md-icon"></span>
@@ -4512,7 +4560,7 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../yabloc/yabloc_common/">Yabloc common</a>
+          <a href="../../localization/yabloc/yabloc_common/">Yabloc common</a>
           
         </div>
       
@@ -4558,7 +4606,7 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../yabloc/yabloc_image_processing/">Yabloc image processing</a>
+          <a href="../../localization/yabloc/yabloc_image_processing/">Yabloc image processing</a>
           
         </div>
       
@@ -4604,7 +4652,7 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../yabloc/yabloc_monitor/">Yabloc monitor</a>
+          <a href="../../localization/yabloc/yabloc_monitor/">Yabloc monitor</a>
           
         </div>
       
@@ -4650,7 +4698,7 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../yabloc/yabloc_particle_filter/">Yabloc particle filter</a>
+          <a href="../../localization/yabloc/yabloc_particle_filter/">Yabloc particle filter</a>
           
         </div>
       
@@ -4696,7 +4744,7 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../yabloc/yabloc_pose_initializer/">Yabloc pose initializer</a>
+          <a href="../../localization/yabloc/yabloc_pose_initializer/">Yabloc pose initializer</a>
           
         </div>
       
@@ -4735,16 +4783,16 @@
 
   
   
+    
+  
   
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
       
       
       
-        
-      
-      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
       
       
         
@@ -4763,7 +4811,7 @@
           <span class="md-nav__icon md-icon"></span>
         </label>
       
-      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
         <label class="md-nav__title" for="__nav_6">
           <span class="md-nav__icon md-icon"></span>
           Map
@@ -4798,14 +4846,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../map/map_height_fitter/">Map height fitter</a>
+          <a href="../autoware_map_height_fitter/">Autoware map height fitter</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_1_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_6_1">
           <span class="md-nav__icon md-icon"></span>
-          Map height fitter
+          Autoware map height fitter
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4822,18 +4870,18 @@
               
   
   
+    
+  
   
     
       
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
       
       
       
-        
-      
-      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6_2" >
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_2" checked>
       
       
         
@@ -4845,15 +4893,15 @@
       
         
         
-        <div class="md-nav__link md-nav__link--index ">
-          <a href="../../map/map_loader/">Map loader</a>
+        <div class="md-nav__link md-nav__link--index md-nav__link--active">
+          <a href="./">Autoware map tf generator</a>
           
         </div>
       
-      <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="false">
+      <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="true">
         <label class="md-nav__title" for="__nav_6_2">
           <span class="md-nav__icon md-icon"></span>
-          Map loader
+          Autoware map tf generator
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4894,14 +4942,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../map/map_projection_loader/">Map projection loader</a>
+          <a href="../map_loader/">Map loader</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_3_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_6_3">
           <span class="md-nav__icon md-icon"></span>
-          Map projection loader
+          Map loader
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -4942,14 +4990,14 @@
         
         
         <div class="md-nav__link md-nav__link--index ">
-          <a href="../../map/map_tf_generator/">Map tf generator</a>
+          <a href="../map_projection_loader/">Map projection loader</a>
           
         </div>
       
       <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_4_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_6_4">
           <span class="md-nav__icon md-icon"></span>
-          Map tf generator
+          Map projection loader
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -13061,6 +13109,13 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#inner-workings-algorithms" class="md-nav__link">
+    Inner-workings / Algorithms
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#inputs-outputs" class="md-nav__link">
     Inputs / Outputs
   </a>
@@ -13092,18 +13147,31 @@
     Parameters
   </a>
   
+    <nav class="md-nav" aria-label="Parameters">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#node-parameters" class="md-nav__link">
+    Node Parameters
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#core-parameters" class="md-nav__link">
+    Core Parameters
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
   <a href="#assumptions-known-limits" class="md-nav__link">
     Assumptions / Known limits
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#diagnostics" class="md-nav__link">
-    Diagnostics
   </a>
   
 </li>
@@ -13126,11 +13194,19 @@
   
 
 
-<div><h1 id="gyro_odometer">gyro_odometer<a class="headerlink" href="#gyro_odometer" title="Permanent link">#</a></h1>
+<div><h1 id="autoware_map_tf_generator">autoware_map_tf_generator<a class="headerlink" href="#autoware_map_tf_generator" title="Permanent link">#</a></h1>
 <h2 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">#</a></h2>
-<p><code>gyro_odometer</code> is the package to estimate twist by combining imu and vehicle speed.</p>
+<p>The nodes in this package broadcast the <code>viewer</code> frame for visualization of the map in RViz.</p>
+<p>Note that there is no module to need the <code>viewer</code> frame and this is used only for visualization.</p>
+<p>The following are the supported methods to calculate the position of the <code>viewer</code> frame:</p>
+<ul>
+<li><code>pcd_map_tf_generator_node</code> outputs the geometric center of all points in the PCD.</li>
+<li><code>vector_map_tf_generator_node</code> outputs the geometric center of all points in the point layer.</li>
+</ul>
+<h2 id="inner-workings-algorithms">Inner-workings / Algorithms<a class="headerlink" href="#inner-workings-algorithms" title="Permanent link">#</a></h2>
 <h2 id="inputs-outputs">Inputs / Outputs<a class="headerlink" href="#inputs-outputs" title="Permanent link">#</a></h2>
 <h3 id="input">Input<a class="headerlink" href="#input" title="Permanent link">#</a></h3>
+<h4 id="autoware_pcd_map_tf_generator">autoware_pcd_map_tf_generator<a class="headerlink" href="#autoware_pcd_map_tf_generator" title="Permanent link">#</a></h4>
 <table>
 <thead>
 <tr>
@@ -13141,14 +13217,26 @@
 </thead>
 <tbody>
 <tr>
-<td><code>vehicle/twist_with_covariance</code></td>
-<td><code>geometry_msgs::msg::TwistWithCovarianceStamped</code></td>
-<td>twist with covariance from vehicle</td>
+<td><code>/map/pointcloud_map</code></td>
+<td><code>sensor_msgs::msg::PointCloud2</code></td>
+<td>Subscribe pointcloud map to calculate position of <code>viewer</code> frames</td>
 </tr>
+</tbody>
+</table>
+<h4 id="autoware_vector_map_tf_generator">autoware_vector_map_tf_generator<a class="headerlink" href="#autoware_vector_map_tf_generator" title="Permanent link">#</a></h4>
+<table>
+<thead>
 <tr>
-<td><code>imu</code></td>
-<td><code>sensor_msgs::msg::Imu</code></td>
-<td>imu from sensor</td>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/map/vector_map</code></td>
+<td><code>autoware_map_msgs::msg::LaneletMapBin</code></td>
+<td>Subscribe vector map to calculate position of <code>viewer</code> frames</td>
 </tr>
 </tbody>
 </table>
@@ -13163,13 +13251,16 @@
 </thead>
 <tbody>
 <tr>
-<td><code>twist_with_covariance</code></td>
-<td><code>geometry_msgs::msg::TwistWithCovarianceStamped</code></td>
-<td>estimated twist with covariance</td>
+<td><code>/tf_static</code></td>
+<td><code>tf2_msgs/msg/TFMessage</code></td>
+<td>Broadcast <code>viewer</code> frames</td>
 </tr>
 </tbody>
 </table>
 <h2 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">#</a></h2>
+<h3 id="node-parameters">Node Parameters<a class="headerlink" href="#node-parameters" title="Permanent link">#</a></h3>
+<p>None</p>
+<h3 id="core-parameters">Core Parameters<a class="headerlink" href="#core-parameters" title="Permanent link">#</a></h3>
 <table>
 <thead>
 <tr>
@@ -13182,99 +13273,23 @@
 </thead>
 <tbody>
 <tr>
-<td>output_frame</td>
+<td>map_frame</td>
 <td>string</td>
-<td>output's frame id</td>
-<td>base_link</td>
+<td>The parent frame name of viewer frame</td>
+<td>map</td>
 <td>N/A</td>
 </tr>
 <tr>
-<td>message_timeout_sec</td>
-<td>float</td>
-<td>delay tolerance time for message</td>
-<td>0.2</td>
+<td>viewer_frame</td>
+<td>string</td>
+<td>Name of <code>viewer</code> frame</td>
+<td>viewer</td>
 <td>N/A</td>
 </tr>
 </tbody>
 </table>
 <h2 id="assumptions-known-limits">Assumptions / Known limits<a class="headerlink" href="#assumptions-known-limits" title="Permanent link">#</a></h2>
-<ul>
-<li>[Assumption] The frame_id of input twist message must be set to base_link.</li>
-</ul>
-<ul>
-<li>[Assumption] The covariance in the input messages must be properly assigned.</li>
-</ul>
-<ul>
-<li>[Assumption] The angular velocity is set to zero if both the longitudinal vehicle velocity and the angular velocity around the yaw axis are sufficiently small. This is for suppression of the IMU angular velocity bias. Without this process, we misestimate the vehicle status when stationary.</li>
-</ul>
-<ul>
-<li>[Limitation] The frequency of the output messages depends on the frequency of the input IMU message.</li>
-</ul>
-<ul>
-<li>[Limitation] We cannot produce reliable values for the lateral and vertical velocities. Therefore we assign large values to the corresponding elements in the output covariance matrix.</li>
-</ul>
-<h2 id="diagnostics">Diagnostics<a class="headerlink" href="#diagnostics" title="Permanent link">#</a></h2>
-<p><img src="./media/diagnostic.png" alt="drawing" width="600"></p>
-<table>
-<thead>
-<tr>
-<th>Name</th>
-<th>Description</th>
-<th>Transition condition to Warning</th>
-<th>Transition condition to Error</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>topic_time_stamp</code></td>
-<td>the time stamp of service calling. [nano second]</td>
-<td>none</td>
-<td>none</td>
-</tr>
-<tr>
-<td><code>is_arrived_first_vehicle_twist</code></td>
-<td>whether the vehicle twist topic has been received even once.</td>
-<td>not arrive yet</td>
-<td>none</td>
-</tr>
-<tr>
-<td><code>is_arrived_first_imu</code></td>
-<td>whether the imu topic has been received even once.</td>
-<td>not arrive yet</td>
-<td>none</td>
-</tr>
-<tr>
-<td><code>vehicle_twist_time_stamp_dt</code></td>
-<td>the time difference between the current time and the latest vehicle twist topic. [second]</td>
-<td>none</td>
-<td>the time is <strong>longer</strong> than <code>message_timeout_sec</code></td>
-</tr>
-<tr>
-<td><code>imu_time_stamp_dt</code></td>
-<td>the time difference between the current time and the latest imu topic. [second]</td>
-<td>none</td>
-<td>the time is <strong>longer</strong> than <code>message_timeout_sec</code></td>
-</tr>
-<tr>
-<td><code>vehicle_twist_queue_size</code></td>
-<td>the size of vehicle_twist_queue.</td>
-<td>none</td>
-<td>none</td>
-</tr>
-<tr>
-<td><code>imu_queue_size</code></td>
-<td>the size of gyro_queue.</td>
-<td>none</td>
-<td>none</td>
-</tr>
-<tr>
-<td><code>is_succeed_transform_imu</code></td>
-<td>whether transform imu is succeed or not.</td>
-<td>none</td>
-<td>failed</td>
-</tr>
-</tbody>
-</table></div>
+<p>TBD.</p></div>
 
 
 
@@ -13301,7 +13316,7 @@
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../ekf_localizer/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Overview" rel="prev">
+          <a href="../autoware_map_height_fitter/" class="md-footer__link md-footer__link--prev" aria-label="Previous: autoware_map_height_fitter" rel="prev">
             <div class="md-footer__button md-icon">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12Z"/></svg>
             </div>
@@ -13310,20 +13325,20 @@
                 Previous
               </span>
               <div class="md-ellipsis">
-                Overview
+                autoware_map_height_fitter
               </div>
             </div>
           </a>
         
         
           
-          <a href="../localization_error_monitor/" class="md-footer__link md-footer__link--next" aria-label="Next: localization_error_monitor" rel="next">
+          <a href="../map_loader/" class="md-footer__link md-footer__link--next" aria-label="Next: map_loader package" rel="next">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                localization_error_monitor
+                map_loader package
               </div>
             </div>
             <div class="md-footer__button md-icon">
