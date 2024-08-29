@@ -59,6 +59,8 @@ public:
   void removeExpiredCooperateStatus();
   void clearCooperateStatus();
   bool isActivated(const UUID & uuid) const;
+  bool isForceActivated(const UUID & uuid) const;
+  bool isForceDeactivated(const UUID & UUID) const;
   bool isRegistered(const UUID & uuid) const;
   bool isRTCEnabled(const UUID & uuid) const;
   bool isTerminated(const UUID & uuid) const;
