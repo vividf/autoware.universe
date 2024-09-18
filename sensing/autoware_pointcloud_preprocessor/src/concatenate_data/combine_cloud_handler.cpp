@@ -74,8 +74,8 @@ CombineCloudHandler::CombineCloudHandler(
   output_frame_(output_frame),
   is_motion_compensated_(is_motion_compensated),
   keep_input_frame_in_synchronized_pointcloud_(keep_input_frame_in_synchronized_pointcloud),
-  managed_tf_buffer_ =
-    std::make_unique<autoware::universe_utils::ManagedTransformBuffer>(this, has_static_tf_only)
+  managed_tf_buffer_(
+    std::make_unique<autoware::universe_utils::ManagedTransformBuffer>(node_, has_static_tf_only))
 {
 }
 
@@ -156,8 +156,7 @@ CombineCloudHandler::combinePointClouds(
     sensor_msgs::msg::PointCloud2::SharedPtr cloud = pair.second;
 
     auto transformed_cloud_ptr = std::make_shared<sensor_msgs::msg::PointCloud2>();
-    managed_tf_buffer_->transformPointcloud(
-      output_frame_, cloud->header.frame_id, *transformed_cloud_ptr);
+    managed_tf_buffer_->transformPointcloud(output_frame_, *cloud, *transformed_cloud_ptr);
 
     topic_to_original_stamp_map[topic] = rclcpp::Time(cloud->header.stamp).seconds();
 

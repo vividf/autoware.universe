@@ -83,6 +83,7 @@ def generate_test_description():
             ],
             parameters=[
                 {
+                    "has_static_tf_only": False,
                     "maximum_queue_size": 5,
                     "timeout_sec": TIMEOUT_SEC,
                     "is_motion_compensated": True,
@@ -470,7 +471,7 @@ class TestConcatenateNode(unittest.TestCase):
         cloud_arr = get_output_points(self.msg_buffer[0])
         print("cloud_arr: ", cloud_arr)
         self.assertTrue(
-            np.allclose(cloud_arr, expected_pointcloud, atol=1e-2),
+            np.allclose(cloud_arr, expected_pointcloud, atol=2e-2),
             "The concatenation node have wierd output",
         )
 

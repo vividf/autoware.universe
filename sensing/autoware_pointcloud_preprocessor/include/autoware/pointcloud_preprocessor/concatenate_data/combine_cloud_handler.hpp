@@ -92,12 +92,11 @@ class CombineCloudHandler
 {
 private:
   rclcpp::Node * node_;
-  std::unique_ptr<autoware::universe_utils::StaticTransformBuffer> managed_tf_buffer_{nullptr};
-
   std::vector<std::string> input_topics_;
   std::string output_frame_;
   bool is_motion_compensated_;
   bool keep_input_frame_in_synchronized_pointcloud_;
+  std::unique_ptr<autoware::universe_utils::ManagedTransformBuffer> managed_tf_buffer_{nullptr};
 
   struct RclcppTimeHash_
   {
@@ -112,7 +111,8 @@ public:
 
   CombineCloudHandler(
     rclcpp::Node * node, std::vector<std::string> input_topics, std::string output_frame,
-    bool is_motion_compensated, bool keep_input_frame_in_synchronized_pointcloud);
+    bool is_motion_compensated, bool keep_input_frame_in_synchronized_pointcloud,
+    bool has_static_tf_only);
   void processTwist(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr & input);
   void processOdometry(const nav_msgs::msg::Odometry::ConstSharedPtr & input);
 
