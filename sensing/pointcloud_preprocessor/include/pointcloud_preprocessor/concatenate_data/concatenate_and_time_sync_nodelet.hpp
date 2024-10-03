@@ -64,7 +64,6 @@ public:
 private:
   struct Parameters
   {
-    bool has_static_tf_only;
     int maximum_queue_size;
     double timeout_sec;
     bool is_motion_compensated;

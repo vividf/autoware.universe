@@ -15,7 +15,6 @@
 #include "pointcloud_preprocessor/concatenate_data/combine_cloud_handler.hpp"
 
 #include <pcl_ros/transforms.hpp>
-
 #include <pcl_conversions/pcl_conversions.h>
 
 #include <algorithm>
@@ -25,22 +24,23 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::pointcloud_preprocessor
+namespace pointcloud_preprocessor
 {
 
 CombineCloudHandler::CombineCloudHandler(
   rclcpp::Node & node, std::vector<std::string> input_topics, std::string output_frame,
   bool is_motion_compensated, bool publish_synchronized_pointcloud,
-  bool keep_input_frame_in_synchronized_pointcloud, bool has_static_tf_only)
+  bool keep_input_frame_in_synchronized_pointcloud)
 : node_(node),
+  tf_buffer_(node_.get_clock()),
+  tf_listener_(tf_buffer_),
   input_topics_(input_topics),
   output_frame_(output_frame),
   is_motion_compensated_(is_motion_compensated),
   publish_synchronized_pointcloud_(publish_synchronized_pointcloud),
-  keep_input_frame_in_synchronized_pointcloud_(keep_input_frame_in_synchronized_pointcloud),
-  managed_tf_buffer_(
-    std::make_unique<autoware::universe_utils::ManagedTransformBuffer>(&node_, has_static_tf_only))
+  keep_input_frame_in_synchronized_pointcloud_(keep_input_frame_in_synchronized_pointcloud)
 {
+  
 }
 
 void CombineCloudHandler::process_twist(
@@ -144,7 +144,18 @@ ConcatenatedCloudResult CombineCloudHandler::combine_pointclouds(
 
   for (const auto & [topic, cloud] : topic_to_cloud_map) {
     auto transformed_cloud_ptr = std::make_shared<sensor_msgs::msg::PointCloud2>();
-    managed_tf_buffer_->transformPointcloud(output_frame_, *cloud, *transformed_cloud_ptr);
+    if (output_frame_ != cloud->header.frame_id) {
+      if (!pcl_ros::transformPointCloud(
+            output_frame_, *cloud, *transformed_cloud_ptr, tf_buffer_)) {
+        RCLCPP_ERROR(
+          node_.get_logger(),
+          "Transforming pointcloud from %s to %s failed, please check the defined output frame.",
+          cloud->header.frame_id.c_str(), output_frame_.c_str());
+        transformed_cloud_ptr = cloud;
+      }
+    } else {
+      transformed_cloud_ptr = cloud;
+    }
 
     concatenate_cloud_result.topic_to_original_stamp_map[topic] =
       rclcpp::Time(cloud->header.stamp).seconds();
@@ -213,9 +224,9 @@ ConcatenatedCloudResult CombineCloudHandler::combine_pointclouds(
       if (keep_input_frame_in_synchronized_pointcloud_ && need_transform_to_sensor_frame) {
         auto transformed_cloud_ptr_in_sensor_frame =
           std::make_shared<sensor_msgs::msg::PointCloud2>();
-        managed_tf_buffer_->transformPointcloud(
-          cloud->header.frame_id, *transformed_delay_compensated_cloud_ptr,
-          *transformed_cloud_ptr_in_sensor_frame);
+        pcl_ros::transformPointCloud(
+        (std::string)cloud->header.frame_id, *transformed_delay_compensated_cloud_ptr,
+        *transformed_cloud_ptr_in_sensor_frame, tf_buffer_);
         transformed_cloud_ptr_in_sensor_frame->header.stamp = oldest_stamp;
         transformed_cloud_ptr_in_sensor_frame->header.frame_id = cloud->header.frame_id;
 
@@ -301,4 +312,4 @@ Eigen::Matrix4f CombineCloudHandler::compute_transform_to_adjust_for_old_timesta
   return transformation_matrix;
 }
 
-}  // namespace autoware::pointcloud_preprocessor
+}  // namespace pointcloud_preprocessor
