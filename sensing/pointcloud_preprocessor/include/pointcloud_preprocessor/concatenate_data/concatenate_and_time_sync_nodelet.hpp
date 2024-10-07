@@ -67,6 +67,12 @@ public:
 private:
   struct Parameters
   {
+<<<<<<< HEAD:sensing/pointcloud_preprocessor/include/pointcloud_preprocessor/concatenate_data/concatenate_and_time_sync_nodelet.hpp
+=======
+    bool has_static_tf_only;
+    bool rosbag_replay;
+    double rosbag_length;
+>>>>>>> 40fe11ebf (chore: add parameters for handling rosbag replay in loops):sensing/autoware_pointcloud_preprocessor/include/autoware/pointcloud_preprocessor/concatenate_data/concatenate_and_time_sync_node.hpp
     int maximum_queue_size;
     double timeout_sec;
     bool is_motion_compensated;
