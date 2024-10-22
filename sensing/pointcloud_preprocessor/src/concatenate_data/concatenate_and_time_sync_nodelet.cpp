@@ -373,6 +373,14 @@ PointCloudConcatenateDataSynchronizerComponent::combineClouds(
   std::reverse(pc_stamps.begin(), pc_stamps.end());
   const auto oldest_stamp = pc_stamps.back();
 
+  RCLCPP_INFO(this->get_logger(), "Concatenated cloud information");
+  for (const auto & [key, cloud] : cloud_stdmap_) {
+    // 提取 timestamp
+    double timestamp = cloud->header.stamp.sec + cloud->header.stamp.nanosec / 1e9;
+    // 使用 RCLCPP_INFO 打印 key 和 timestamp
+    RCLCPP_INFO(this->get_logger(), "Pointlcoud: %s, Timestamp: %.9f", key.c_str(), timestamp);
+  }
+
   // Step2. Calculate compensation transform and concatenate with the oldest stamp
   for (const auto & e : cloud_stdmap_) {
     if (e.second != nullptr) {
