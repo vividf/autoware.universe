@@ -14,18 +14,18 @@
 
 #pragma once
 
+#include <Eigen/Core>
+
 #include <deque>
 #include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <Eigen/Core>
 
 // ROS includes
+#include "autoware_point_types/types.hpp"
 
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <point_cloud_msg_wrapper/point_cloud_msg_wrapper.hpp>
 
@@ -43,9 +43,13 @@
 #include <message_filters/sync_policies/approximate_time.h>
 #include <message_filters/sync_policies/exact_time.h>
 #include <message_filters/synchronizer.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
 
 namespace pointcloud_preprocessor
 {
+using autoware_point_types::PointXYZIRC;
+using point_cloud_msg_wrapper::PointCloud2Modifier;
 
 struct ConcatenatedCloudResult
 {
@@ -79,6 +83,10 @@ private:
       return std::hash<int64_t>()(t.nanoseconds());
     }
   };
+
+  static void convert_to_xyzirc_cloud(
+    const sensor_msgs::msg::PointCloud2::SharedPtr & input_cloud,
+    sensor_msgs::msg::PointCloud2::SharedPtr & xyzirc_cloud);
 
   void correct_pointcloud_motion(
     const std::shared_ptr<sensor_msgs::msg::PointCloud2> & transformed_cloud_ptr,
