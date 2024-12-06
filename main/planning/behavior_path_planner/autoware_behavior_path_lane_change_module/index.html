@@ -856,7 +856,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../common/global_parameter_loader/Readme" class="md-nav__link">
+      <a href="../../../common/autoware_global_parameter_loader/Readme" class="md-nav__link">
         Global Parameter Loader
       </a>
     </li>
@@ -870,7 +870,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../common/glog_component" class="md-nav__link">
+      <a href="../../../common/autoware_glog_component" class="md-nav__link">
         Glog Component
       </a>
     </li>
@@ -13825,11 +13825,18 @@ If the ego vehicle velocity is smaller than <code>stuck_detection.velocity</code
 <td>5.0</td>
 </tr>
 <tr>
-<td align="left"><code>trajectory.prepare_duration</code></td>
-<td>[m]</td>
+<td align="left"><code>trajectory.max_prepare_duration</code></td>
+<td>[s]</td>
 <td>double</td>
-<td>The preparation time for the ego vehicle to be ready to perform lane change.</td>
+<td>The maximum preparation time for the ego vehicle to be ready to perform lane change.</td>
 <td>4.0</td>
+</tr>
+<tr>
+<td align="left"><code>trajectory.min_prepare_duration</code></td>
+<td>[s]</td>
+<td>double</td>
+<td>The minimum preparation time for the ego vehicle to be ready to perform lane change.</td>
+<td>2.0</td>
 </tr>
 <tr>
 <td align="left"><code>trajectory.lateral_jerk</code></td>
@@ -13872,6 +13879,13 @@ If the ego vehicle velocity is smaller than <code>stuck_detection.velocity</code
 <td>double</td>
 <td>maximum longitudinal deceleration for lane change</td>
 <td>-1.0</td>
+</tr>
+<tr>
+<td align="left"><code>trajectory.lane_changing_decel_factor</code></td>
+<td>[-]</td>
+<td>double</td>
+<td>longitudinal deceleration factor during lane changing phase</td>
+<td>0.5</td>
 </tr>
 <tr>
 <td align="left"><code>min_length_for_turn_signal_activation</code></td>
