@@ -10097,7 +10097,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../sensing/autoware_pointcloud_preprocessor/docs/blockage_diag/" class="md-nav__link">
+      <a href="../../sensing/autoware_pointcloud_preprocessor/docs/blockage-diag/" class="md-nav__link">
         blockage_diag
       </a>
     </li>
@@ -13463,6 +13463,8 @@
         
           
         
+          
+        
       
       
         <label class="md-nav__link" for="__nav_14_1" id="__nav_14_1_label" tabindex="0">
@@ -13557,6 +13559,52 @@
         <label class="md-nav__title" for="__nav_14_1_2">
           <span class="md-nav__icon md-icon"></span>
           Autoware overlay rviz plugin
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+        
+      
+      <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_14_1_3" >
+      
+      
+        
+          
+            
+          
+        
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../../visualization/autoware_overlay_rviz_plugin/autoware_string_stamped_overlay_rviz_plugin/">Autoware string stamped overlay rviz plugin</a>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_14_1_3_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_14_1_3">
+          <span class="md-nav__icon md-icon"></span>
+          Autoware string stamped overlay rviz plugin
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
@@ -14366,6 +14414,7 @@ It is assumed that the target acceleration calculated here will be properly real
 </ul>
 </li>
 </ul>
+<p>We also offer the options to switch between these, depending on driving conditions.</p>
 <p><strong>Notation:</strong> This function works correctly only in a vehicle system that does not have acceleration feedback in the low-level control system.</p>
 <p>This compensation adds gravity correction to the target acceleration, resulting in an output value that is no longer equal to the target acceleration that the autonomous driving system desires. Therefore, it conflicts with the role of the acceleration feedback in the low-level controller.
 For instance, if the vehicle is attempting to start with an acceleration of <code>1.0 m/s^2</code> and a gravity correction of <code>-1.0 m/s^2</code> is applied, the output value will be <code>0</code>. If this output value is mistakenly treated as the target acceleration, the vehicle will not start.</p>
