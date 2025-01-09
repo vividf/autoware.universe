@@ -62,7 +62,7 @@ void SegmentPointCloudFusionNode::preprocess(__attribute__((unused))
   return;
 }
 
-void SegmentPointCloudFusionNode::fuseOnSingleImage(
+void SegmentPointCloudFusionNode::fuse_on_single_image(
   const PointCloudMsgType & input_pointcloud_msg, const Det2dStatus<Image> & det2d,
   [[maybe_unused]] const Image & input_mask,
   __attribute__((unused)) PointCloudMsgType & output_cloud)
@@ -96,7 +96,7 @@ void SegmentPointCloudFusionNode::fuseOnSingleImage(
   geometry_msgs::msg::TransformStamped transform_stamped;
   // transform pointcloud from frame id to camera optical frame id
   {
-    const auto transform_stamped_optional = getTransformStamped(
+    const auto transform_stamped_optional = get_transform_stamped(
       tf_buffer_, input_mask.header.frame_id, input_pointcloud_msg.header.frame_id,
       input_pointcloud_msg.header.stamp);
     if (!transform_stamped_optional) {

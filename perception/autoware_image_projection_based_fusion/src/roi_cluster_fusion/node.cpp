@@ -73,7 +73,7 @@ void RoiClusterFusionNode::preprocess(ClusterMsgType & output_cluster_msg)
   }
 }
 
-void RoiClusterFusionNode::fuseOnSingleImage(
+void RoiClusterFusionNode::fuse_on_single_image(
   const ClusterMsgType & input_cluster_msg, const Det2dStatus<RoiMsgType> & det2d,
   const RoiMsgType & input_roi_msg, ClusterMsgType & output_cluster_msg)
 {
@@ -85,7 +85,7 @@ void RoiClusterFusionNode::fuseOnSingleImage(
   // get transform from cluster frame id to camera optical frame id
   geometry_msgs::msg::TransformStamped transform_stamped;
   {
-    const auto transform_stamped_optional = getTransformStamped(
+    const auto transform_stamped_optional = get_transform_stamped(
       tf_buffer_, /*target*/ camera_info.header.frame_id,
       /*source*/ input_cluster_msg.header.frame_id, camera_info.header.stamp);
     if (!transform_stamped_optional) {

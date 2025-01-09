@@ -83,7 +83,7 @@ void RoiDetectedObjectFusionNode::preprocess(DetectedObjects & output_msg)
   ignored_object_flags_map_.insert(std::make_pair(timestamp_nsec, ignored_object_flags));
 }
 
-void RoiDetectedObjectFusionNode::fuseOnSingleImage(
+void RoiDetectedObjectFusionNode::fuse_on_single_image(
   const DetectedObjects & input_object_msg, const Det2dStatus<RoiMsgType> & det2d,
   const RoiMsgType & input_roi_msg, DetectedObjects & output_object_msg __attribute__((unused)))
 {
@@ -92,13 +92,13 @@ void RoiDetectedObjectFusionNode::fuseOnSingleImage(
 
   Eigen::Affine3d object2camera_affine;
   {
-    const auto transform_stamped_optional = getTransformStamped(
+    const auto transform_stamped_optional = get_transform_stamped(
       tf_buffer_, /*target*/ input_roi_msg.header.frame_id,
       /*source*/ input_object_msg.header.frame_id, input_roi_msg.header.stamp);
     if (!transform_stamped_optional) {
       return;
     }
-    object2camera_affine = transformToEigen(transform_stamped_optional.value().transform);
+    object2camera_affine = transform_to_eigen(transform_stamped_optional.value().transform);
   }
 
   const auto object_roi_map =

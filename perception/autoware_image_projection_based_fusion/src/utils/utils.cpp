@@ -22,7 +22,7 @@
 
 namespace autoware::image_projection_based_fusion
 {
-bool checkCameraInfo(const sensor_msgs::msg::CameraInfo & camera_info)
+bool check_camera_info(const sensor_msgs::msg::CameraInfo & camera_info)
 {
   const bool is_supported_model =
     (camera_info.distortion_model == sensor_msgs::distortion_models::PLUMB_BOB ||
@@ -30,7 +30,7 @@ bool checkCameraInfo(const sensor_msgs::msg::CameraInfo & camera_info)
   if (!is_supported_model) {
     RCLCPP_ERROR_STREAM(
       rclcpp::get_logger("image_projection_based_fusion"),
-      "checkCameraInfo: Unsupported distortion model: " << camera_info.distortion_model);
+      "check_camera_info: Unsupported distortion model: " << camera_info.distortion_model);
     return false;
   }
   const bool is_supported_distortion_param =
@@ -38,13 +38,13 @@ bool checkCameraInfo(const sensor_msgs::msg::CameraInfo & camera_info)
   if (!is_supported_distortion_param) {
     RCLCPP_ERROR_STREAM(
       rclcpp::get_logger("image_projection_based_fusion"),
-      "checkCameraInfo: Unsupported distortion coefficients size: " << camera_info.d.size());
+      "check_camera_info: Unsupported distortion coefficients size: " << camera_info.d.size());
     return false;
   }
   return true;
 }
 
-std::optional<geometry_msgs::msg::TransformStamped> getTransformStamped(
+std::optional<geometry_msgs::msg::TransformStamped> get_transform_stamped(
   const tf2_ros::Buffer & tf_buffer, const std::string & target_frame_id,
   const std::string & source_frame_id, const rclcpp::Time & time)
 {
@@ -59,10 +59,10 @@ std::optional<geometry_msgs::msg::TransformStamped> getTransformStamped(
   }
 }
 
-Eigen::Affine3d transformToEigen(const geometry_msgs::msg::Transform & t)
+Eigen::Affine3d transform_to_eigen(const geometry_msgs::msg::Transform & t)
 {
   Eigen::Affine3d a;
-  a.matrix() = tf2::transformToEigen(t).matrix();
+  a.matrix() = tf2::transform_to_eigen(t).matrix();
   return a;
 }
 
@@ -122,7 +122,7 @@ void closest_cluster(
   out_cluster.data.resize(out_cluster_size);
 }
 
-void updateOutputFusedObjects(
+void update_output_fused_objects(
   std::vector<DetectedObjectWithFeature> & output_objs, std::vector<PointCloudMsgType> & clusters,
   const std::vector<size_t> & clusters_data_size, const PointCloudMsgType & in_cloud,
   const std_msgs::msg::Header & in_roi_header, const tf2_ros::Buffer & tf_buffer,
@@ -137,12 +137,12 @@ void updateOutputFusedObjects(
   orig_camera_frame << 0.0, 0.0, 0.0;
   const std_msgs::msg::Header & in_cloud_header = in_cloud.header;
   {
-    const auto transform_stamped_optional = getTransformStamped(
+    const auto transform_stamped_optional = get_transform_stamped(
       tf_buffer, in_cloud_header.frame_id, in_roi_header.frame_id, in_roi_header.stamp);
     if (!transform_stamped_optional) {
       return;
     }
-    camera2lidar_affine = transformToEigen(transform_stamped_optional.value().transform);
+    camera2lidar_affine = transform_to_eigen(transform_stamped_optional.value().transform);
   }
   orig_point_frame = camera2lidar_affine * orig_camera_frame;
   pcl::PointXYZ camera_orig_point_frame =
@@ -177,14 +177,14 @@ void updateOutputFusedObjects(
     refine_cluster.is_dense = in_cloud.is_dense;
     refine_cluster.header = in_cloud.header;
     refine_cluster.fields = in_cloud.fields;
-    feature_obj.object.kinematics.pose_with_covariance.pose.position = getCentroid(refine_cluster);
+    feature_obj.object.kinematics.pose_with_covariance.pose.position = get_centroid(refine_cluster);
     feature_obj.object.existence_probability = 1.0f;
     feature_obj.feature.cluster = refine_cluster;
     output_fused_objects.push_back(feature_obj);
   }
 }
 
-geometry_msgs::msg::Point getCentroid(const PointCloudMsgType & pointcloud)
+geometry_msgs::msg::Point get_centroid(const PointCloudMsgType & pointcloud)
 {
   geometry_msgs::msg::Point centroid;
   centroid.x = 0.0f;
