@@ -41,7 +41,7 @@ using autoware::universe_utils::ScopedTimeTrack;
 Eigen::Affine3f _transformToEigen(const geometry_msgs::msg::Transform & t)
 {
   Eigen::Affine3f a;
-  a.matrix() = tf2::transformToEigen(t).matrix().cast<float>();
+  a.matrix() = tf2::transform_to_eigen(t).matrix().cast<float>();
   return a;
 }
 
@@ -157,7 +157,7 @@ PointPaintingFusionNode::PointPaintingFusionNode(const rclcpp::NodeOptions & opt
 
   // subscriber
   std::function<void(const PointCloudMsgType::ConstSharedPtr msg)> sub_callback =
-    std::bind(&PointPaintingFusionNode::subCallback, this, std::placeholders::_1);
+    std::bind(&PointPaintingFusionNode::sub_callback, this, std::placeholders::_1);
   sub_ = this->create_subscription<PointCloudMsgType>(
     "~/input/pointcloud", rclcpp::SensorDataQoS().keep_last(3), sub_callback);
 
@@ -255,7 +255,7 @@ void PointPaintingFusionNode::preprocess(PointCloudMsgType & painted_pointcloud_
     static_cast<uint32_t>(painted_pointcloud_msg.data.size() / painted_pointcloud_msg.height);
 }
 
-void PointPaintingFusionNode::fuseOnSingleImage(
+void PointPaintingFusionNode::fuse_on_single_image(
   __attribute__((unused)) const PointCloudMsgType & input_pointcloud_msg,
   const Det2dStatus<RoiMsgType> & det2d, const RoiMsgType & input_roi_msg,
   PointCloudMsgType & painted_pointcloud_msg)
@@ -281,7 +281,7 @@ void PointPaintingFusionNode::fuseOnSingleImage(
   // geometry_msgs::msg::TransformStamped transform_stamped;
   Eigen::Affine3f lidar2cam_affine;
   {
-    const auto transform_stamped_optional = getTransformStamped(
+    const auto transform_stamped_optional = get_transform_stamped(
       tf_buffer_, /*target*/ input_roi_msg.header.frame_id,
       /*source*/ painted_pointcloud_msg.header.frame_id, input_roi_msg.header.stamp);
     if (!transform_stamped_optional) {

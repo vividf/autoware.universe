@@ -128,9 +128,9 @@ Changelog for package autoware_image_projection_based_fusion
   Co-authored-by: kminoda <44218668+kminoda@users.noreply.github.com>
 * fix(image_projection_based_fusion): handle projection errors in image fusion nodes (`#7747 <https://github.com/autowarefoundation/autoware.universe/issues/7747>`_)
   * fix: add check for camera distortion model
-  * feat(utils): add const qualifier to local variables in checkCameraInfo function
+  * feat(utils): add const qualifier to local variables in check_camera_info function
   * style(pre-commit): autofix
-  * chore(utils): update checkCameraInfo function to use RCLCPP_ERROR_STREAM for unsupported distortion model and coefficients size
+  * chore(utils): update check_camera_info function to use RCLCPP_ERROR_STREAM for unsupported distortion model and coefficients size
   ---------
   Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
 * fix(autoware_image_projection_based_fusion): fix passedByValue (`#8234 <https://github.com/autowarefoundation/autoware.universe/issues/8234>`_)

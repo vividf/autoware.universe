@@ -50,7 +50,7 @@ RoiPointCloudFusionNode::RoiPointCloudFusionNode(const rclcpp::NodeOptions & opt
   cluster_debug_pub_ = this->create_publisher<PointCloudMsgType>("debug/clusters", 1);
 }
 
-void RoiPointCloudFusionNode::fuseOnSingleImage(
+void RoiPointCloudFusionNode::fuse_on_single_image(
   const PointCloudMsgType & input_pointcloud_msg, const Det2dStatus<RoiMsgType> & det2d,
   const RoiMsgType & input_roi_msg,
   __attribute__((unused)) PointCloudMsgType & output_pointcloud_msg)
@@ -86,7 +86,7 @@ void RoiPointCloudFusionNode::fuseOnSingleImage(
 
   geometry_msgs::msg::TransformStamped transform_stamped;
   {
-    const auto transform_stamped_optional = getTransformStamped(
+    const auto transform_stamped_optional = get_transform_stamped(
       tf_buffer_, input_roi_msg.header.frame_id, input_pointcloud_msg.header.frame_id,
       input_roi_msg.header.stamp);
     if (!transform_stamped_optional) {
@@ -161,7 +161,7 @@ void RoiPointCloudFusionNode::fuseOnSingleImage(
   }
 
   // refine and update output_fused_objects_
-  updateOutputFusedObjects(
+  update_output_fused_objects(
     output_objs, clusters, clusters_data_size, input_pointcloud_msg, input_roi_msg.header,
     tf_buffer_, min_cluster_size_, max_cluster_size_, cluster_2d_tolerance_, output_fused_objects_);
   if (debugger_) {
