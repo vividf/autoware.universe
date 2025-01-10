@@ -15,8 +15,8 @@
 #include <optional>
 #define EIGEN_MPL2_ONLY
 
-#include "autoware/image_projection_based_fusion/fusion_matching_strategy.hpp"
 #include "autoware/image_projection_based_fusion/fusion_collector.hpp"
+#include "autoware/image_projection_based_fusion/fusion_matching_strategy.hpp"
 #include "autoware/image_projection_based_fusion/fusion_node.hpp"
 
 #include <Eigen/Core>
@@ -30,10 +30,10 @@
 #include <cmath>
 #include <list>
 #include <memory>
-#include <string>
-#include <vector>
 #include <optional>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 #ifdef ROS_DISTRO_GALACTIC
 #include <tf2_eigen/tf2_eigen.h>
@@ -114,7 +114,7 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
   // subscribe diagnostics
   // TODO(vivid): check the value 10
   sub_diag_ = this->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
-            "/diagnostics", 10, std::bind(&FusionNode::diagnostics_callback, this, std::placeholders::_1));
+    "/diagnostics", 10, std::bind(&FusionNode::diagnostics_callback, this, std::placeholders::_1));
 
   // initialization on each 2d detections
   set_det2d_status(rois_number);
@@ -133,16 +133,15 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
 
   debug_mode_ = declare_parameter<bool>("debug_mode");
 
-
   matching_strategy_ = declare_parameter<std::string>("matching_strategy.type");
-    if (matching_strategy_ == "naive") {
-      fusion_matching_strategy_ = std::make_unique<NaiveMatchingStrategy>(*this);
-    } else if (matching_strategy_ == "advanced") {
-      fusion_matching_strategy_ =
-        std::make_unique<AdvancedMatchingStrategy>(*this, params_.input_topics);
-    } else {
-      throw std::runtime_error("Matching strategy must be 'advanced' or 'naive'");
-    }
+  if (matching_strategy_ == "naive") {
+    fusion_matching_strategy_ = std::make_unique<NaiveMatchingStrategy>(*this);
+  } else if (matching_strategy_ == "advanced") {
+    fusion_matching_strategy_ =
+      std::make_unique<AdvancedMatchingStrategy>(*this, params_.input_topics);
+  } else {
+    throw std::runtime_error("Matching strategy must be 'advanced' or 'naive'");
+  }
 
   // debugger
   if (debug_mode_) {
@@ -222,7 +221,7 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::set_det2d_status(std::size_t rois_numb
     det2d_list_.at(roi_i).project_to_unrectified_image =
       point_project_to_unrectified_image.at(roi_i);
     det2d_list_.at(roi_i).approximate_camera_projection = approx_camera_projection.at(roi_i);
-    //det2d_list_.at(roi_i).input_offset_ms = input_offset_ms.at(roi_i);
+    // det2d_list_.at(roi_i).input_offset_ms = input_offset_ms.at(roi_i);
   }
 }
 
@@ -249,7 +248,8 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::preprocess(Msg3D & ouput_msg __attribu
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
-void FusionNode<Msg3D, Msg2D, ExportObj>::export_process(typename Msg3D::SharedPtr & output_det3d_msg)
+void FusionNode<Msg3D, Msg2D, ExportObj>::export_process(
+  typename Msg3D::SharedPtr & output_det3d_msg)
 {
   ExportObj output_msg;
   postprocess(*(output_det3d_msg), output_msg);
@@ -283,22 +283,22 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::sub_callback(
   stop_watch_ptr_->toc("processing_time", true);
 
   manage_collector_list();
-  //protect fusion collectors list
+  // protect fusion collectors list
   std::unique_lock<std::mutex> fusion_collectors_lock(fusion_collectors_mutex_);
-
 
   auto det3d_timestamp = rclcpp::Time(det3d_msg->header.stamp).seconds();
   // For each callback, check whether there is a exist collector that matches this cloud
-  std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> fusion_collector = std::nullopt;
+  std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> fusion_collector =
+    std::nullopt;
   std::shared_ptr<Det3dMatchingParams> matching_params;
   matching_params->det3d_timestamp = det3d_timestamp;
 
-  
   // Get the diagnostic message
   auto concatenated_status = find_concatenation_status(det3d_timestamp);
-  
+
   if (!fusion_collectors_.empty()) {
-    fusion_collector = fusion_matching_strategy_->match_det3d_to_collector(fusion_collectors_, matching_params);
+    fusion_collector =
+      fusion_matching_strategy_->match_det3d_to_collector(fusion_collectors_, matching_params);
   }
 
   bool process_success = false;
@@ -312,12 +312,10 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::sub_callback(
 
   if (!process_success) {
     auto new_fusion_collector = std::make_shared<FusionCollector>(
-      std::dynamic_pointer_cast<FusionNode>(shared_from_this()),
-      timeout_sec_, debug_mode_);
+      std::dynamic_pointer_cast<FusionNode>(shared_from_this()), timeout_sec_, debug_mode_);
 
     fusion_collectors_.push_back(new_fusion_collector);
     fusion_collectors_lock.unlock();
-
 
     fusion_matching_strategy_->set_collector_info(new_fusion_collector, matching_params);
     (void)new_fusion_collector->process_msg_3d(det3d_msg);
@@ -336,7 +334,6 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::sub_callback(
   //     timestamp_interval_ms - det2d.input_offset_ms);
   // }
 
-
   // if (debug_publisher_) {
   // double timestamp_interval_ms = (matched_stamp - timestamp_nsec) / 1e6;
   // debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
@@ -345,8 +342,8 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::sub_callback(
   //   "debug/roi" + std::to_string(roi_i) + "/timestamp_interval_offset_ms",
   //   timestamp_interval_ms - det2d.input_offset_ms);
   // }
-  
-  //processing_time_ms = processing_time_ms + stop_watch_ptr_->toc("processing_time", true);
+
+  // processing_time_ms = processing_time_ms + stop_watch_ptr_->toc("processing_time", true);
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
@@ -359,19 +356,20 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::roi_callback(
   stop_watch_ptr_->toc("processing_time", true);
 
   manage_collector_list();
-  //protect fusion collectors list
+  // protect fusion collectors list
   std::unique_lock<std::mutex> fusion_collectors_lock(fusion_collectors_mutex_);
 
   auto rois_timestamp = rclcpp::Time(det2d_msg->header.stamp).seconds();
   std::shared_ptr<RoisMatchingParams> matching_params;
   matching_params->rois_timestamp = rois_timestamp;
 
-
   // For each callback, check whether there is a exist collector that matches this cloud
-  std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> fusion_collector = std::nullopt;
+  std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> fusion_collector =
+    std::nullopt;
 
   if (!fusion_collectors_.empty()) {
-    fusion_collector = fusion_matching_strategy_->match_rois_to_collector(fusion_collectors_, matching_params);
+    fusion_collector =
+      fusion_matching_strategy_->match_rois_to_collector(fusion_collectors_, matching_params);
   }
 
   bool process_success = false;
@@ -385,8 +383,7 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::roi_callback(
 
   if (!process_success) {
     auto new_fusion_collector = std::make_shared<FusionCollector>(
-      std::dynamic_pointer_cast<FusionNode>(shared_from_this()),
-      timeout_sec_, debug_mode_);
+      std::dynamic_pointer_cast<FusionNode>(shared_from_this()), timeout_sec_, debug_mode_);
 
     fusion_collectors_.push_back(new_fusion_collector);
     fusion_collectors_lock.unlock();
@@ -394,8 +391,6 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::roi_callback(
     fusion_matching_strategy_->set_collector_info(new_fusion_collector, matching_params);
     (void)new_fusion_collector->process_rois(roi_i, det2d_msg);
   }
-
-
 
   if (debugger_) {
     debugger_->clear();
@@ -409,59 +404,51 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::roi_callback(
   //     "debug/roi" + std::to_string(roi_i) + "/timestamp_interval_offset_ms",
   //     timestamp_interval_ms - det2d.input_offset_ms);
   // }
-  
+
   // processing_time_ms = processing_time_ms + stop_watch_ptr_->toc("processing_time", true);
 }
 
-
 void diagnostic_callback(const diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg)
 {
-  for (const auto &status : msg->status)
-  {
+  for (const auto & status : msg->status) {
     // Filter for the concatenate_and_time_sync_node diagnostic message
-    if (status.name == "concatenate_and_time_sync_node: concat_status")
-    {
-        RCLCPP_INFO(this->get_logger(), "Processing concatenation status diagnostic message...");
+    if (status.name == "concatenate_and_time_sync_node: concat_status") {
+      RCLCPP_INFO(this->get_logger(), "Processing concatenation status diagnostic message...");
 
-        // Temporary map to hold key-value pairs for this status
-        std::unordered_map<std::string, std::string> key_value_map;
-        std::optional<double> concatenate_timestamp_opt;
+      // Temporary map to hold key-value pairs for this status
+      std::unordered_map<std::string, std::string> key_value_map;
+      std::optional<double> concatenate_timestamp_opt;
 
-        for (const auto &value : status.values)
-        {
-            key_value_map[value.key] = value.value;
+      for (const auto & value : status.values) {
+        key_value_map[value.key] = value.value;
 
-            // If the key is the concatenated cloud timestamp, try to parse it
-            if (value.key == "concatenated cloud timestamp")
-            {
-                try
-                {
-                    concatenate_timestamp_opt = std::stod(value.value);
-                }
-                catch (const std::exception &e)
-                {
-                    RCLCPP_ERROR(this->get_logger(), "Error parsing concatenated cloud timestamp: %s", e.what());
-                }
-            }
+        // If the key is the concatenated cloud timestamp, try to parse it
+        if (value.key == "concatenated cloud timestamp") {
+          try {
+            concatenate_timestamp_opt = std::stod(value.value);
+          } catch (const std::exception & e) {
+            RCLCPP_ERROR(
+              this->get_logger(), "Error parsing concatenated cloud timestamp: %s", e.what());
+          }
         }
+      }
 
-        // Ensure a valid timestamp was parsed before storing
-        if (concatenate_timestamp_opt.has_value())
-        {
-            concatenated_status_map_[concatenate_timestamp_opt.value()] = key_value_map;
-            RCLCPP_INFO(this->get_logger(), "Stored concatenation status for timestamp: %.9f", concatenate_timestamp_opt.value());
-        }
-        else
-        {
-            RCLCPP_WARN(this->get_logger(), "Missing or invalid concatenated cloud timestamp, status not stored.");
-        }
+      // Ensure a valid timestamp was parsed before storing
+      if (concatenate_timestamp_opt.has_value()) {
+        concatenated_status_map_[concatenate_timestamp_opt.value()] = key_value_map;
+        RCLCPP_INFO(
+          this->get_logger(), "Stored concatenation status for timestamp: %.9f",
+          concatenate_timestamp_opt.value());
+      } else {
+        RCLCPP_WARN(
+          this->get_logger(),
+          "Missing or invalid concatenated cloud timestamp, status not stored.");
+      }
     }
   }
 
-
   // TODO: only store specific amount of status, delete rest of them (using heap?)
 }
-
 
 template <class Msg3D, class Msg2D, class ExportObj>
 void FusionNode<Msg3D, Msg2D, ExportObj>::postprocess(
@@ -495,14 +482,14 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::manage_collector_list()
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
-std::optional<std::unordered_map<std::string, std::string>> FusionNode<Msg3D, Msg2D, ExportObj>::find_concatenation_status(double timestamp)
+std::optional<std::unordered_map<std::string, std::string>>
+FusionNode<Msg3D, Msg2D, ExportObj>::find_concatenation_status(double timestamp)
 {
-    auto it = concatenated_status_map_.find(timestamp);
-    if (it != concatenated_status_map_.end())
-    {
-        return it->second;
-    }
-    return std::nullopt;
+  auto it = concatenated_status_map_.find(timestamp);
+  if (it != concatenated_status_map_.end()) {
+    return it->second;
+  }
+  return std::nullopt;
 }
 
 // Explicit instantiation for the supported types

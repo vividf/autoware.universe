@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/image_projection_based_fusion/fusion_collector.hpp"
 #include "autoware/image_projection_based_fusion/fusion_matching_strategy.hpp"
+
+#include "autoware/image_projection_based_fusion/fusion_collector.hpp"
+
 #include <rclcpp/rclcpp.hpp>
 
 #include <cmath>
@@ -31,9 +33,9 @@ NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::NaiveMatchingStrategy(rclcpp::No
   RCLCPP_INFO(node.get_logger(), "Utilize naive matching strategy for fusion nodes.");
 }
 
-
 template <class Msg3D, class Msg2D, class ExportObj>
-std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_rois_to_collector(
+std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
+NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_rois_to_collector(
   const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
   const RoisMatchingParams & params) const
 {
@@ -70,7 +72,8 @@ std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> NaiveMa
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
-std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_det3d_to_collector(
+std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
+NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_det3d_to_collector(
   const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
   const Det3dMatchingParams & params) const
 {
@@ -108,12 +111,12 @@ std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> NaiveMa
 
 template <class Msg3D, class Msg2D, class ExportObj>
 void NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::set_collector_info(
-  std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector, const std::shared_ptr<MatchingParamsBase> & matching_params)
+  std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector,
+  const std::shared_ptr<MatchingParamsBase> & matching_params)
 {
   auto info = std::make_shared<NaiveCollectorInfo>(matching_params.cloud_arrival_time);
   collector->set_info(info);
 }
-
 
 template <class Msg3D, class Msg2D, class ExportObj>
 AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::AdvancedMatchingStrategy(
@@ -143,9 +146,9 @@ AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::AdvancedMatchingStrategy(
   RCLCPP_INFO(node.get_logger(), "Utilize advanced matching strategy for fusion nodes.");
 }
 
-
 template <class Msg3D, class Msg2D, class ExportObj>
-std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_rois_to_collector(
+std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
+AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_rois_to_collector(
   const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
   const RoisMatchingParams & params) const
 {
@@ -163,11 +166,9 @@ std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> Advance
   // return std::nullopt;
 }
 
-
-
-
 template <class Msg3D, class Msg2D, class ExportObj>
-std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_det3d_to_collector(
+std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
+AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_det3d_to_collector(
   const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
   const Det3dMatchingParams & params) const
 {
@@ -186,15 +187,15 @@ std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> Advance
   }
   return std::nullopt;
 
-
   ///////
-  if(concatenated_status) {
-    auto status_map = concatenated_status.value(); // Retrieve the inner map
-    if(status_map["cloud concatenation success"] == "False" || 
-    (det3d_timestamp > std::stod(status_map["reference_timestamp_min"]) && 
-    det3d_timestamp < std::stod(status_map["reference_timestamp_max"]))) {
+  if (concatenated_status) {
+    auto status_map = concatenated_status.value();  // Retrieve the inner map
+    if (
+      status_map["cloud concatenation success"] == "False" ||
+      (det3d_timestamp > std::stod(status_map["reference_timestamp_min"]) &&
+       det3d_timestamp < std::stod(status_map["reference_timestamp_max"]))) {
       // The defined earliest pointcloud is missed in the concatenation of pointcloud
-      
+
       std::cout << "ho" << std::endl;
     }
   }
@@ -213,18 +214,20 @@ std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> Advance
 
 template <class Msg3D, class Msg2D, class ExportObj>
 void AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::set_collector_info(
-  std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector, const std::shared_ptr<MatchingParamsBase> & matching_params)
+  std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector,
+  const std::shared_ptr<MatchingParamsBase> & matching_params)
 {
-  if(auto det3d_matching_params = std::dynamic_pointer_cast<Det3dMatchingParams>(matching_params)) {
+  if (
+    auto det3d_matching_params = std::dynamic_pointer_cast<Det3dMatchingParams>(matching_params)) {
     auto info = std::make_shared<AdvancedCollectorInfo>(
       det3d_matching_params->det3d_timestamp, det3d_noise_window_);
-    collector->set_info(info); 
-  }
-  else if(auto rois_matching_params = std::dynamic_pointer_cast<RoisMatchingParams>(matching_params)) {
+    collector->set_info(info);
+  } else if (
+    auto rois_matching_params = std::dynamic_pointer_cast<RoisMatchingParams>(matching_params)) {
     auto info = std::make_shared<AdvancedCollectorInfo>(
       rois_matching_params->rois_timestamp - topic_to_offset_map_[rois_matching_params->rois_id],
       topic_to_noise_window_map_[rois_matching_params->rois_id]);
-    collector->set_info(info); 
+    collector->set_info(info);
   }
 }
 

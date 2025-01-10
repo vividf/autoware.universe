@@ -14,12 +14,13 @@
 
 #pragma once
 
+#include <autoware/image_projection_based_fusion/camera_projection.hpp>
 #include <rclcpp/rclcpp.hpp>
+
 #include <cstddef>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
-#include <autoware/image_projection_based_fusion/camera_projection.hpp>
 
 namespace autoware::image_projection_based_fusion
 {
@@ -39,8 +40,6 @@ struct Det2dStatus
   bool approximate_camera_projection = false;
 };
 
-
-
 struct FusionCollectorInfoBase
 {
   virtual ~FusionCollectorInfoBase() = default;
@@ -51,7 +50,10 @@ struct NaiveCollectorInfo : public FusionCollectorInfoBase
   double timestamp;
   double threshold;
 
-  explicit NaiveCollectorInfo(double timestamp = 0.0, double threshold = 0.0) : timestamp(timestamp), threshold(threshold) {}
+  explicit NaiveCollectorInfo(double timestamp = 0.0, double threshold = 0.0)
+  : timestamp(timestamp), threshold(threshold)
+  {
+  }
 };
 
 struct AdvancedCollectorInfo : public FusionCollectorInfoBase
@@ -65,26 +67,23 @@ struct AdvancedCollectorInfo : public FusionCollectorInfoBase
   }
 };
 
-
-
 template <class Msg3D, class Msg2D, class ExportObj>
 class FusionCollector
 {
 public:
   FusionCollector(
-    std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> && ros2_parent_node, double timeout_sec,  bool debug_mode);
+    std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> && ros2_parent_node, double timeout_sec,
+    bool debug_mode);
   bool process_msg_3d(const typename Msg3D::ConstSharedPtr msg_3d);
-  bool process_rois(
-  const std::size_t & roi_id, const typename Msg2D::ConstSharedPtr det2d_msg);
+  bool process_rois(const std::size_t & roi_id, const typename Msg2D::ConstSharedPtr det2d_msg);
   void fusion_callback();
 
   [[nodiscard]] bool fusion_finished() const;
 
-    void set_info(std::shared_ptr<FusionCollectorInfoBase> collector_info);
+  void set_info(std::shared_ptr<FusionCollectorInfoBase> collector_info);
   [[nodiscard]] std::shared_ptr<FusionCollectorInfoBase> get_info() const;
   void show_debug_message();
   bool ready_to_fuse();
-
 
 private:
   std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> ros2_parent_node_;

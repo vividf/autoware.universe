@@ -31,7 +31,6 @@
 namespace autoware::image_projection_based_fusion
 {
 
-
 struct MatchingParamsBase
 {
   virtual ~MatchingParamsBase() = default;
@@ -55,27 +54,25 @@ struct RoisMatchingParams : public MatchingParamsBase
   }
 };
 
-
-
-
 template <class Msg3D, class Msg2D, class ExportObj>
 class FusionMatchingStrategy
 {
 public:
   virtual ~FusionMatchingStrategy() = default;
 
-
-  [[nodiscard]] virtual std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> match_rois_to_collector(
+  [[nodiscard]] virtual std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
+  match_rois_to_collector(
     const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
     const RoisMatchingParams & params) const = 0;
 
-  [[nodiscard]] virtual std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> match_det3d_to_collector(
+  [[nodiscard]] virtual std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
+  match_det3d_to_collector(
     const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
     const Det3dMatchingParams & params) const = 0;
   virtual void set_collector_info(
-    std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector, const std::shared_ptr<MatchingParamsBase> & matching_params) = 0;
+    std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector,
+    const std::shared_ptr<MatchingParamsBase> & matching_params) = 0;
 };
-
 
 template <class Msg3D, class Msg2D, class ExportObj>
 class NaiveMatchingStrategy : public FusionMatchingStrategy<Msg3D, Msg2D, ExportObj>
@@ -83,16 +80,19 @@ class NaiveMatchingStrategy : public FusionMatchingStrategy<Msg3D, Msg2D, Export
 public:
   explicit NaiveMatchingStrategy(rclcpp::Node & node);
 
-  [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> match_rois_to_collector(
+  [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
+  match_rois_to_collector(
     const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
     const RoisMatchingParams & params) const override;
-  
-  [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> match_det3d_to_collector(
+
+  [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
+  match_det3d_to_collector(
     const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
     const Det3dMatchingParams & params) const override;
-  
+
   void set_collector_info(
-    std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector, const MatchingParamsBase & matching_params) override;
+    std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector,
+    const MatchingParamsBase & matching_params) override;
 };
 
 template <class Msg3D, class Msg2D, class ExportObj>
@@ -101,15 +101,18 @@ class AdvancedMatchingStrategy : public FusionMatchingStrategy<Msg3D, Msg2D, Exp
 public:
   explicit AdvancedMatchingStrategy(rclcpp::Node & node, std::vector<std::string> input_topics);
 
-  [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> match_rois_to_collector(
+  [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
+  match_rois_to_collector(
     const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
     const RoisMatchingParams & params) const override;
-  
-  [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> match_det3d_to_collector(
+
+  [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
+  match_det3d_to_collector(
     const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
     const Det3dMatchingParams & params) const override;
   void set_collector_info(
-    std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector, const std::shared_ptr<MatchingParamsBase> & matching_params) override;
+    std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector,
+    const std::shared_ptr<MatchingParamsBase> & matching_params) override;
 
 private:
   std::vector<std::string> input_topics_;
@@ -119,6 +122,7 @@ private:
 };
 
 template <class Msg3D, class Msg2D, class ExportObj>
-std::shared_ptr<FusionMatchingStrategy<Msg3D, Msg2D, ExportObj>> parse_matching_strategy(rclcpp::Node & node);
+std::shared_ptr<FusionMatchingStrategy<Msg3D, Msg2D, ExportObj>> parse_matching_strategy(
+  rclcpp::Node & node);
 
 }  // namespace autoware::image_projection_based_fusion

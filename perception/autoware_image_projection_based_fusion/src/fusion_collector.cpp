@@ -13,7 +13,9 @@
 // limitations under the License.
 
 #include "autoware/image_projection_based_fusion/fusion_collector.hpp"
+
 #include "autoware/image_projection_based_fusion/fusion_node.hpp"
+
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -26,10 +28,9 @@ namespace autoware::image_projection_based_fusion
 
 template <class Msg3D, class Msg2D, class ExportObj>
 FusionCollector<Msg3D, Msg2D, ExportObj>::FusionCollector(
-  std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> && ros2_parent_node, double timeout_sec, bool debug_mode)
-: ros2_parent_node_(std::move(ros2_parent_node)),
-  timeout_sec_(timeout_sec),
-  debug_mode_(debug_mode)
+  std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> && ros2_parent_node, double timeout_sec,
+  bool debug_mode)
+: ros2_parent_node_(std::move(ros2_parent_node)), timeout_sec_(timeout_sec), debug_mode_(debug_mode)
 {
   const auto period_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
     std::chrono::duration<double>(timeout_sec_));
@@ -43,7 +44,8 @@ FusionCollector<Msg3D, Msg2D, ExportObj>::FusionCollector(
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
-void FusionCollector<Msg3D, Msg2D, ExportObj>::set_info(std::shared_ptr<FusionCollectorInfoBase> fusion_collector_info)
+void FusionCollector<Msg3D, Msg2D, ExportObj>::set_info(
+  std::shared_ptr<FusionCollectorInfoBase> fusion_collector_info)
 {
   fusion_collector_info_ = std::move(fusion_collector_info);
 }
@@ -54,22 +56,22 @@ std::shared_ptr<FusionCollectorInfoBase> FusionCollector<Msg3D, Msg2D, ExportObj
   return fusion_collector_info_;
 }
 
-
 template <class Msg3D, class Msg2D, class ExportObj>
-bool FusionCollector<Msg3D, Msg2D, ExportObj>::process_msg_3d(const typename Msg3D::ConstSharedPtr msg_3d)
+bool FusionCollector<Msg3D, Msg2D, ExportObj>::process_msg_3d(
+  const typename Msg3D::ConstSharedPtr msg_3d)
 {
   std::lock_guard<std::mutex> fusion_lock(fusion_mutex_);
   if (fusion_finished_) return false;
 
-  if(det3d_msg_ != nullptr) {
+  if (det3d_msg_ != nullptr) {
     RCLCPP_WARN_STREAM_THROTTLE(
       ros2_parent_node_->get_logger(), *ros2_parent_node_->get_clock(),
       std::chrono::milliseconds(10000).count(),
       "Pointcloud already exists in the collector. Check the timestamp of the pointcloud.");
-  } 
-  
+  }
+
   det3d_msg_ = msg_3d;
-  if(ready_to_fuse()) {
+  if (ready_to_fuse()) {
     fusion_callback();
   }
 
@@ -89,11 +91,10 @@ bool FusionCollector<Msg3D, Msg2D, ExportObj>::process_rois(
     RCLCPP_WARN_STREAM_THROTTLE(
       ros2_parent_node_->get_logger(), *ros2_parent_node_->get_clock(),
       std::chrono::milliseconds(10000).count(),
-      "ROIS '" << roi_id
-                << "' already exists in the collector. Check the timestamp of the rois.");
+      "ROIS '" << roi_id << "' already exists in the collector. Check the timestamp of the rois.");
   }
   id_to_roi_map_[roi_id] = det2d_msg;
-  if(ready_to_fuse()) {
+  if (ready_to_fuse()) {
     fusion_callback();
   }
 
@@ -101,7 +102,8 @@ bool FusionCollector<Msg3D, Msg2D, ExportObj>::process_rois(
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
-bool FusionCollector<Msg3D, Msg2D, ExportObj>::ready_to_fuse() {
+bool FusionCollector<Msg3D, Msg2D, ExportObj>::ready_to_fuse()
+{
   return id_to_roi_map_.size() == rois_number_ && det3d_msg_ != nullptr;
 }
 
@@ -118,7 +120,8 @@ void FusionCollector<Msg3D, Msg2D, ExportObj>::fusion_callback()
     show_debug_message();
   }
 
-  // All pointcloud and rois are received or the timer has timed out, cancel the timer and fuse them.
+  // All pointcloud and rois are received or the timer has timed out, cancel the timer and fuse
+  // them.
   timer_->cancel();
 
   // fuse_on_single_image(*(cached_det3d_msg_ptr_), det2d, *det2d_msg, *(cached_det3d_msg_ptr_));
@@ -129,13 +132,13 @@ void FusionCollector<Msg3D, Msg2D, ExportObj>::fusion_callback()
 
   // TODO(vivid): output msg is almost unused, see if we can modify it
   for (const auto & [roi_id, roi] : id_to_roi_map_) {
-    ros2_parent_node_->fuse_on_single_image(*det3d_msg_, det2d_list_[roi_id], *roi, *output_det3d_msg);
+    ros2_parent_node_->fuse_on_single_image(
+      *det3d_msg_, det2d_list_[roi_id], *roi, *output_det3d_msg);
   }
 
   ros2_parent_node_->export_process(output_det3d_msg);
   fusion_finished_ = true;
 }
-
 
 // void CloudCollector::show_debug_message()
 // {
