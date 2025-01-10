@@ -42,6 +42,18 @@ FusionCollector<Msg3D, Msg2D, ExportObj>::FusionCollector(
     });
 }
 
+template <class Msg3D, class Msg2D, class ExportObj>
+void FusionCollector<Msg3D, Msg2D, ExportObj>::set_info(std::shared_ptr<FusionCollectorInfoBase> fusion_collector_info)
+{
+  fusion_collector_info_ = std::move(fusion_collector_info);
+}
+
+template <class Msg3D, class Msg2D, class ExportObj>
+std::shared_ptr<FusionCollectorInfoBase> FusionCollector<Msg3D, Msg2D, ExportObj>::get_info() const
+{
+  return fusion_collector_info_;
+}
+
 
 template <class Msg3D, class Msg2D, class ExportObj>
 bool FusionCollector<Msg3D, Msg2D, ExportObj>::process_msg_3d(const typename Msg3D::ConstSharedPtr msg_3d)

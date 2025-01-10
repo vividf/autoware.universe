@@ -15,6 +15,7 @@
 #include <optional>
 #define EIGEN_MPL2_ONLY
 
+#include "autoware/image_projection_based_fusion/fusion_matching_strategy.hpp"
 #include "autoware/image_projection_based_fusion/fusion_collector.hpp"
 #include "autoware/image_projection_based_fusion/fusion_node.hpp"
 
@@ -285,16 +286,19 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::sub_callback(
   //protect fusion collectors list
   std::unique_lock<std::mutex> fusion_collectors_lock(fusion_collectors_mutex_);
 
-  // For each callback, check whether there is a exist collector that matches this cloud
-  std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> fusion_collector = std::nullopt;
 
   auto det3d_timestamp = rclcpp::Time(det3d_msg->header.stamp).seconds();
+  // For each callback, check whether there is a exist collector that matches this cloud
+  std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> fusion_collector = std::nullopt;
+  std::shared_ptr<Det3dMatchingParams> matching_params;
+  matching_params->det3d_timestamp = det3d_timestamp;
+
   
   // Get the diagnostic message
   auto concatenated_status = find_concatenation_status(det3d_timestamp);
   
   if (!fusion_collectors_.empty()) {
-    fusion_collector = match_det3d_to_collector(det3d_timestamp, concatenated_status);
+    fusion_collector = fusion_matching_strategy_->match_det3d_to_collector(fusion_collectors_, matching_params);
   }
 
   bool process_success = false;
@@ -314,6 +318,8 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::sub_callback(
     fusion_collectors_.push_back(new_fusion_collector);
     fusion_collectors_lock.unlock();
 
+
+    fusion_matching_strategy_->set_collector_info(new_fusion_collector, matching_params);
     (void)new_fusion_collector->process_msg_3d(det3d_msg);
   }
 
@@ -356,12 +362,16 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::roi_callback(
   //protect fusion collectors list
   std::unique_lock<std::mutex> fusion_collectors_lock(fusion_collectors_mutex_);
 
+  auto rois_timestamp = rclcpp::Time(det2d_msg->header.stamp).seconds();
+  std::shared_ptr<RoisMatchingParams> matching_params;
+  matching_params->rois_timestamp = rois_timestamp;
+
+
   // For each callback, check whether there is a exist collector that matches this cloud
   std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> fusion_collector = std::nullopt;
 
-  auto rois_timestamp = rclcpp::Time(det2d_msg->header.stamp).seconds();
   if (!fusion_collectors_.empty()) {
-    fusion_collector = match_rois_to_collector(roi_i, rois_timestamp);
+    fusion_collector = fusion_matching_strategy_->match_rois_to_collector(fusion_collectors_, matching_params);
   }
 
   bool process_success = false;
@@ -381,6 +391,7 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::roi_callback(
     fusion_collectors_.push_back(new_fusion_collector);
     fusion_collectors_lock.unlock();
 
+    fusion_matching_strategy_->set_collector_info(new_fusion_collector, matching_params);
     (void)new_fusion_collector->process_rois(roi_i, det2d_msg);
   }
 

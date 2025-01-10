@@ -41,6 +41,32 @@ struct Det2dStatus
 
 
 
+struct FusionCollectorInfoBase
+{
+  virtual ~FusionCollectorInfoBase() = default;
+};
+
+struct NaiveCollectorInfo : public FusionCollectorInfoBase
+{
+  double timestamp;
+  double threshold;
+
+  explicit NaiveCollectorInfo(double timestamp = 0.0, double threshold = 0.0) : timestamp(timestamp), threshold(threshold) {}
+};
+
+struct AdvancedCollectorInfo : public FusionCollectorInfoBase
+{
+  double timestamp;
+  double noise_window;
+
+  explicit AdvancedCollectorInfo(double timestamp = 0.0, double noise_window = 0.0)
+  : timestamp(timestamp), noise_window(noise_window)
+  {
+  }
+};
+
+
+
 template <class Msg3D, class Msg2D, class ExportObj>
 class FusionCollector
 {
@@ -54,12 +80,11 @@ public:
 
   [[nodiscard]] bool fusion_finished() const;
 
+    void set_info(std::shared_ptr<FusionCollectorInfoBase> collector_info);
+  [[nodiscard]] std::shared_ptr<FusionCollectorInfoBase> get_info() const;
   void show_debug_message();
   bool ready_to_fuse();
 
-  // TODO(vivid): modify this
-  double timestamp;
-  double noise_window;
 
 private:
   std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> ros2_parent_node_;
@@ -72,6 +97,7 @@ private:
   bool debug_mode_;
   bool fusion_finished_{false};
   std::mutex fusion_mutex_;
+  std::shared_ptr<FusionCollectorInfoBase> fusion_collector_info_;
 };
 
 }  // namespace autoware::image_projection_based_fusion

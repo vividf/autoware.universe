@@ -25,33 +25,35 @@
 namespace autoware::image_projection_based_fusion
 {
 
-NaiveMatchingStrategy::NaiveMatchingStrategy(rclcpp::Node & node)
+template <class Msg3D, class Msg2D, class ExportObj>
+NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::NaiveMatchingStrategy(rclcpp::Node & node)
 {
   RCLCPP_INFO(node.get_logger(), "Utilize naive matching strategy for fusion nodes.");
 }
 
 
-std::optional<std::shared_ptr<FusionCollector>> NaiveMatchingStrategy::match_rois_to_collector(
-  const std::list<std::shared_ptr<FusionCollector>> & cloud_collectors,
-  const MatchingParams & params) const
+template <class Msg3D, class Msg2D, class ExportObj>
+std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_rois_to_collector(
+  const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
+  const RoisMatchingParams & params) const
 {
-  std::optional<double> smallest_time_difference = std::nullopt;
-  std::shared_ptr<FusionCollector> closest_collector = nullptr;
+  // std::optional<double> smallest_time_difference = std::nullopt;
+  // std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> closest_collector = nullptr;
 
-  for (const auto & cloud_collector : cloud_collectors) {
-    if (!cloud_collector->topic_exists(params.topic_name)) {
-      auto info = cloud_collector->get_info();
-      if (auto naive_info = std::dynamic_pointer_cast<NaiveCollectorInfo>(info)) {
-        double time_difference = std::abs(params.cloud_arrival_time - naive_info->timestamp);
-        if (!smallest_time_difference || time_difference < smallest_time_difference) {
-          smallest_time_difference = time_difference;
-          closest_collector = cloud_collector;
-        }
-      }
-    }
-  }
+  // for (const auto & cloud_collector : fusion_collectors) {
+  //   if (!cloud_collector->topic_exists(params.topic_name)) {
+  //     auto info = cloud_collector->get_info();
+  //     if (auto naive_info = std::dynamic_pointer_cast<NaiveCollectorInfo>(info)) {
+  //       double time_difference = std::abs(params.cloud_arrival_time - naive_info->timestamp);
+  //       if (!smallest_time_difference || time_difference < smallest_time_difference) {
+  //         smallest_time_difference = time_difference;
+  //         closest_collector = cloud_collector;
+  //       }
+  //     }
+  //   }
+  // }
 
-  return closest_collector;
+  // return closest_collector;
 
   ////
   // for (const auto & fusion_collector : fusion_collectors_) {
@@ -67,28 +69,28 @@ std::optional<std::shared_ptr<FusionCollector>> NaiveMatchingStrategy::match_roi
   // return std::nullopt;
 }
 
-
-std::optional<std::shared_ptr<FusionCollector>> NaiveMatchingStrategy::match_det3d_to_collector(
-  const std::list<std::shared_ptr<FusionCollector>> & cloud_collectors,
-  const MatchingParams & params) const
+template <class Msg3D, class Msg2D, class ExportObj>
+std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_det3d_to_collector(
+  const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
+  const Det3dMatchingParams & params) const
 {
-  std::optional<double> smallest_time_difference = std::nullopt;
-  std::shared_ptr<FusionCollector> closest_collector = nullptr;
+  // std::optional<double> smallest_time_difference = std::nullopt;
+  // std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> closest_collector = nullptr;
 
-  for (const auto & cloud_collector : cloud_collectors) {
-    if (!cloud_collector->topic_exists(params.topic_name)) {
-      auto info = cloud_collector->get_info();
-      if (auto naive_info = std::dynamic_pointer_cast<NaiveCollectorInfo>(info)) {
-        double time_difference = std::abs(params.cloud_arrival_time - naive_info->timestamp);
-        if (!smallest_time_difference || time_difference < smallest_time_difference) {
-          smallest_time_difference = time_difference;
-          closest_collector = cloud_collector;
-        }
-      }
-    }
-  }
+  // for (const auto & cloud_collector : fusion_collectors) {
+  //   if (!cloud_collector->topic_exists(params.topic_name)) {
+  //     auto info = cloud_collector->get_info();
+  //     if (auto naive_info = std::dynamic_pointer_cast<NaiveCollectorInfo>(info)) {
+  //       double time_difference = std::abs(params.cloud_arrival_time - naive_info->timestamp);
+  //       if (!smallest_time_difference || time_difference < smallest_time_difference) {
+  //         smallest_time_difference = time_difference;
+  //         closest_collector = cloud_collector;
+  //       }
+  //     }
+  //   }
+  // }
 
-  return closest_collector;
+  // return closest_collector;
 
   ////
   // for (const auto & fusion_collector : fusion_collectors_) {
@@ -104,14 +106,17 @@ std::optional<std::shared_ptr<FusionCollector>> NaiveMatchingStrategy::match_det
   // return std::nullopt;
 }
 
-void NaiveMatchingStrategy::set_collector_info(
-  std::shared_ptr<FusionCollector> & collector, const MatchingParams & matching_params)
+template <class Msg3D, class Msg2D, class ExportObj>
+void NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::set_collector_info(
+  std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector, const std::shared_ptr<MatchingParamsBase> & matching_params)
 {
   auto info = std::make_shared<NaiveCollectorInfo>(matching_params.cloud_arrival_time);
   collector->set_info(info);
 }
 
-AdvancedMatchingStrategy::AdvancedMatchingStrategy(
+
+template <class Msg3D, class Msg2D, class ExportObj>
+AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::AdvancedMatchingStrategy(
   rclcpp::Node & node, std::vector<std::string> input_topics)
 {
   auto lidar_timestamp_offsets =
@@ -139,9 +144,10 @@ AdvancedMatchingStrategy::AdvancedMatchingStrategy(
 }
 
 
-std::optional<std::shared_ptr<FusionCollector>> AdvancedMatchingStrategy::match_rois_to_collector(
-  const std::list<std::shared_ptr<FusionCollector>> & cloud_collectors,
-  const MatchingParams & params) const
+template <class Msg3D, class Msg2D, class ExportObj>
+std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_rois_to_collector(
+  const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
+  const RoisMatchingParams & params) const
 {
   ////
   // for (const auto & fusion_collector : fusion_collectors_) {
@@ -161,11 +167,11 @@ std::optional<std::shared_ptr<FusionCollector>> AdvancedMatchingStrategy::match_
 
 
 template <class Msg3D, class Msg2D, class ExportObj>
-std::optional<std::shared_ptr<FusionCollector>> AdvancedMatchingStrategy::match_det3d_to_collector(
-  const std::list<std::shared_ptr<FusionCollector>> & cloud_collectors,
-  const MatchingParams & params) const
+std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_det3d_to_collector(
+  const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
+  const Det3dMatchingParams & params) const
 {
-  for (const auto & cloud_collector : cloud_collectors) {
+  for (const auto & cloud_collector : fusion_collectors) {
     auto info = cloud_collector->get_info();
     if (auto advanced_info = std::dynamic_pointer_cast<AdvancedCollectorInfo>(info)) {
       auto reference_timestamp_min = advanced_info->timestamp - advanced_info->noise_window;
@@ -181,37 +187,45 @@ std::optional<std::shared_ptr<FusionCollector>> AdvancedMatchingStrategy::match_
   return std::nullopt;
 
 
-  ////
-  // if(concatenated_status) {
-  //   auto status_map = concatenated_status.value(); // Retrieve the inner map
-  //   if(status_map["cloud concatenation success"] == "False" || 
-  //   (det3d_timestamp > std::stod(status_map["reference timestamp min"]) && 
-  //   det3d_timestamp < std::stod(status_map["reference timestamp max"]))) {
-  //     // The defined earliest pointcloud is missed in the concatenation of pointcloud
+  ///////
+  if(concatenated_status) {
+    auto status_map = concatenated_status.value(); // Retrieve the inner map
+    if(status_map["cloud concatenation success"] == "False" || 
+    (det3d_timestamp > std::stod(status_map["reference_timestamp_min"]) && 
+    det3d_timestamp < std::stod(status_map["reference_timestamp_max"]))) {
+      // The defined earliest pointcloud is missed in the concatenation of pointcloud
       
-  //     std::cout << "ho" << std::endl;
-  //   }
-  // }
+      std::cout << "ho" << std::endl;
+    }
+  }
 
-  // for (const auto & fusion_collector : fusion_collectors_) {
-  //   auto reference_timestamp_min = fusion_collector->timestamp - fusion_collector->noise_window;
-  //   auto reference_timestamp_max = fusion_collector->timestamp + fusion_collector->noise_window;
-  //   if (
-  //     det3d_timestamp < reference_timestamp_max + cloud_noise_window_ &&
-  //     det3d_timestamp > reference_timestamp_min - cloud_noise_window_) {
-  //     return fusion_collector;
-  //   }
-  // }
-  // return std::nullopt;
+  for (const auto & fusion_collector : fusion_collectors_) {
+    auto reference_timestamp_min = fusion_collector->timestamp - fusion_collector->noise_window;
+    auto reference_timestamp_max = fusion_collector->timestamp + fusion_collector->noise_window;
+    if (
+      det3d_timestamp < reference_timestamp_max + cloud_noise_window_ &&
+      det3d_timestamp > reference_timestamp_min - cloud_noise_window_) {
+      return fusion_collector;
+    }
+  }
+  return std::nullopt;
 }
 
-void AdvancedMatchingStrategy::set_collector_info(
-  std::shared_ptr<FusionCollector> & collector, const MatchingParams & matching_params)
+template <class Msg3D, class Msg2D, class ExportObj>
+void AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::set_collector_info(
+  std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector, const std::shared_ptr<MatchingParamsBase> & matching_params)
 {
-  auto info = std::make_shared<AdvancedCollectorInfo>(
-    matching_params.cloud_timestamp - topic_to_offset_map_[matching_params.topic_name],
-    topic_to_noise_window_map_[matching_params.topic_name]);
-  collector->set_info(info);
+  if(auto det3d_matching_params = std::dynamic_pointer_cast<Det3dMatchingParams>(matching_params)) {
+    auto info = std::make_shared<AdvancedCollectorInfo>(
+      det3d_matching_params->det3d_timestamp, det3d_noise_window_);
+    collector->set_info(info); 
+  }
+  else if(auto rois_matching_params = std::dynamic_pointer_cast<RoisMatchingParams>(matching_params)) {
+    auto info = std::make_shared<AdvancedCollectorInfo>(
+      rois_matching_params->rois_timestamp - topic_to_offset_map_[rois_matching_params->rois_id],
+      topic_to_noise_window_map_[rois_matching_params->rois_id]);
+    collector->set_info(info); 
+  }
 }
 
 }  // namespace autoware::image_projection_based_fusion

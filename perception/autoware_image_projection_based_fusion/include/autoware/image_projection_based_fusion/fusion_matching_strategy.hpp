@@ -31,16 +31,32 @@
 namespace autoware::image_projection_based_fusion
 {
 
-struct Det3dMatchingParams
+
+struct MatchingParamsBase
 {
-  double cloud_timestamp;
+  virtual ~MatchingParamsBase() = default;
 };
 
-struct RoisMatchingParams
+struct Det3dMatchingParams : public MatchingParamsBase
 {
-  std::size_t rois_id;
-  double rois_timestamp;
+  double det3d_timestamp;
+
+  explicit Det3dMatchingParams(double det3d_timestamp = 0.0) : det3d_timestamp(det3d_timestamp) {}
 };
+
+struct RoisMatchingParams : public MatchingParamsBase
+{
+  double rois_timestamp;
+  std::size_t rois_id;
+
+  explicit RoisMatchingParams(double rois_timestamp = 0.0, std::size_t rois_id = 0)
+  : rois_timestamp(rois_timestamp), rois_id(rois_id)
+  {
+  }
+};
+
+
+
 
 template <class Msg3D, class Msg2D, class ExportObj>
 class FusionMatchingStrategy
@@ -57,7 +73,7 @@ public:
     const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
     const Det3dMatchingParams & params) const = 0;
   virtual void set_collector_info(
-    std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector, const MatchingParams & matching_params) = 0;
+    std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector, const std::shared_ptr<MatchingParamsBase> & matching_params) = 0;
 };
 
 
@@ -76,7 +92,7 @@ public:
     const Det3dMatchingParams & params) const override;
   
   void set_collector_info(
-    std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector, const MatchingParams & matching_params) override;
+    std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector, const MatchingParamsBase & matching_params) override;
 };
 
 template <class Msg3D, class Msg2D, class ExportObj>
@@ -93,12 +109,13 @@ public:
     const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
     const Det3dMatchingParams & params) const override;
   void set_collector_info(
-    std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector, const MatchingParams & matching_params) override;
+    std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector, const std::shared_ptr<MatchingParamsBase> & matching_params) override;
 
 private:
   std::vector<std::string> input_topics_;
-  std::unordered_map<std::string, double> topic_to_offset_map_;
-  std::unordered_map<std::string, double> topic_to_noise_window_map_;
+  std::unordered_map<std::size_t, double> topic_to_offset_map_;
+  std::unordered_map<std::size_t, double> topic_to_noise_window_map_;
+  double det3d_noise_window_;
 };
 
 template <class Msg3D, class Msg2D, class ExportObj>
