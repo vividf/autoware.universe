@@ -14,22 +14,40 @@
 
 #pragma once
 
-#include "fusion_node.hpp"
+#include <rclcpp/rclcpp.hpp>
 #include <cstddef>
 #include <memory>
-#include <string>
+#include <mutex>
 #include <unordered_map>
+#include <autoware/image_projection_based_fusion/camera_projection.hpp>
 
 namespace autoware::image_projection_based_fusion
 {
+using autoware::image_projection_based_fusion::CameraProjection;
+
+template <class Msg3D, class Msg2D, class ExportObj>
+class FusionNode;
+
+template <class Msg2D>
+struct Det2dStatus
+{
+  // camera index
+  std::size_t id = 0;
+  // camera projection
+  std::unique_ptr<CameraProjection> camera_projector_ptr;
+  bool project_to_unrectified_image = false;
+  bool approximate_camera_projection = false;
+};
+
+
 
 template <class Msg3D, class Msg2D, class ExportObj>
 class FusionCollector
 {
 public:
   FusionCollector(
-    std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> && ros2_parent_node, double timeout_sec);
-  bool process_msg_3d(Msg3D msg_3d);
+    std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> && ros2_parent_node, double timeout_sec,  bool debug_mode);
+  bool process_msg_3d(const typename Msg3D::ConstSharedPtr msg_3d);
   bool process_rois(
   const std::size_t & roi_id, const typename Msg2D::ConstSharedPtr det2d_msg);
   void fusion_callback();
@@ -51,6 +69,7 @@ private:
   std::unordered_map<std::size_t, typename Msg2D::ConstSharedPtr> id_to_roi_map_;
   double timeout_sec_;
   double rois_number_;
+  bool debug_mode_;
   bool fusion_finished_{false};
   std::mutex fusion_mutex_;
 };

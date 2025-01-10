@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__IMAGE_PROJECTION_BASED_FUSION__FUSION_NODE_HPP_
-#define AUTOWARE__IMAGE_PROJECTION_BASED_FUSION__FUSION_NODE_HPP_
+#pragma once
 
 #include "autoware/image_projection_based_fusion/fusion_collector.hpp"
+#include "autoware/image_projection_based_fusion/fusion_matching_strategy.hpp"
 #include <autoware/image_projection_based_fusion/camera_projection.hpp>
 #include <autoware/image_projection_based_fusion/debugger.hpp>
 #include <autoware/universe_utils/ros/debug_publisher.hpp>
@@ -64,21 +64,7 @@ using ClusterMsgType = tier4_perception_msgs::msg::DetectedObjectsWithFeature;
 using ClusterObjType = tier4_perception_msgs::msg::DetectedObjectWithFeature;
 using tier4_perception_msgs::msg::DetectedObjectWithFeature;
 using PointCloud = pcl::PointCloud<pcl::PointXYZ>;
-using autoware::image_projection_based_fusion::CameraProjection;
 using autoware_perception_msgs::msg::ObjectClassification;
-
-template <class Msg2D>
-struct Det2dStatus
-{
-  // camera index
-  std::size_t id = 0;
-  // camera projection
-  std::unique_ptr<CameraProjection> camera_projector_ptr;
-  bool project_to_unrectified_image = false;
-  bool approximate_camera_projection = false;
-  // timing
-  double input_offset_ms = 0.0;
-};
 
 template <class Msg3D, class Msg2D, class ExportObj>
 class FusionNode : public rclcpp::Node
@@ -119,6 +105,7 @@ private:
   std::vector<typename rclcpp::Subscription<Msg2D>::SharedPtr> rois_subs_;
   std::vector<rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr> camera_info_subs_;
 
+  std::unique_ptr<FusionMatchingStrategy> fusion_matching_strategy_;
   std::mutex fusion_collectors_mutex_;
   std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> fusion_collectors_;
 
@@ -165,6 +152,8 @@ protected:
   float filter_scope_min_z_;
   float filter_scope_max_z_;
 
+  std::string matching_strategy_;
+
   // output publisher
   typename rclcpp::Publisher<ExportObj>::SharedPtr pub_ptr_;
 
@@ -182,5 +171,3 @@ protected:
 };
 
 }  // namespace autoware::image_projection_based_fusion
-
-#endif  // AUTOWARE__IMAGE_PROJECTION_BASED_FUSION__FUSION_NODE_HPP_

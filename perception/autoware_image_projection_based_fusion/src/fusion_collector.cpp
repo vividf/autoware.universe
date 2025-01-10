@@ -44,7 +44,7 @@ FusionCollector<Msg3D, Msg2D, ExportObj>::FusionCollector(
 
 
 template <class Msg3D, class Msg2D, class ExportObj>
-bool FusionCollector<Msg3D, Msg2D, ExportObj>::process_msg_3d(Msg3D msg_3d)
+bool FusionCollector<Msg3D, Msg2D, ExportObj>::process_msg_3d(const typename Msg3D::ConstSharedPtr msg_3d)
 {
   std::lock_guard<std::mutex> fusion_lock(fusion_mutex_);
   if (fusion_finished_) return false;

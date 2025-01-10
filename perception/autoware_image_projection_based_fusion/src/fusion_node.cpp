@@ -44,7 +44,7 @@
 #endif
 
 // static int publish_counter = 0;
-static double processing_time_ms = 0;
+// static double processing_time_ms = 0;
 
 namespace autoware::image_projection_based_fusion
 {
@@ -132,6 +132,17 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
 
   debug_mode_ = declare_parameter<bool>("debug_mode");
 
+
+  matching_strategy_ = declare_parameter<std::string>("matching_strategy.type");
+    if (matching_strategy_ == "naive") {
+      fusion_matching_strategy_ = std::make_unique<NaiveMatchingStrategy>(*this);
+    } else if (matching_strategy_ == "advanced") {
+      fusion_matching_strategy_ =
+        std::make_unique<AdvancedMatchingStrategy>(*this, params_.input_topics);
+    } else {
+      throw std::runtime_error("Matching strategy must be 'advanced' or 'naive'");
+    }
+
   // debugger
   if (debug_mode_) {
     std::vector<std::string> input_camera_topics;
@@ -210,7 +221,7 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::set_det2d_status(std::size_t rois_numb
     det2d_list_.at(roi_i).project_to_unrectified_image =
       point_project_to_unrectified_image.at(roi_i);
     det2d_list_.at(roi_i).approximate_camera_projection = approx_camera_projection.at(roi_i);
-    det2d_list_.at(roi_i).input_offset_ms = input_offset_ms.at(roi_i);
+    //det2d_list_.at(roi_i).input_offset_ms = input_offset_ms.at(roi_i);
   }
 }
 
@@ -440,52 +451,6 @@ void diagnostic_callback(const diagnostic_msgs::msg::DiagnosticArray::SharedPtr 
   // TODO: only store specific amount of status, delete rest of them (using heap?)
 }
 
-
-template <class Msg3D, class Msg2D, class ExportObj>
-std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> FusionNode<Msg3D, Msg2D, ExportObj>::match_rois_to_collector(const std::size_t roi_i, double rois_timesatmp) const
-{
-  for (const auto & fusion_collector : fusion_collectors_) {
-    auto reference_timestamp_min = fusion_collector->timestamp - fusion_collector->noise_window;
-    auto reference_timestamp_max = fusion_collector->timestamp  + fusion_collector->noise_window;
-    double time = rois_timesatmp - id_to_offset_map_.at(roi_i);
-    if (
-      time < reference_timestamp_max + id_to_noise_window_map_.at(roi_i) &&
-      time > reference_timestamp_min - id_to_noise_window_map_.at(roi_i)) {
-      return fusion_collector;
-    }
-  }
-  return std::nullopt;
-}
-
-
-template <class Msg3D, class Msg2D, class ExportObj>
-std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
-FusionNode<Msg3D, Msg2D, ExportObj>::match_det3d_to_collector(
-    double det3d_timestamp, 
-    std::optional<std::unordered_map<std::string, std::string>> concatenated_status) const 
-{
-  if(concatenated_status) {
-    auto status_map = concatenated_status.value(); // Retrieve the inner map
-    if(status_map["cloud concatenation success"] == "False" || 
-    (det3d_timestamp > std::stod(status_map["reference timestamp min"]) && 
-    det3d_timestamp < std::stod(status_map["reference timestamp max"]))) {
-      // The defined earliest pointcloud is missed in the concatenation of pointcloud
-      
-      std::cout << "ho" << std::endl;
-    }
-  }
-
-  for (const auto & fusion_collector : fusion_collectors_) {
-    auto reference_timestamp_min = fusion_collector->timestamp - fusion_collector->noise_window;
-    auto reference_timestamp_max = fusion_collector->timestamp + fusion_collector->noise_window;
-    if (
-      det3d_timestamp < reference_timestamp_max + cloud_noise_window_ &&
-      det3d_timestamp > reference_timestamp_min - cloud_noise_window_) {
-      return fusion_collector;
-    }
-  }
-  return std::nullopt;
-}
 
 template <class Msg3D, class Msg2D, class ExportObj>
 void FusionNode<Msg3D, Msg2D, ExportObj>::postprocess(

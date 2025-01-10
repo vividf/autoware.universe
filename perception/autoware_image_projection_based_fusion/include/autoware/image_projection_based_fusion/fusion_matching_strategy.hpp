@@ -1,0 +1,107 @@
+// Copyright 2024 TIER IV, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
+
+#include "fusion_collector.hpp"
+
+#include <rclcpp/node.hpp>
+
+#include <sensor_msgs/msg/point_cloud2.hpp>
+
+#include <cstddef>
+#include <list>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+namespace autoware::image_projection_based_fusion
+{
+
+struct Det3dMatchingParams
+{
+  double cloud_timestamp;
+};
+
+struct RoisMatchingParams
+{
+  std::size_t rois_id;
+  double rois_timestamp;
+};
+
+template <class Msg3D, class Msg2D, class ExportObj>
+class FusionMatchingStrategy
+{
+public:
+  virtual ~FusionMatchingStrategy() = default;
+
+
+  [[nodiscard]] virtual std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> match_rois_to_collector(
+    const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
+    const RoisMatchingParams & params) const = 0;
+
+  [[nodiscard]] virtual std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> match_det3d_to_collector(
+    const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
+    const Det3dMatchingParams & params) const = 0;
+  virtual void set_collector_info(
+    std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector, const MatchingParams & matching_params) = 0;
+};
+
+
+template <class Msg3D, class Msg2D, class ExportObj>
+class NaiveMatchingStrategy : public FusionMatchingStrategy<Msg3D, Msg2D, ExportObj>
+{
+public:
+  explicit NaiveMatchingStrategy(rclcpp::Node & node);
+
+  [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> match_rois_to_collector(
+    const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
+    const RoisMatchingParams & params) const override;
+  
+  [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> match_det3d_to_collector(
+    const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
+    const Det3dMatchingParams & params) const override;
+  
+  void set_collector_info(
+    std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector, const MatchingParams & matching_params) override;
+};
+
+template <class Msg3D, class Msg2D, class ExportObj>
+class AdvancedMatchingStrategy : public FusionMatchingStrategy<Msg3D, Msg2D, ExportObj>
+{
+public:
+  explicit AdvancedMatchingStrategy(rclcpp::Node & node, std::vector<std::string> input_topics);
+
+  [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> match_rois_to_collector(
+    const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
+    const RoisMatchingParams & params) const override;
+  
+  [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> match_det3d_to_collector(
+    const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
+    const Det3dMatchingParams & params) const override;
+  void set_collector_info(
+    std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector, const MatchingParams & matching_params) override;
+
+private:
+  std::vector<std::string> input_topics_;
+  std::unordered_map<std::string, double> topic_to_offset_map_;
+  std::unordered_map<std::string, double> topic_to_noise_window_map_;
+};
+
+template <class Msg3D, class Msg2D, class ExportObj>
+std::shared_ptr<FusionMatchingStrategy<Msg3D, Msg2D, ExportObj>> parse_matching_strategy(rclcpp::Node & node);
+
+}  // namespace autoware::image_projection_based_fusion
