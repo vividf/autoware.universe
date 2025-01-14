@@ -28,19 +28,16 @@
 namespace autoware::image_projection_based_fusion
 {
 
-
 template <class Msg3D, class Msg2D, class ExportObj>
 NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::NaiveMatchingStrategy(
   rclcpp::Node & node, std::size_t rois_number)
 {
   auto rois_timestamp_offsets =
     node.declare_parameter<std::vector<double>>("matching_strategy.rois_timestamp_offsets");
-  threshold_ =
-    node.declare_parameter<double>("matching_strategy.threshold");
+  threshold_ = node.declare_parameter<double>("matching_strategy.threshold");
 
   if (rois_timestamp_offsets.size() != rois_number) {
-    throw std::runtime_error(
-      "The number of rois does not match the number of timestamp offsets.");
+    throw std::runtime_error("The number of rois does not match the number of timestamp offsets.");
   }
 
   for (size_t i = 0; i < rois_number; i++) {
@@ -49,7 +46,6 @@ NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::NaiveMatchingStrategy(
 
   RCLCPP_INFO(node.get_logger(), "Utilize advanced matching strategy for fusion nodes.");
 }
-
 
 template <class Msg3D, class Msg2D, class ExportObj>
 std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
@@ -65,8 +61,9 @@ NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_rois_to_collector(
       auto info = fusion_collector->get_info();
       if (auto naive_info = std::dynamic_pointer_cast<NaiveCollectorInfo>(info)) {
         double time_difference = std::abs(params.rois_timestamp - naive_info->timestamp);
-        if (!smallest_time_difference || 
-            (time_difference < smallest_time_difference && time_difference < naive_info->threshold)) {
+        if (
+          !smallest_time_difference ||
+          (time_difference < smallest_time_difference && time_difference < naive_info->threshold)) {
           smallest_time_difference = time_difference;
           closest_collector = fusion_collector;
         }
@@ -108,8 +105,8 @@ void NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::set_collector_info(
 {
   if (
     auto det3d_matching_params = std::dynamic_pointer_cast<Det3dMatchingParams>(matching_params)) {
-    auto info = std::make_shared<NaiveCollectorInfo>(
-      det3d_matching_params->det3d_timestamp, threshold_);
+    auto info =
+      std::make_shared<NaiveCollectorInfo>(det3d_matching_params->det3d_timestamp, threshold_);
     collector->set_info(info);
   } else if (
     auto rois_matching_params = std::dynamic_pointer_cast<RoisMatchingParams>(matching_params)) {
@@ -128,12 +125,10 @@ AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::AdvancedMatchingStrategy(
     node.declare_parameter<std::vector<double>>("matching_strategy.rois_timestamp_offsets");
   auto rois_timestamp_noise_window =
     node.declare_parameter<std::vector<double>>("matching_strategy.rois_timestamp_noise_window");
-  det3d_noise_window_ =
-    node.declare_parameter<double>("matching_strategy.det3d_noise_window");
+  det3d_noise_window_ = node.declare_parameter<double>("matching_strategy.det3d_noise_window");
 
   if (rois_timestamp_offsets.size() != rois_number) {
-    throw std::runtime_error(
-      "The number of rois does not match the number of timestamp offsets.");
+    throw std::runtime_error("The number of rois does not match the number of timestamp offsets.");
   }
   if (rois_timestamp_noise_window.size() != rois_number) {
     throw std::runtime_error(
@@ -158,7 +153,7 @@ AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_rois_to_collector(
     auto info = fusion_collector->get_info();
     if (auto advanced_info = std::dynamic_pointer_cast<AdvancedCollectorInfo>(info)) {
       auto reference_timestamp_min = advanced_info->timestamp - advanced_info->noise_window;
-      auto reference_timestamp_max = advanced_info->timestamp  + advanced_info->noise_window;
+      auto reference_timestamp_max = advanced_info->timestamp + advanced_info->noise_window;
       double time = params.rois_timestamp - id_to_offset_map_.at(params.rois_id);
       if (
         time < reference_timestamp_max + id_to_noise_window_map_.at(params.rois_id) &&
@@ -174,7 +169,8 @@ template <class Msg3D, class Msg2D, class ExportObj>
 std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
 AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_det3d_to_collector(
   const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
-  const Det3dMatchingParams & params, const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status) const
+  const Det3dMatchingParams & params,
+  const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status) const
 {
   // TODO(vivid): double check this logic and fix the name
   double offset = get_offset(params, concatenated_status);
@@ -197,12 +193,13 @@ AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_det3d_to_collector(
 template <class Msg3D, class Msg2D, class ExportObj>
 void AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::set_collector_info(
   std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector,
-  const std::shared_ptr<MatchingParamsBase> & matching_params, const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status)
+  const std::shared_ptr<MatchingParamsBase> & matching_params,
+  const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status)
 {
   if (
     auto det3d_matching_params = std::dynamic_pointer_cast<Det3dMatchingParams>(matching_params)) {
     double offset = get_offset(det3d_matching_params, concatenated_status);
-    
+
     auto info = std::make_shared<AdvancedCollectorInfo>(
       det3d_matching_params->det3d_timestamp - offset, det3d_noise_window_);
     collector->set_info(info);
@@ -215,9 +212,10 @@ void AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::set_collector_info(
   }
 }
 
-
 template <class Msg3D, class Msg2D, class ExportObj>
-double AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::get_offset(const Det3dMatchingParams & params, const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status)
+double AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::get_offset(
+  const Det3dMatchingParams & params,
+  const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status)
 {
   double offset = 0.0;
   if (concatenated_status) {
@@ -226,8 +224,10 @@ double AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::get_offset(const Det3d
       status_map["cloud_concatenation_success"] == "False" &&
       params.det3d_timestamp > std::stod(status_map["reference_timestamp_max"])) {
       // The defined earliest pointcloud is missed in the concatenation of pointcloud
-      offset = params.det3d_timestamp - 
-      (std::stod(status_map["reference_timestamp_min"]) + (std::stod(status_map["reference_timestamp_max"]) - std::stod(status_map["reference_timestamp_max"]))/2);
+      offset = params.det3d_timestamp - (std::stod(status_map["reference_timestamp_min"]) +
+                                         (std::stod(status_map["reference_timestamp_max"]) -
+                                          std::stod(status_map["reference_timestamp_max"])) /
+                                           2);
     }
   }
 

@@ -113,13 +113,17 @@ public:
   [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
   match_det3d_to_collector(
     const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
-    const Det3dMatchingParams & params, const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status) const override;
+    const Det3dMatchingParams & params,
+    const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status)
+    const override;
   void set_collector_info(
     std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector,
-    const std::shared_ptr<MatchingParamsBase> & matching_params, 
-     const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status) override;
+    const std::shared_ptr<MatchingParamsBase> & matching_params,
+    const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status)
+    override;
 
-  double get_offset(const Det3dMatchingParams & params, 
+  double get_offset(
+    const Det3dMatchingParams & params,
     const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status);
 
 private:
