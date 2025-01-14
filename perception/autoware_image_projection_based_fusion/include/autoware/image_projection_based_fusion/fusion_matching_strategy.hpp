@@ -78,7 +78,7 @@ template <class Msg3D, class Msg2D, class ExportObj>
 class NaiveMatchingStrategy : public FusionMatchingStrategy<Msg3D, Msg2D, ExportObj>
 {
 public:
-  explicit NaiveMatchingStrategy(rclcpp::Node & node);
+  explicit NaiveMatchingStrategy(rclcpp::Node & node, std::size_t rois_number);
 
   [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
   match_rois_to_collector(
@@ -92,14 +92,18 @@ public:
 
   void set_collector_info(
     std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector,
-    const MatchingParamsBase & matching_params) override;
+    const std::shared_ptr<MatchingParamsBase> & matching_params) override;
+
+private:
+  std::unordered_map<std::size_t, double> id_to_offset_map_;
+  double threshold_;
 };
 
 template <class Msg3D, class Msg2D, class ExportObj>
 class AdvancedMatchingStrategy : public FusionMatchingStrategy<Msg3D, Msg2D, ExportObj>
 {
 public:
-  explicit AdvancedMatchingStrategy(rclcpp::Node & node, std::vector<std::string> input_topics);
+  explicit AdvancedMatchingStrategy(rclcpp::Node & node, std::size_t rois_number);
 
   [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
   match_rois_to_collector(
@@ -109,15 +113,18 @@ public:
   [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
   match_det3d_to_collector(
     const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
-    const Det3dMatchingParams & params) const override;
+    const Det3dMatchingParams & params, const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status) const override;
   void set_collector_info(
     std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector,
-    const std::shared_ptr<MatchingParamsBase> & matching_params) override;
+    const std::shared_ptr<MatchingParamsBase> & matching_params, 
+     const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status) override;
+
+  double get_offset(const Det3dMatchingParams & params, 
+    const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status);
 
 private:
-  std::vector<std::string> input_topics_;
-  std::unordered_map<std::size_t, double> topic_to_offset_map_;
-  std::unordered_map<std::size_t, double> topic_to_noise_window_map_;
+  std::unordered_map<std::size_t, double> id_to_offset_map_;
+  std::unordered_map<std::size_t, double> id_to_noise_window_map_;
   double det3d_noise_window_;
 };
 

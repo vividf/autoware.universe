@@ -84,6 +84,7 @@ public:
   [[nodiscard]] std::shared_ptr<FusionCollectorInfoBase> get_info() const;
   void show_debug_message();
   bool ready_to_fuse();
+  bool rois_exists(const std::size_t & rois_id);
 
 private:
   std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> ros2_parent_node_;
