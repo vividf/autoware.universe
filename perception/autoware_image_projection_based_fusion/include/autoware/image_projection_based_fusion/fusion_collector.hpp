@@ -21,6 +21,7 @@
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <vector>
 
 namespace autoware::image_projection_based_fusion
 {
@@ -82,14 +83,15 @@ public:
 
   void set_info(std::shared_ptr<FusionCollectorInfoBase> collector_info);
   [[nodiscard]] std::shared_ptr<FusionCollectorInfoBase> get_info() const;
-  void show_debug_message();
+  // void show_debug_message();
   bool ready_to_fuse();
   bool rois_exists(const std::size_t & rois_id);
+  bool det3d_exists();
 
 private:
   std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> ros2_parent_node_;
   rclcpp::TimerBase::SharedPtr timer_;
-  typename Msg3D::SharedPtr det3d_msg_;
+  typename Msg3D::ConstSharedPtr det3d_msg_{nullptr};
   std::vector<Det2dStatus<Msg2D>> det2d_list_;
   std::unordered_map<std::size_t, typename Msg2D::ConstSharedPtr> id_to_roi_map_;
   double timeout_sec_;

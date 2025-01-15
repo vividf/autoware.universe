@@ -41,7 +41,7 @@ using autoware::universe_utils::ScopedTimeTrack;
 Eigen::Affine3f _transformToEigen(const geometry_msgs::msg::Transform & t)
 {
   Eigen::Affine3f a;
-  a.matrix() = tf2::transform_to_eigen(t).matrix().cast<float>();
+  a.matrix() = tf2::transformToEigen(t).matrix().cast<float>();
   return a;
 }
 

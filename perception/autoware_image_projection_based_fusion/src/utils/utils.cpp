@@ -62,7 +62,7 @@ std::optional<geometry_msgs::msg::TransformStamped> get_transform_stamped(
 Eigen::Affine3d transform_to_eigen(const geometry_msgs::msg::Transform & t)
 {
   Eigen::Affine3d a;
-  a.matrix() = tf2::transform_to_eigen(t).matrix();
+  a.matrix() = tf2::transformToEigen(t).matrix();
   return a;
 }
 

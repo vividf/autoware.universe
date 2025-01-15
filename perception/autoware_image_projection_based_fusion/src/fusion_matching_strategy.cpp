@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@
 #include "autoware/image_projection_based_fusion/fusion_matching_strategy.hpp"
 
 #include "autoware/image_projection_based_fusion/fusion_collector.hpp"
+#include "autoware/image_projection_based_fusion/fusion_node.hpp"
+#include "autoware/image_projection_based_fusion/fusion_types.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -23,6 +25,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::image_projection_based_fusion
@@ -30,11 +33,12 @@ namespace autoware::image_projection_based_fusion
 
 template <class Msg3D, class Msg2D, class ExportObj>
 NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::NaiveMatchingStrategy(
-  rclcpp::Node & node, std::size_t rois_number)
+  std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> && ros2_parent_node, std::size_t rois_number)
+: ros2_parent_node_(std::move(ros2_parent_node))
 {
-  auto rois_timestamp_offsets =
-    node.declare_parameter<std::vector<double>>("matching_strategy.rois_timestamp_offsets");
-  threshold_ = node.declare_parameter<double>("matching_strategy.threshold");
+  auto rois_timestamp_offsets = ros2_parent_node_->template declare_parameter<std::vector<double>>(
+    "matching_strategy.rois_timestamp_offsets");
+  threshold_ = ros2_parent_node_->template declare_parameter<double>("matching_strategy.threshold");
 
   if (rois_timestamp_offsets.size() != rois_number) {
     throw std::runtime_error("The number of rois does not match the number of timestamp offsets.");
@@ -44,23 +48,24 @@ NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::NaiveMatchingStrategy(
     id_to_offset_map_[i] = rois_timestamp_offsets[i];
   }
 
-  RCLCPP_INFO(node.get_logger(), "Utilize advanced matching strategy for fusion nodes.");
+  RCLCPP_INFO(
+    ros2_parent_node_->get_logger(), "Utilize advanced matching strategy for fusion nodes.");
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
 std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
 NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_rois_to_collector(
   const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
-  const RoisMatchingParams & params) const
+  const std::shared_ptr<RoisMatchingParams> & params) const
 {
   std::optional<double> smallest_time_difference = std::nullopt;
   std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> closest_collector = nullptr;
 
   for (const auto & fusion_collector : fusion_collectors) {
-    if (!fusion_collector->rois_exists(params.rois_id)) {
+    if (!fusion_collector->rois_exists(params->rois_id)) {
       auto info = fusion_collector->get_info();
       if (auto naive_info = std::dynamic_pointer_cast<NaiveCollectorInfo>(info)) {
-        double time_difference = std::abs(params.rois_timestamp - naive_info->timestamp);
+        double time_difference = std::abs(params->rois_timestamp - naive_info->timestamp);
         if (
           !smallest_time_difference ||
           (time_difference < smallest_time_difference && time_difference < naive_info->threshold)) {
@@ -81,21 +86,30 @@ template <class Msg3D, class Msg2D, class ExportObj>
 std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
 NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_det3d_to_collector(
   const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
-  const Det3dMatchingParams & params) const
+  const std::shared_ptr<Det3dMatchingParams> & params) const
 {
-  // for (const auto & fusion_collector : fusion_collectors) {
-  //   auto info = fusion_collector->get_info();
-  //   if (auto advanced_info = std::dynamic_pointer_cast<AdvancedCollectorInfo>(info)) {
-  //     auto reference_timestamp_min = advanced_info->timestamp - advanced_info->noise_window;
-  //     auto reference_timestamp_max = advanced_info->timestamp + advanced_info->noise_window;
-  //     if (
-  //       params.det3d_timestamp - offset < reference_timestamp_max + det3d_noise_window_ &&
-  //       params.det3d_timestamp - offset > reference_timestamp_min - det3d_noise_window_) {
-  //       return fusion_collector;
-  //     }
-  //   }
-  // }
-  // return std::nullopt;
+  std::optional<double> smallest_time_difference = std::nullopt;
+  std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> closest_collector = nullptr;
+
+  for (const auto & fusion_collector : fusion_collectors) {
+    if (!fusion_collector->det3d_exists()) {
+      auto info = fusion_collector->get_info();
+      if (auto naive_info = std::dynamic_pointer_cast<NaiveCollectorInfo>(info)) {
+        double time_difference = std::abs(params->det3d_timestamp - naive_info->timestamp);
+        if (
+          !smallest_time_difference ||
+          (time_difference < smallest_time_difference && time_difference < naive_info->threshold)) {
+          smallest_time_difference = time_difference;
+          closest_collector = fusion_collector;
+        }
+      }
+    }
+  }
+
+  if (closest_collector != nullptr) {
+    return closest_collector;
+  }
+  return std::nullopt;
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
@@ -119,13 +133,16 @@ void NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::set_collector_info(
 
 template <class Msg3D, class Msg2D, class ExportObj>
 AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::AdvancedMatchingStrategy(
-  rclcpp::Node & node, std::size_t rois_number)
+  std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> && ros2_parent_node, std::size_t rois_number)
+: ros2_parent_node_(std::move(ros2_parent_node))
 {
-  auto rois_timestamp_offsets =
-    node.declare_parameter<std::vector<double>>("matching_strategy.rois_timestamp_offsets");
+  auto rois_timestamp_offsets = ros2_parent_node_->template declare_parameter<std::vector<double>>(
+    "matching_strategy.rois_timestamp_offsets");
   auto rois_timestamp_noise_window =
-    node.declare_parameter<std::vector<double>>("matching_strategy.rois_timestamp_noise_window");
-  det3d_noise_window_ = node.declare_parameter<double>("matching_strategy.det3d_noise_window");
+    ros2_parent_node_->template declare_parameter<std::vector<double>>(
+      "matching_strategy.rois_timestamp_noise_window");
+  det3d_noise_window_ =
+    ros2_parent_node_->template declare_parameter<double>("matching_strategy.det3d_noise_window");
 
   if (rois_timestamp_offsets.size() != rois_number) {
     throw std::runtime_error("The number of rois does not match the number of timestamp offsets.");
@@ -140,24 +157,25 @@ AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::AdvancedMatchingStrategy(
     id_to_noise_window_map_[i] = rois_timestamp_noise_window[i];
   }
 
-  RCLCPP_INFO(node.get_logger(), "Utilize advanced matching strategy for fusion nodes.");
+  RCLCPP_INFO(
+    ros2_parent_node_->get_logger(), "Utilize advanced matching strategy for fusion nodes.");
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
 std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
 AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_rois_to_collector(
   const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
-  const RoisMatchingParams & params) const
+  const std::shared_ptr<RoisMatchingParams> & params) const
 {
   for (const auto & fusion_collector : fusion_collectors) {
     auto info = fusion_collector->get_info();
     if (auto advanced_info = std::dynamic_pointer_cast<AdvancedCollectorInfo>(info)) {
       auto reference_timestamp_min = advanced_info->timestamp - advanced_info->noise_window;
       auto reference_timestamp_max = advanced_info->timestamp + advanced_info->noise_window;
-      double time = params.rois_timestamp - id_to_offset_map_.at(params.rois_id);
+      double time = params->rois_timestamp - id_to_offset_map_.at(params->rois_id);
       if (
-        time < reference_timestamp_max + id_to_noise_window_map_.at(params.rois_id) &&
-        time > reference_timestamp_min - id_to_noise_window_map_.at(params.rois_id)) {
+        time < reference_timestamp_max + id_to_noise_window_map_.at(params->rois_id) &&
+        time > reference_timestamp_min - id_to_noise_window_map_.at(params->rois_id)) {
         return fusion_collector;
       }
     }
@@ -169,11 +187,12 @@ template <class Msg3D, class Msg2D, class ExportObj>
 std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
 AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_det3d_to_collector(
   const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
-  const Det3dMatchingParams & params,
-  const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status) const
+  const std::shared_ptr<Det3dMatchingParams> & params) const
 {
+  auto concatenated_status = ros2_parent_node_->find_concatenation_status(params->det3d_timestamp);
+
   // TODO(vivid): double check this logic and fix the name
-  double offset = get_offset(params, concatenated_status);
+  double offset = get_offset(params->det3d_timestamp, concatenated_status);
 
   for (const auto & fusion_collector : fusion_collectors) {
     auto info = fusion_collector->get_info();
@@ -181,8 +200,8 @@ AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_det3d_to_collector(
       auto reference_timestamp_min = advanced_info->timestamp - advanced_info->noise_window;
       auto reference_timestamp_max = advanced_info->timestamp + advanced_info->noise_window;
       if (
-        params.det3d_timestamp - offset < reference_timestamp_max + det3d_noise_window_ &&
-        params.det3d_timestamp - offset > reference_timestamp_min - det3d_noise_window_) {
+        params->det3d_timestamp - offset < reference_timestamp_max + det3d_noise_window_ &&
+        params->det3d_timestamp - offset > reference_timestamp_min - det3d_noise_window_) {
         return fusion_collector;
       }
     }
@@ -193,12 +212,13 @@ AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::match_det3d_to_collector(
 template <class Msg3D, class Msg2D, class ExportObj>
 void AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::set_collector_info(
   std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector,
-  const std::shared_ptr<MatchingParamsBase> & matching_params,
-  const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status)
+  const std::shared_ptr<MatchingParamsBase> & matching_params)
 {
   if (
     auto det3d_matching_params = std::dynamic_pointer_cast<Det3dMatchingParams>(matching_params)) {
-    double offset = get_offset(det3d_matching_params, concatenated_status);
+    auto concatenated_status =
+      ros2_parent_node_->find_concatenation_status(det3d_matching_params->det3d_timestamp);
+    double offset = get_offset(det3d_matching_params->det3d_timestamp, concatenated_status);
 
     auto info = std::make_shared<AdvancedCollectorInfo>(
       det3d_matching_params->det3d_timestamp - offset, det3d_noise_window_);
@@ -214,24 +234,54 @@ void AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::set_collector_info(
 
 template <class Msg3D, class Msg2D, class ExportObj>
 double AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::get_offset(
-  const Det3dMatchingParams & params,
-  const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status)
+  const double & det3d_timestamp,
+  const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status) const
 {
   double offset = 0.0;
   if (concatenated_status) {
     auto status_map = concatenated_status.value();  // Retrieve the inner map
     if (
       status_map["cloud_concatenation_success"] == "False" &&
-      params.det3d_timestamp > std::stod(status_map["reference_timestamp_max"])) {
+      det3d_timestamp > std::stod(status_map["reference_timestamp_max"])) {
       // The defined earliest pointcloud is missed in the concatenation of pointcloud
-      offset = params.det3d_timestamp - (std::stod(status_map["reference_timestamp_min"]) +
-                                         (std::stod(status_map["reference_timestamp_max"]) -
-                                          std::stod(status_map["reference_timestamp_max"])) /
-                                           2);
+      offset = det3d_timestamp - (std::stod(status_map["reference_timestamp_min"]) +
+                                  (std::stod(status_map["reference_timestamp_max"]) -
+                                   std::stod(status_map["reference_timestamp_min"])) /
+                                    2);
     }
   }
 
   return offset;
 }
+
+// pointpainting fusion
+template class NaiveMatchingStrategy<PointCloudMsgType, RoiMsgType, DetectedObjects>;
+
+// roi cluster fusion
+template class NaiveMatchingStrategy<ClusterMsgType, RoiMsgType, ClusterMsgType>;
+
+// roi detected-object fusion
+template class NaiveMatchingStrategy<DetectedObjects, RoiMsgType, DetectedObjects>;
+
+// roi pointcloud fusion
+template class NaiveMatchingStrategy<PointCloudMsgType, RoiMsgType, ClusterMsgType>;
+
+// segment pointcloud fusion
+template class NaiveMatchingStrategy<PointCloudMsgType, Image, PointCloudMsgType>;
+
+// pointpainting fusion
+template class AdvancedMatchingStrategy<PointCloudMsgType, RoiMsgType, DetectedObjects>;
+
+// roi cluster fusion
+template class AdvancedMatchingStrategy<ClusterMsgType, RoiMsgType, ClusterMsgType>;
+
+// roi detected-object fusion
+template class AdvancedMatchingStrategy<DetectedObjects, RoiMsgType, DetectedObjects>;
+
+// roi pointcloud fusion
+template class AdvancedMatchingStrategy<PointCloudMsgType, RoiMsgType, ClusterMsgType>;
+
+// segment pointcloud fusion
+template class AdvancedMatchingStrategy<PointCloudMsgType, Image, PointCloudMsgType>;
 
 }  // namespace autoware::image_projection_based_fusion

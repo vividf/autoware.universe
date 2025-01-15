@@ -16,9 +16,7 @@
 
 #include "fusion_collector.hpp"
 
-#include <rclcpp/node.hpp>
-
-#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <cstddef>
 #include <list>
@@ -26,10 +24,12 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 namespace autoware::image_projection_based_fusion
 {
+
+template <class Msg3D, class Msg2D, class ExportObj>
+class FusionNode;
 
 struct MatchingParamsBase
 {
@@ -63,12 +63,12 @@ public:
   [[nodiscard]] virtual std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
   match_rois_to_collector(
     const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
-    const RoisMatchingParams & params) const = 0;
+    const std::shared_ptr<RoisMatchingParams> & params) const = 0;
 
   [[nodiscard]] virtual std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
   match_det3d_to_collector(
     const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
-    const Det3dMatchingParams & params) const = 0;
+    const std::shared_ptr<Det3dMatchingParams> & params) const = 0;
   virtual void set_collector_info(
     std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector,
     const std::shared_ptr<MatchingParamsBase> & matching_params) = 0;
@@ -78,17 +78,19 @@ template <class Msg3D, class Msg2D, class ExportObj>
 class NaiveMatchingStrategy : public FusionMatchingStrategy<Msg3D, Msg2D, ExportObj>
 {
 public:
-  explicit NaiveMatchingStrategy(rclcpp::Node & node, std::size_t rois_number);
+  explicit NaiveMatchingStrategy(
+    std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> && ros2_parent_node,
+    std::size_t rois_number);
 
   [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
   match_rois_to_collector(
     const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
-    const RoisMatchingParams & params) const override;
+    const std::shared_ptr<RoisMatchingParams> & params) const override;
 
   [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
   match_det3d_to_collector(
     const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
-    const Det3dMatchingParams & params) const override;
+    const std::shared_ptr<Det3dMatchingParams> & params) const override;
 
   void set_collector_info(
     std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector,
@@ -97,39 +99,39 @@ public:
 private:
   std::unordered_map<std::size_t, double> id_to_offset_map_;
   double threshold_;
+  std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> ros2_parent_node_;
 };
 
 template <class Msg3D, class Msg2D, class ExportObj>
 class AdvancedMatchingStrategy : public FusionMatchingStrategy<Msg3D, Msg2D, ExportObj>
 {
 public:
-  explicit AdvancedMatchingStrategy(rclcpp::Node & node, std::size_t rois_number);
+  explicit AdvancedMatchingStrategy(
+    std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> && ros2_parent_node,
+    std::size_t rois_number);
 
   [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
   match_rois_to_collector(
     const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
-    const RoisMatchingParams & params) const override;
+    const std::shared_ptr<RoisMatchingParams> & params) const override;
 
   [[nodiscard]] std::optional<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>>
   match_det3d_to_collector(
     const std::list<std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>>> & fusion_collectors,
-    const Det3dMatchingParams & params,
-    const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status)
-    const override;
+    const std::shared_ptr<Det3dMatchingParams> & params) const override;
   void set_collector_info(
     std::shared_ptr<FusionCollector<Msg3D, Msg2D, ExportObj>> & collector,
-    const std::shared_ptr<MatchingParamsBase> & matching_params,
-    const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status)
-    override;
+    const std::shared_ptr<MatchingParamsBase> & matching_params) override;
 
   double get_offset(
-    const Det3dMatchingParams & params,
-    const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status);
+    const double & det3d_timestamp,
+    const std::optional<std::unordered_map<std::string, std::string>> & concatenated_status) const;
 
 private:
   std::unordered_map<std::size_t, double> id_to_offset_map_;
   std::unordered_map<std::size_t, double> id_to_noise_window_map_;
   double det3d_noise_window_;
+  std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> ros2_parent_node_;
 };
 
 template <class Msg3D, class Msg2D, class ExportObj>

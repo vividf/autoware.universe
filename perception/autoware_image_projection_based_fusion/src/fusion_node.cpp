@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <optional>
 #define EIGEN_MPL2_ONLY
 
-#include "autoware/image_projection_based_fusion/fusion_collector.hpp"
-#include "autoware/image_projection_based_fusion/fusion_matching_strategy.hpp"
 #include "autoware/image_projection_based_fusion/fusion_node.hpp"
+
+#include "autoware/image_projection_based_fusion/fusion_collector.hpp"
+#include "autoware/image_projection_based_fusion/fusion_types.hpp"
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -57,8 +57,7 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
 : Node(node_name, options), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_)
 {
   // set rois_number
-  const std::size_t rois_number =
-    static_cast<std::size_t>(declare_parameter<int32_t>("rois_number"));
+  const auto rois_number = static_cast<std::size_t>(declare_parameter<int32_t>("rois_number"));
   if (rois_number < 1) {
     RCLCPP_ERROR(
       this->get_logger(), "minimum rois_number is 1. current rois_number is %zu", rois_number);
@@ -114,7 +113,7 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
   // subscribe diagnostics
   // TODO(vivid): check the value 10
   sub_diag_ = this->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
-    "/diagnostics", 10, std::bind(&FusionNode::diagnostics_callback, this, std::placeholders::_1));
+    "/diagnostics", 10, std::bind(&FusionNode::diagnostic_callback, this, std::placeholders::_1));
 
   // initialization on each 2d detections
   set_det2d_status(rois_number);
@@ -135,10 +134,11 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
 
   matching_strategy_ = declare_parameter<std::string>("matching_strategy.type");
   if (matching_strategy_ == "naive") {
-    fusion_matching_strategy_ = std::make_unique<NaiveMatchingStrategy>(*this);
+    fusion_matching_strategy_ = std::make_unique<NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>>(
+      std::dynamic_pointer_cast<FusionNode>(shared_from_this()), rois_number);
   } else if (matching_strategy_ == "advanced") {
-    fusion_matching_strategy_ =
-      std::make_unique<AdvancedMatchingStrategy>(*this, params_.input_topics);
+    fusion_matching_strategy_ = std::make_unique<AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>>(
+      std::dynamic_pointer_cast<FusionNode>(shared_from_this()), rois_number);
   } else {
     throw std::runtime_error("Matching strategy must be 'advanced' or 'naive'");
   }
@@ -294,7 +294,6 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::sub_callback(
   matching_params->det3d_timestamp = det3d_timestamp;
 
   // Get the diagnostic message
-  auto concatenated_status = find_concatenation_status(det3d_timestamp);
 
   if (!fusion_collectors_.empty()) {
     fusion_collector =
@@ -311,7 +310,7 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::sub_callback(
   }
 
   if (!process_success) {
-    auto new_fusion_collector = std::make_shared<FusionCollector>(
+    auto new_fusion_collector = std::make_shared<FusionCollector<Msg3D, Msg2D, ExportObj>>(
       std::dynamic_pointer_cast<FusionNode>(shared_from_this()), timeout_sec_, debug_mode_);
 
     fusion_collectors_.push_back(new_fusion_collector);
@@ -382,7 +381,7 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::roi_callback(
   }
 
   if (!process_success) {
-    auto new_fusion_collector = std::make_shared<FusionCollector>(
+    auto new_fusion_collector = std::make_shared<FusionCollector<Msg3D, Msg2D, ExportObj>>(
       std::dynamic_pointer_cast<FusionNode>(shared_from_this()), timeout_sec_, debug_mode_);
 
     fusion_collectors_.push_back(new_fusion_collector);
@@ -408,12 +407,14 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::roi_callback(
   // processing_time_ms = processing_time_ms + stop_watch_ptr_->toc("processing_time", true);
 }
 
-void diagnostic_callback(const diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg)
+template <class Msg3D, class Msg2D, class ExportObj>
+void FusionNode<Msg3D, Msg2D, ExportObj>::diagnostic_callback(
+  const diagnostic_msgs::msg::DiagnosticArray::SharedPtr diagnostic_msg)
 {
-  for (const auto & status : msg->status) {
+  for (const auto & status : diagnostic_msg->status) {
     // Filter for the concatenate_and_time_sync_node diagnostic message
     if (status.name == "concatenate_and_time_sync_node: concat_status") {
-      RCLCPP_INFO(this->get_logger(), "Processing concatenation status diagnostic message...");
+      RCLCPP_INFO(get_logger(), "Processing concatenation status diagnostic message...");
 
       // Temporary map to hold key-value pairs for this status
       std::unordered_map<std::string, std::string> key_value_map;
@@ -427,8 +428,7 @@ void diagnostic_callback(const diagnostic_msgs::msg::DiagnosticArray::SharedPtr 
           try {
             concatenate_timestamp_opt = std::stod(value.value);
           } catch (const std::exception & e) {
-            RCLCPP_ERROR(
-              this->get_logger(), "Error parsing concatenated cloud timestamp: %s", e.what());
+            RCLCPP_ERROR(get_logger(), "Error parsing concatenated cloud timestamp: %s", e.what());
           }
         }
       }
@@ -437,17 +437,16 @@ void diagnostic_callback(const diagnostic_msgs::msg::DiagnosticArray::SharedPtr 
       if (concatenate_timestamp_opt.has_value()) {
         concatenated_status_map_[concatenate_timestamp_opt.value()] = key_value_map;
         RCLCPP_INFO(
-          this->get_logger(), "Stored concatenation status for timestamp: %.9f",
+          get_logger(), "Stored concatenation status for timestamp: %.9f",
           concatenate_timestamp_opt.value());
       } else {
         RCLCPP_WARN(
-          this->get_logger(),
-          "Missing or invalid concatenated cloud timestamp, status not stored.");
+          get_logger(), "Missing or invalid concatenated cloud timestamp, status not stored.");
       }
     }
   }
 
-  // TODO: only store specific amount of status, delete rest of them (using heap?)
+  // TODO(vivid): only store specific amount of status, delete rest of them (using heap?)
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>

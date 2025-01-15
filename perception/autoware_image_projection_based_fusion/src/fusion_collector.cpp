@@ -116,9 +116,9 @@ bool FusionCollector<Msg3D, Msg2D, ExportObj>::fusion_finished() const
 template <class Msg3D, class Msg2D, class ExportObj>
 void FusionCollector<Msg3D, Msg2D, ExportObj>::fusion_callback()
 {
-  if (debug_mode_) {
-    show_debug_message();
-  }
+  // if (debug_mode_) {
+  //   show_debug_message();
+  // }
 
   // All pointcloud and rois are received or the timer has timed out, cancel the timer and fuse
   // them.
@@ -138,6 +138,18 @@ void FusionCollector<Msg3D, Msg2D, ExportObj>::fusion_callback()
 
   ros2_parent_node_->export_process(output_det3d_msg);
   fusion_finished_ = true;
+}
+
+template <class Msg3D, class Msg2D, class ExportObj>
+bool FusionCollector<Msg3D, Msg2D, ExportObj>::rois_exists(const std::size_t & rois_id)
+{
+  return id_to_roi_map_.find(rois_id) != id_to_roi_map_.end();
+}
+
+template <class Msg3D, class Msg2D, class ExportObj>
+bool FusionCollector<Msg3D, Msg2D, ExportObj>::det3d_exists()
+{
+  return det3d_msg_ != nullptr;
 }
 
 // void CloudCollector::show_debug_message()
@@ -172,5 +184,22 @@ void FusionCollector<Msg3D, Msg2D, ExportObj>::fusion_callback()
 
 //   RCLCPP_INFO(ros2_parent_node_->get_logger(), "%s", log_stream.str().c_str());
 // }
+
+// Explicit instantiation for the supported types
+
+// pointpainting fusion
+template class FusionCollector<PointCloudMsgType, RoiMsgType, DetectedObjects>;
+
+// roi cluster fusion
+template class FusionCollector<ClusterMsgType, RoiMsgType, ClusterMsgType>;
+
+// roi detected-object fusion
+template class FusionCollector<DetectedObjects, RoiMsgType, DetectedObjects>;
+
+// roi pointcloud fusion
+template class FusionCollector<PointCloudMsgType, RoiMsgType, ClusterMsgType>;
+
+// segment pointcloud fusion
+template class FusionCollector<PointCloudMsgType, Image, PointCloudMsgType>;
 
 }  // namespace autoware::image_projection_based_fusion
