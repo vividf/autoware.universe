@@ -36,8 +36,8 @@ NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>::NaiveMatchingStrategy(
   std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> && ros2_parent_node, std::size_t rois_number)
 : ros2_parent_node_(std::move(ros2_parent_node))
 {
-  auto rois_timestamp_offsets = ros2_parent_node_->template declare_parameter<std::vector<double>>(
-    "matching_strategy.rois_timestamp_offsets");
+  auto rois_timestamp_offsets =
+    ros2_parent_node_->template declare_parameter<std::vector<double>>("rois_timestamp_offsets");
   threshold_ = ros2_parent_node_->template declare_parameter<double>("matching_strategy.threshold");
 
   if (rois_timestamp_offsets.size() != rois_number) {
@@ -136,13 +136,13 @@ AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::AdvancedMatchingStrategy(
   std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> && ros2_parent_node, std::size_t rois_number)
 : ros2_parent_node_(std::move(ros2_parent_node))
 {
-  auto rois_timestamp_offsets = ros2_parent_node_->template declare_parameter<std::vector<double>>(
-    "matching_strategy.rois_timestamp_offsets");
+  auto rois_timestamp_offsets =
+    ros2_parent_node_->template declare_parameter<std::vector<double>>("rois_timestamp_offsets");
+  det3d_noise_window_ =
+    ros2_parent_node_->template declare_parameter<double>("matching_strategy.det3d_noise_window");
   auto rois_timestamp_noise_window =
     ros2_parent_node_->template declare_parameter<std::vector<double>>(
       "matching_strategy.rois_timestamp_noise_window");
-  det3d_noise_window_ =
-    ros2_parent_node_->template declare_parameter<double>("matching_strategy.det3d_noise_window");
 
   if (rois_timestamp_offsets.size() != rois_number) {
     throw std::runtime_error("The number of rois does not match the number of timestamp offsets.");

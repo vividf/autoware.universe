@@ -44,8 +44,7 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #endif
 
-// static int publish_counter = 0;
-// static double processing_time_ms = 0;
+static double processing_time_ms = 0;
 
 namespace autoware::image_projection_based_fusion
 {
@@ -110,11 +109,6 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
     std::bind(&FusionNode::sub_callback, this, std::placeholders::_1);
   sub_ = this->create_subscription<Msg3D>("input", rclcpp::QoS(1).best_effort(), sub_callback);
 
-  // subscribe diagnostics
-  // TODO(vivid): check the value 10
-  sub_diag_ = this->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
-    "/diagnostics", 10, std::bind(&FusionNode::diagnostic_callback, this, std::placeholders::_1));
-
   // initialization on each 2d detections
   set_det2d_status(rois_number);
 
@@ -139,6 +133,9 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
   } else if (matching_strategy_ == "advanced") {
     fusion_matching_strategy_ = std::make_unique<AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>>(
       std::dynamic_pointer_cast<FusionNode>(shared_from_this()), rois_number);
+    // subscribe diagnostics
+    sub_diag_ = this->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
+      "/diagnostics", 10, std::bind(&FusionNode::diagnostic_callback, this, std::placeholders::_1));
   } else {
     throw std::runtime_error("Matching strategy must be 'advanced' or 'naive'");
   }
@@ -152,7 +149,7 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
         "input/image" + std::to_string(roi_i),
         "/sensing/camera/camera" + std::to_string(roi_i) + "/image_rect_color");
     }
-    std::size_t image_buffer_size =
+    auto image_buffer_size =
       static_cast<std::size_t>(declare_parameter<int32_t>("image_buffer_size"));
     debugger_ =
       std::make_shared<Debugger>(this, rois_number, image_buffer_size, input_camera_topics);
@@ -242,7 +239,7 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::camera_info_callback(
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
-void FusionNode<Msg3D, Msg2D, ExportObj>::preprocess(Msg3D & ouput_msg __attribute__((unused)))
+void FusionNode<Msg3D, Msg2D, ExportObj>::preprocess(Msg3D & output_msg __attribute__((unused)))
 {
   // do nothing by default
 }
@@ -256,22 +253,22 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::export_process(
   publish(output_msg);
 
   // add processing time for debug
-  // if (debug_publisher_) {
-  //   const double cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);
-  //   const double pipeline_latency_ms =
-  //     std::chrono::duration<double, std::milli>(
-  //       std::chrono::nanoseconds(
-  //         (this->get_clock()->now() - output_det3d_msg->header.stamp).nanoseconds()))
-  //       .count();
-  //   debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
-  //     "debug/cyclic_time_ms", cyclic_time_ms);
-  //   debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
-  //     "debug/processing_time_ms",
-  //     processing_time_ms + stop_watch_ptr_->toc("processing_time", true));
-  //   debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
-  //     "debug/pipeline_latency_ms", pipeline_latency_ms);
-  //   processing_time_ms = 0;
-  // }
+  if (debug_publisher_) {
+    const double cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);
+    const double pipeline_latency_ms =
+      std::chrono::duration<double, std::milli>(
+        std::chrono::nanoseconds(
+          (this->get_clock()->now() - output_det3d_msg->header.stamp).nanoseconds()))
+        .count();
+    debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
+      "debug/cyclic_time_ms", cyclic_time_ms);
+    debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
+      "debug/processing_time_ms",
+      processing_time_ms + stop_watch_ptr_->toc("processing_time", true));
+    debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
+      "debug/pipeline_latency_ms", pipeline_latency_ms);
+    processing_time_ms = 0;
+  }
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
@@ -292,8 +289,6 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::sub_callback(
     std::nullopt;
   std::shared_ptr<Det3dMatchingParams> matching_params;
   matching_params->det3d_timestamp = det3d_timestamp;
-
-  // Get the diagnostic message
 
   if (!fusion_collectors_.empty()) {
     fusion_collector =
@@ -324,14 +319,10 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::sub_callback(
     debugger_->clear();
   }
 
-  // if (debug_publisher_) {
-  //   double timestamp_interval_ms = (timestamp_nsec - cached_det3d_msg_timestamp_) / 1e6;
-  //   debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
-  //     "debug/roi" + std::to_string(roi_i) + "/timestamp_interval_ms", timestamp_interval_ms);
-  //   debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
-  //     "debug/roi" + std::to_string(roi_i) + "/timestamp_interval_offset_ms",
-  //     timestamp_interval_ms - det2d.input_offset_ms);
-  // }
+  if (matching_strategy_ == "advanced") {
+    // remove outdated messages in the concatenated map
+    manage_concatenated_status_map(det3d_timestamp);
+  }
 
   // if (debug_publisher_) {
   // double timestamp_interval_ms = (matched_stamp - timestamp_nsec) / 1e6;
@@ -342,7 +333,7 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::sub_callback(
   //   timestamp_interval_ms - det2d.input_offset_ms);
   // }
 
-  // processing_time_ms = processing_time_ms + stop_watch_ptr_->toc("processing_time", true);
+  processing_time_ms = processing_time_ms + stop_watch_ptr_->toc("processing_time", true);
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
@@ -424,7 +415,7 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::diagnostic_callback(
         key_value_map[value.key] = value.value;
 
         // If the key is the concatenated cloud timestamp, try to parse it
-        if (value.key == "concatenated cloud timestamp") {
+        if (value.key == "concatenated_cloud_timestamp") {
           try {
             concatenate_timestamp_opt = std::stod(value.value);
           } catch (const std::exception & e) {
@@ -445,8 +436,24 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::diagnostic_callback(
       }
     }
   }
+}
 
-  // TODO(vivid): only store specific amount of status, delete rest of them (using heap?)
+template <class Msg3D, class Msg2D, class ExportObj>
+void FusionNode<Msg3D, Msg2D, ExportObj>::manage_concatenated_status_map(
+  const double & current_timestamp)
+{
+  // Clean up old entries from concatenated_status_map_
+  double threshold = 1.0;  // second
+  auto it = concatenated_status_map_.begin();
+  while (it != concatenated_status_map_.end()) {
+    if (current_timestamp - it->first > threshold) {
+      RCLCPP_DEBUG(
+        get_logger(), "Removing old concatenation status for timestamp: %.9f", it->first);
+      it = concatenated_status_map_.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>

@@ -16,6 +16,7 @@
 
 #include "autoware/image_projection_based_fusion/fusion_collector.hpp"
 #include "autoware/image_projection_based_fusion/fusion_matching_strategy.hpp"
+#include "autoware/image_projection_based_fusion/fusion_types.hpp"
 
 #include <autoware/image_projection_based_fusion/camera_projection.hpp>
 #include <autoware/image_projection_based_fusion/debugger.hpp>
@@ -65,11 +66,11 @@ public:
   explicit FusionNode(
     const std::string & node_name, const rclcpp::NodeOptions & options, int queue_size);
 
-  void export_process(typename Msg3D::SharedPtr & output_det3d_msg);
   virtual void preprocess(Msg3D & output_msg);
   virtual void fuse_on_single_image(
     const Msg3D & input_msg, const Det2dStatus<Msg2D> & det2d, const Msg2D & input_roi_msg,
     Msg3D & output_msg) = 0;
+  void export_process(typename Msg3D::SharedPtr & output_det3d_msg);
   std::optional<std::unordered_map<std::string, std::string>> find_concatenation_status(
     double timestamp);
 
@@ -80,6 +81,7 @@ private:
     const std::size_t camera_id);
 
   void manage_collector_list();
+  void manage_concatenated_status_map(const double & current_timestam);
 
   // camera projection
   float approx_grid_cell_w_size_;
@@ -108,7 +110,7 @@ protected:
   void set_det2d_status(std::size_t rois_number);
 
   // callback for main subscription
-  void sub_callback(const typename Msg3D::ConstSharedPtr input_msg);
+  void sub_callback(const typename Msg3D::ConstSharedPtr det3d_msg);
   // callback for roi subscription
   void roi_callback(const typename Msg2D::ConstSharedPtr det2d_msg, const std::size_t roi_i);
 
