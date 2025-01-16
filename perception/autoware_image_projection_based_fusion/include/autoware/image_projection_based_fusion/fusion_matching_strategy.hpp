@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "fusion_collector.hpp"
+#include "autoware/image_projection_based_fusion/fusion_collector.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 

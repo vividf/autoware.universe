@@ -14,7 +14,8 @@
 
 #pragma once
 
-#include <autoware/image_projection_based_fusion/camera_projection.hpp>
+#include "autoware/image_projection_based_fusion/camera_projection.hpp"
+
 #include <rclcpp/rclcpp.hpp>
 
 #include <cstddef>
