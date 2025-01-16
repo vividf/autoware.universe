@@ -86,8 +86,6 @@ bool FusionCollector<Msg3D, Msg2D, ExportObj>::process_rois(
   std::lock_guard<std::mutex> fusion_lock(fusion_mutex_);
   if (fusion_finished_) return false;
 
-  // Check if the map already contains an entry for the same topic. This shouldn't happen if the
-  // parameter 'lidar_timestamp_noise_window' is set correctly.
   if (id_to_roi_map_.find(roi_id) != id_to_roi_map_.end()) {
     RCLCPP_WARN_STREAM_THROTTLE(
       ros2_parent_node_->get_logger(), *ros2_parent_node_->get_clock(),
@@ -125,13 +123,9 @@ void FusionCollector<Msg3D, Msg2D, ExportObj>::fusion_callback()
   // them.
   timer_->cancel();
 
-  // fuse_on_single_image(*(cached_det3d_msg_ptr_), det2d, *det2d_msg, *(cached_det3d_msg_ptr_));
-  // fuse_on_single_image(*det3d_msg, det2d, *(det2d_msgs[matched_stamp]), *output_msg);
-
   typename Msg3D::SharedPtr output_det3d_msg = std::make_shared<Msg3D>(*det3d_msg_);
   ros2_parent_node_->preprocess(*output_det3d_msg);
 
-  // TODO(vivid): output msg is almost unused, see if we can modify it
   for (const auto & [roi_id, roi] : id_to_roi_map_) {
     ros2_parent_node_->fuse_on_single_image(
       *det3d_msg_, det2d_list_[roi_id], *roi, *output_det3d_msg);
