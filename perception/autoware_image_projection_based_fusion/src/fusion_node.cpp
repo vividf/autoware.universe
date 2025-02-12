@@ -257,8 +257,7 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::exportProcess()
     debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/cyclic_time_ms", cyclic_time_ms);
     debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug/processing_time_ms",
-      processing_time_ms + stop_watch_ptr_->toc("processing_time", true));
+      "debug/processing_time_ms", stop_watch_ptr_->toc("processing_time", true));
     debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/pipeline_latency_ms", pipeline_latency_ms);
     processing_time_ms = 0;
@@ -276,7 +275,6 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::subCallback(
   if (cached_det3d_msg_ptr_ != nullptr) {
     // PROCESS: if the main message is remained (and roi is not collected all) publish the main
     // message may processed partially with arrived 2d rois
-    stop_watch_ptr_->toc("processing_time", true);
     exportProcess();
 
     // reset flags
@@ -374,10 +372,6 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::subCallback(
     for (auto & det2d : det2d_list_) {
       det2d.is_fused = false;
     }
-  } else {
-    // if all of rois are not collected, publish the old Msg(if exists) and cache the
-    // current Msg
-    processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
   }
 }
 
@@ -387,8 +381,6 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::roiCallback(
 {
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
-
-  stop_watch_ptr_->toc("processing_time", true);
 
   auto & det2d = det2d_list_.at(roi_i);
 
@@ -434,7 +426,6 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::roiCallback(
           status.is_fused = false;
         }
       }
-      processing_time_ms = processing_time_ms + stop_watch_ptr_->toc("processing_time", true);
       return;
     }
   }
@@ -453,7 +444,6 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::timer_callback()
 
   // PROCESS: if timeout, postprocess cached msg
   if (cached_det3d_msg_ptr_ != nullptr) {
-    stop_watch_ptr_->toc("processing_time", true);
     exportProcess();
   }
 
