@@ -59,6 +59,7 @@
 #include <geometry_msgs/msg/polygon_stamped.hpp>
 
 #include <pcl/filters/crop_box.h>
+#include <diagnostic_updater/diagnostic_updater.hpp>
 
 #include <vector>
 
@@ -89,6 +90,18 @@ private:
     float max_z;
     bool negative{false};
   } param_;
+
+
+  diagnostic_updater::Updater updater_;
+  double processing_time_threshold_;
+  int last_input_count_ = 0;
+  int last_output_count_ = 0;
+  int last_skipped_nan_count_ = 0;
+  double last_pass_rate_ = 0.0;
+  double last_processing_time_ms_ = 0.0;
+  double last_latency_ms_ = 0.0;
+
+  void checkDiagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
   rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr crop_box_polygon_pub_;
 

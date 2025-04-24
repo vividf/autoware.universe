@@ -309,6 +309,9 @@ void DistortionCorrector<T>::undistort_pointcloud(
   bool use_imu, std::optional<AngleConversion> angle_conversion_opt,
   sensor_msgs::msg::PointCloud2 & pointcloud)
 {
+  mismatch_count_ = 0.0;
+  mismatch_fraction_ = 0.0;
+
   if (!is_pointcloud_valid(pointcloud)) return;
   if (twist_queue_.empty()) {
     RCLCPP_WARN_STREAM_THROTTLE(
@@ -375,6 +378,8 @@ void DistortionCorrector<T>::undistort_pointcloud(
       is_imu_valid = false;
     }
 
+    if (!is_twist_valid || (use_imu && !is_imu_valid)) ++mismatch_count_;
+
     auto time_offset = static_cast<float>(current_point_stamp - prev_time_stamp_sec);
 
     // Undistort a single point based on the strategy
@@ -405,6 +410,9 @@ void DistortionCorrector<T>::undistort_pointcloud(
 
     prev_time_stamp_sec = current_point_stamp;
   }
+
+  const size_t total_points = static_cast<size_t>(pointcloud.width * pointcloud.height);
+  mismatch_fraction_ = total_points > 0 ? static_cast<float>(mismatch_count_) / total_points : 0.0f;
 
   warn_if_timestamp_is_too_late(is_twist_time_stamp_too_late, is_imu_time_stamp_too_late);
 }

@@ -86,6 +86,10 @@ CropBoxFilterComponent::CropBoxFilterComponent(const rclcpp::NodeOptions & optio
     }
   }
 
+  processing_time_threshold_ = declare_parameter<float>("processing_time_threshold");
+  updater_.setHardwareID(get_name());
+  updater_.add("CropBoxFilterStatus", this, &CropBoxFilterComponent::checkDiagnostics);
+
   // set additional publishers
   {
     rclcpp::PublisherOptions pub_options;
@@ -190,23 +194,35 @@ void CropBoxFilterComponent::faster_filter(
 
   publishCropBoxPolygon();
 
-  // add processing time for debug
+  const double cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);
+  const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
+  const double pipeline_latency_ms = std::chrono::duration<double, std::milli>(
+    std::chrono::nanoseconds((this->get_clock()->now() - input->header.stamp).nanoseconds())).count();
+
+  const int input_count = static_cast<int>(input->width * input->height);
+  const int output_count = static_cast<int>(output.width * output.height);
+  const double pass_rate = input_count > 0 ? static_cast<double>(output_count) / input_count : 0.0;
+
+  // Debug output
   if (debug_publisher_) {
-    const double cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);
-    const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
     debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/cyclic_time_ms", cyclic_time_ms);
     debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug/processing_time_ms", processing_time_ms);
-
-    auto pipeline_latency_ms =
-      std::chrono::duration<double, std::milli>(
-        std::chrono::nanoseconds((this->get_clock()->now() - input->header.stamp).nanoseconds()))
-        .count();
-
+      "debug/process《ng_time_ms", processing_time_ms);
     debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/pipeline_latency_ms", pipeline_latency_ms);
   }
+
+  // Store for diagnostics
+  last_input_count_ = input_count;
+  last_output_count_ = output_count;
+  last_skipped_nan_count_ = skipped_count;
+  last_pass_rate_ = pass_rate;
+  last_processing_time_ms_ = processing_time_ms;
+  last_latency_ms_ = pipeline_latency_ms;
+
+  // Update diagnostic
+  updater_.force_update();
 }
 
 void CropBoxFilterComponent::publishCropBoxPolygon()
@@ -296,6 +312,28 @@ rcl_interfaces::msg::SetParametersResult CropBoxFilterComponent::paramCallback(
 
   return result;
 }
+
+
+void CropBoxFilterComponent::checkDiagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat)
+{
+  if (last_output_count_ == 0) {
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No output points generated");
+  } else if (last_processing_time_ms_ > processing_time_threshold_ * 1000.0) {
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "Processing time exceeded threshold");
+  } else if (last_pass_rate_ < 0.1) {
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "Too few points passed the filter");
+  } else {
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "CropBoxFilter operating normally");
+  }
+
+  stat.add("input_point_count", last_input_count_);
+  stat.add("output_point_count", last_output_count_);
+  stat.add("skipped_nan_point_count", last_skipped_nan_count_);
+  stat.add("pass_rate", last_pass_rate_);
+  stat.add("processing_time_ms", last_processing_time_ms_);
+  stat.add("pipeline_latency_ms", last_latency_ms_);
+}
+
 
 }  // namespace autoware::pointcloud_preprocessor
 

@@ -26,6 +26,7 @@
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <diagnostic_updater/diagnostic_updater.hpp>
 
 #include <memory>
 #include <string>
@@ -61,6 +62,19 @@ private:
   std::optional<AngleConversion> angle_conversion_opt_;
 
   std::unique_ptr<DistortionCorrectorBase> distortion_corrector_;
+
+  // Diagnositc
+  diagnostic_updater::Updater updater_;
+  double processing_time_threshold_;
+  double last_processing_time_ms_ = 0.0;
+  double last_pipeline_latency_ms_ = 0.0;
+
+  int mismatch_count_ = 0;
+  float mismatch_fraction_ = 0.0f;
+  double pointcloud_timestamp_ = 0.0;
+
+  void checkDiagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
+
 
   void pointcloud_callback(PointCloud2::UniquePtr pointcloud_msg);
 };

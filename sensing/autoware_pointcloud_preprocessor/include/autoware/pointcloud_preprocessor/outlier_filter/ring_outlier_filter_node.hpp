@@ -32,6 +32,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <diagnostic_updater/diagnostic_updater.hpp>
 
 namespace autoware::pointcloud_preprocessor
 {
@@ -74,6 +75,16 @@ private:
   float min_azimuth_deg_;
   float max_azimuth_deg_;
   float max_distance_;
+
+  // Diagnostic
+  diagnostic_updater::Updater updater_;
+  double processing_time_threshold_;
+  int last_input_count_ = 0;
+  int last_output_count_ = 0;
+  int last_outlier_count_ = 0;
+  double last_processing_time_ = 0.0;
+  double last_pipeline_latency_ = 0.0;
+
 
   /** \brief Parameter service callback result : needed to be hold */
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
