@@ -56,6 +56,8 @@
 #include "autoware/pointcloud_preprocessor/filter.hpp"
 #include "autoware/pointcloud_preprocessor/transform_info.hpp"
 
+#include <diagnostic_updater/diagnostic_updater.hpp>
+
 #include <geometry_msgs/msg/polygon_stamped.hpp>
 
 #include <pcl/filters/crop_box.h>
@@ -90,6 +92,15 @@ private:
     bool negative{false};
   } param_;
 
+  diagnostic_updater::Updater diagnostic_updater_{this};
+  double processing_time_threshold_;
+  int last_input_count_ = 0;
+  int last_output_count_ = 0;
+  int last_skipped_nan_count_ = 0;
+  double last_pass_rate_ = 0.0;
+  double last_processing_time_ms_ = 0.0;
+  double last_latency_ms_ = 0.0;
+
   rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr crop_box_polygon_pub_;
 
   /** \brief Parameter service callback result : needed to be hold */
@@ -97,6 +108,8 @@ private:
 
   /** \brief Parameter service callback */
   rcl_interfaces::msg::SetParametersResult paramCallback(const std::vector<rclcpp::Parameter> & p);
+
+  void check_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
 public:
   PCL_MAKE_ALIGNED_OPERATOR_NEW

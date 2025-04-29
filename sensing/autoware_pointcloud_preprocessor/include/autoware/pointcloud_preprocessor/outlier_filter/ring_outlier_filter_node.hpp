@@ -19,6 +19,7 @@
 #include "autoware/pointcloud_preprocessor/filter.hpp"
 #include "autoware/pointcloud_preprocessor/transform_info.hpp"
 
+#include <diagnostic_updater/diagnostic_updater.hpp>
 #include <image_transport/image_transport.hpp>
 #include <point_cloud_msg_wrapper/point_cloud_msg_wrapper.hpp>
 
@@ -75,6 +76,15 @@ private:
   float max_azimuth_deg_;
   float max_distance_;
 
+  // Diagnostic
+  diagnostic_updater::Updater diagnostic_updater_{this};
+  double processing_time_threshold_;
+  int last_input_count_ = 0;
+  int last_output_count_ = 0;
+  int last_outlier_count_ = 0;
+  double last_processing_time_ = 0.0;
+  double last_pipeline_latency_ = 0.0;
+
   /** \brief Parameter service callback result : needed to be hold */
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
@@ -101,6 +111,8 @@ private:
   void setUpPointCloudFormat(
     const PointCloud2ConstPtr & input, PointCloud2 & formatted_points, size_t points_size);
   float calculateVisibilityScore(const PointCloud2 & input);
+
+  void check_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
 public:
   PCL_MAKE_ALIGNED_OPERATOR_NEW

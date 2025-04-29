@@ -67,6 +67,8 @@ protected:
   std::deque<geometry_msgs::msg::TwistStamped> twist_queue_;
   std::deque<geometry_msgs::msg::Vector3Stamped> angular_velocity_queue_;
 
+  int mismatch_count_ = 0;
+  float mismatch_fraction_ = 0.0;
   rclcpp::Node & node_;
 
   void get_imu_transformation(const std::string & base_frame, const std::string & imu_frame);
@@ -101,6 +103,9 @@ public:
     sensor_msgs::msg::PointCloud2 & pointcloud);
 
   bool is_pointcloud_valid(sensor_msgs::msg::PointCloud2 & pointcloud);
+
+  int get_mismatch_count() const { return mismatch_count_; }
+  float get_mismatch_fraction() const { return mismatch_fraction_; }
 
   virtual void set_pointcloud_transform(
     const std::string & base_frame, const std::string & lidar_frame) = 0;

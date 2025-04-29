@@ -64,7 +64,13 @@ RingOutlierFilterComponent::RingOutlierFilterComponent(const rclcpp::NodeOptions
     vertical_bins_ = declare_parameter<int>("vertical_bins");
     horizontal_bins_ = declare_parameter<int>("horizontal_bins");
     noise_threshold_ = declare_parameter<int>("noise_threshold");
+    processing_time_threshold_ = declare_parameter<float>("processing_time_threshold");
   }
+
+  // Diagnostic message
+  diagnostic_updater_.setHardwareID(get_name());
+  diagnostic_updater_.add(
+    "RingOutlierFilterStatus", this, &RingOutlierFilterComponent::check_diagnostics);
 
   using std::placeholders::_1;
   set_param_res_ = this->add_on_set_parameters_callback(
@@ -268,23 +274,31 @@ void RingOutlierFilterComponent::faster_filter(
     visibility_pub_->publish(visibility_msg);
   }
 
-  // add processing time for debug
+  const double cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);
+  const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
+  const double pipeline_latency_ms =
+    std::chrono::duration<double, std::milli>(
+      std::chrono::nanoseconds((this->get_clock()->now() - input->header.stamp).nanoseconds()))
+      .count();
+
+  // Debug output
   if (debug_publisher_) {
-    const double cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);
-    const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
     debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/cyclic_time_ms", cyclic_time_ms);
     debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/processing_time_ms", processing_time_ms);
-
-    auto pipeline_latency_ms =
-      std::chrono::duration<double, std::milli>(
-        std::chrono::nanoseconds((this->get_clock()->now() - input->header.stamp).nanoseconds()))
-        .count();
-
     debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/pipeline_latency_ms", pipeline_latency_ms);
   }
+
+  // Update diagnostic info
+  last_input_count_ = static_cast<int>(input->width * input->height);
+  last_output_count_ = static_cast<int>(output.width * output.height);
+  last_outlier_count_ = static_cast<int>(outlier_pcl->size());
+  last_processing_time_ = processing_time_ms;
+  last_pipeline_latency_ = pipeline_latency_ms;
+
+  diagnostic_updater_.force_update();
 }
 
 // TODO(sykwer): Temporary Implementation: Delete this function definition when all the filter nodes
@@ -417,6 +431,25 @@ float RingOutlierFilterComponent::calculateVisibilityScore(
     static_cast<float>(num_pixels) / static_cast<float>(vertical_bins * horizontal_bins);
 
   return 1.0f - num_filled_pixels;
+}
+
+void RingOutlierFilterComponent::check_diagnostics(
+  diagnostic_updater::DiagnosticStatusWrapper & stat)
+{
+  if (last_output_count_ == 0) {
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No valid output points");
+  } else if (last_processing_time_ > processing_time_threshold_ * 1000.0) {
+    stat.summary(
+      diagnostic_msgs::msg::DiagnosticStatus::WARN, "Processing time exceeded threshold");
+  } else {
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "RingOutlierFilter running normally");
+  }
+
+  stat.add("input_point_count", last_input_count_);
+  stat.add("output_point_count", last_output_count_);
+  stat.add("outlier_point_count", last_outlier_count_);
+  stat.add("processing_time_ms", last_processing_time_);
+  stat.add("pipeline_latency_ms", last_pipeline_latency_);
 }
 
 }  // namespace autoware::pointcloud_preprocessor
