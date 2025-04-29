@@ -294,7 +294,6 @@ void RingOutlierFilterComponent::faster_filter(
   // Update diagnostic info
   last_input_count_ = static_cast<int>(input->width * input->height);
   last_output_count_ = static_cast<int>(output.width * output.height);
-  last_outlier_count_ = static_cast<int>(outlier_pcl->size());
   last_processing_time_ = processing_time_ms;
   last_pipeline_latency_ = pipeline_latency_ms;
 
@@ -447,7 +446,6 @@ void RingOutlierFilterComponent::check_diagnostics(
 
   stat.add("input_point_count", last_input_count_);
   stat.add("output_point_count", last_output_count_);
-  stat.add("outlier_point_count", last_outlier_count_);
   stat.add("processing_time_ms", last_processing_time_);
   stat.add("pipeline_latency_ms", last_pipeline_latency_);
 }

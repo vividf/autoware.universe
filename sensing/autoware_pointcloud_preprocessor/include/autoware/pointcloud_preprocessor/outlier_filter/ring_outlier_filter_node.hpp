@@ -81,7 +81,6 @@ private:
   double processing_time_threshold_;
   int last_input_count_ = 0;
   int last_output_count_ = 0;
-  int last_outlier_count_ = 0;
   double last_processing_time_ = 0.0;
   double last_pipeline_latency_ = 0.0;
 
