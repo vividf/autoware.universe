@@ -82,7 +82,7 @@ private:
   double pointcloud_timestamp_;
   int last_input_count_ = 0;
   int last_output_count_ = 0;
-  double last_processing_time_ = 0.0;
+  double last_processing_time_ms_ = 0.0;
   double last_pipeline_latency_ = 0.0;
 
   /** \brief Parameter service callback result : needed to be hold */

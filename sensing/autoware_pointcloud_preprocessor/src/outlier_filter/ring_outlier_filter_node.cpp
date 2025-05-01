@@ -304,7 +304,7 @@ void RingOutlierFilterComponent::faster_filter(
   pointcloud_timestamp_ = rclcpp::Time(input->header.stamp).seconds();
   last_input_count_ = static_cast<int>(input->width * input->height);
   last_output_count_ = static_cast<int>(output.width * output.height);
-  last_processing_time_ = processing_time_ms;
+  last_processing_time_ms_ = processing_time_ms;
   last_pipeline_latency_ = pipeline_latency_ms;
 
   diagnostic_updater_.force_update();
@@ -447,7 +447,7 @@ void RingOutlierFilterComponent::check_diagnostics(
 {
   if (last_output_count_ == 0) {
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No valid output points");
-  } else if (last_processing_time_ > processing_time_threshold_ * 1000.0) {
+  } else if (last_processing_time_ms_ > processing_time_threshold_ * 1000.0) {
     stat.summary(
       diagnostic_msgs::msg::DiagnosticStatus::WARN, "Processing time exceeded threshold");
   } else {
@@ -458,7 +458,7 @@ void RingOutlierFilterComponent::check_diagnostics(
   stat.add("timestamp", format_timestamp(pointcloud_timestamp_));
   stat.add("input_point_count", last_input_count_);
   stat.add("output_point_count", last_output_count_);
-  stat.add("processing_time_ms", last_processing_time_);
+  stat.add("processing_time_ms", last_processing_time_ms_);
   stat.add("pipeline_latency_ms", last_pipeline_latency_);
 }
 
