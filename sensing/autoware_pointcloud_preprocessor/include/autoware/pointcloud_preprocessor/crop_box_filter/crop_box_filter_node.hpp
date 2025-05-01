@@ -93,6 +93,7 @@ private:
   } param_;
 
   diagnostic_updater::Updater diagnostic_updater_{this};
+  double pointcloud_timestamp_;
   double processing_time_threshold_;
   int last_input_count_ = 0;
   int last_output_count_ = 0;

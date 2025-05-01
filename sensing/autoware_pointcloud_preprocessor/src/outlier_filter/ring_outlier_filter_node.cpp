@@ -15,13 +15,16 @@
 #include "autoware/pointcloud_preprocessor/outlier_filter/ring_outlier_filter_node.hpp"
 
 #include "autoware/point_types/types.hpp"
+#include "autoware/pointcloud_preprocessor/utility/timestamp_utils.hpp"
 
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
 #include <algorithm>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
+
 namespace autoware::pointcloud_preprocessor
 {
 using autoware::point_types::PointXYZIRADRT;
@@ -67,10 +70,16 @@ RingOutlierFilterComponent::RingOutlierFilterComponent(const rclcpp::NodeOptions
     processing_time_threshold_ = declare_parameter<float>("processing_time_threshold");
   }
 
-  // Diagnostic message
-  diagnostic_updater_.setHardwareID(get_name());
-  diagnostic_updater_.add(
-    "RingOutlierFilterStatus", this, &RingOutlierFilterComponent::check_diagnostics);
+  // Diagnostic Updater
+  std::ostringstream hardware_id_stream;
+  hardware_id_stream << this->get_fully_qualified_name() << "_checker";
+  std::string hardware_id = hardware_id_stream.str();
+
+  std::ostringstream diagnostic_name_stream;
+  diagnostic_name_stream << this->get_fully_qualified_name() << "_status";
+  std::string diagnostic_name = diagnostic_name_stream.str();
+  diagnostic_updater_.setHardwareID(hardware_id);
+  diagnostic_updater_.add(diagnostic_name, this, &RingOutlierFilterComponent::check_diagnostics);
 
   using std::placeholders::_1;
   set_param_res_ = this->add_on_set_parameters_callback(
@@ -292,6 +301,7 @@ void RingOutlierFilterComponent::faster_filter(
   }
 
   // Update diagnostic info
+  pointcloud_timestamp_ = rclcpp::Time(input->header.stamp).seconds();
   last_input_count_ = static_cast<int>(input->width * input->height);
   last_output_count_ = static_cast<int>(output.width * output.height);
   last_processing_time_ = processing_time_ms;
@@ -441,9 +451,11 @@ void RingOutlierFilterComponent::check_diagnostics(
     stat.summary(
       diagnostic_msgs::msg::DiagnosticStatus::WARN, "Processing time exceeded threshold");
   } else {
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "RingOutlierFilter running normally");
+    stat.summary(
+      diagnostic_msgs::msg::DiagnosticStatus::OK, "RingOutlierFilter operating normally");
   }
 
+  stat.add("timestamp", format_timestamp(pointcloud_timestamp_));
   stat.add("input_point_count", last_input_count_);
   stat.add("output_point_count", last_output_count_);
   stat.add("processing_time_ms", last_processing_time_);

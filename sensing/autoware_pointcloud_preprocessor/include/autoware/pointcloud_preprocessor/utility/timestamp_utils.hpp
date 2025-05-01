@@ -12,20 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/pointcloud_preprocessor/concatenate_data/utils.hpp"
+#ifndef AUTOWARE__POINTCLOUD_PREPROCESSOR__UTILITY__TIMESTAMP_UTILS_HPP_
+#define AUTOWARE__POINTCLOUD_PREPROCESSOR__UTILITY__TIMESTAMP_UTILS_HPP_
 
-#include <iomanip>
-#include <sstream>
 #include <string>
 
 namespace autoware::pointcloud_preprocessor
 {
 
-std::string format_timestamp(double timestamp)
-{
-  std::ostringstream oss;
-  oss << std::fixed << std::setprecision(9) << timestamp;
-  return oss.str();
-}
+/**
+ * @brief Format a timestamp to a string with 9 decimal places.
+ * @param timestamp The timestamp to format.
+ * @return A string representation of the timestamp.
+ */
+std::string format_timestamp(double timestamp);
 
 }  // namespace autoware::pointcloud_preprocessor
+
+#endif  // AUTOWARE__POINTCLOUD_PREPROCESSOR__UTILITY__TIMESTAMP_UTILS_HPP_

@@ -51,9 +51,12 @@
 
 #include "autoware/pointcloud_preprocessor/crop_box_filter/crop_box_filter_node.hpp"
 
+#include "autoware/pointcloud_preprocessor/utility/timestamp_utils.hpp"
+
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace autoware::pointcloud_preprocessor
@@ -86,10 +89,19 @@ CropBoxFilterComponent::CropBoxFilterComponent(const rclcpp::NodeOptions & optio
     }
   }
 
-  // processing_time_threshold_ = declare_parameter<float>("processing_time_threshold");
-  processing_time_threshold_ = declare_parameter<float>("processing_time_threshold", 0.02f);
-  diagnostic_updater_.setHardwareID(get_name());
-  diagnostic_updater_.add("CropBoxFilterStatus", this, &CropBoxFilterComponent::check_diagnostics);
+  processing_time_threshold_ = declare_parameter<float>("processing_time_threshold");
+
+  // Diagnostic Updater
+  std::ostringstream hardware_id_stream;
+  hardware_id_stream << this->get_fully_qualified_name() << "_checker";
+  std::string hardware_id = hardware_id_stream.str();
+
+  std::ostringstream diagnostic_name_stream;
+  diagnostic_name_stream << this->get_fully_qualified_name() << "_status";
+  std::string diagnostic_name = diagnostic_name_stream.str();
+
+  diagnostic_updater_.setHardwareID(hardware_id);
+  diagnostic_updater_.add(diagnostic_name, this, &CropBoxFilterComponent::check_diagnostics);
 
   // set additional publishers
   {
@@ -217,6 +229,7 @@ void CropBoxFilterComponent::faster_filter(
   }
 
   // Store for diagnostics
+  pointcloud_timestamp_ = rclcpp::Time(input->header.stamp).seconds();
   last_input_count_ = input_count;
   last_output_count_ = output_count;
   last_skipped_nan_count_ = skipped_count;
@@ -329,6 +342,7 @@ void CropBoxFilterComponent::check_diagnostics(diagnostic_updater::DiagnosticSta
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "CropBoxFilter operating normally");
   }
 
+  stat.add("timestamp", format_timestamp(pointcloud_timestamp_));
   stat.add("input_point_count", last_input_count_);
   stat.add("output_point_count", last_output_count_);
   stat.add("skipped_nan_point_count", last_skipped_nan_count_);

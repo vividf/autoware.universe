@@ -66,6 +66,7 @@ private:
   uint16_t max_rings_num_;
   size_t max_points_num_per_ring_;
   bool publish_outlier_pointcloud_;
+  double processing_time_threshold_;
 
   // for visibility score
   int noise_threshold_;
@@ -78,7 +79,7 @@ private:
 
   // Diagnostic
   diagnostic_updater::Updater diagnostic_updater_{this};
-  double processing_time_threshold_;
+  double pointcloud_timestamp_;
   int last_input_count_ = 0;
   int last_output_count_ = 0;
   double last_processing_time_ = 0.0;

@@ -15,6 +15,7 @@
 #include "autoware/pointcloud_preprocessor/distortion_corrector/distortion_corrector_node.hpp"
 
 #include "autoware/pointcloud_preprocessor/distortion_corrector/distortion_corrector.hpp"
+#include "autoware/pointcloud_preprocessor/utility/timestamp_utils.hpp"
 
 #include <memory>
 #include <string>
@@ -77,15 +78,20 @@ DistortionCorrectorComponent::DistortionCorrectorComponent(const rclcpp::NodeOpt
     distortion_corrector_ = std::make_unique<DistortionCorrector2D>(*this);
   }
 
-  diagnostic_updater_.setHardwareID("distortion_corrector");
-  diagnostic_updater_.add(
-    "distortion_corrector", this, &DistortionCorrectorComponent::check_diagnostics);
+  // Diagnostic Updater
+  std::ostringstream hardware_id_stream;
+  hardware_id_stream << this->get_fully_qualified_name() << "_checker";
+  std::string hardware_id = hardware_id_stream.str();
+
+  std::ostringstream diagnostic_name_stream;
+  diagnostic_name_stream << this->get_fully_qualified_name() << "_status";
+  std::string diagnostic_name = diagnostic_name_stream.str();
+  diagnostic_updater_.setHardwareID(hardware_id);
+  diagnostic_updater_.add(diagnostic_name, this, &DistortionCorrectorComponent::check_diagnostics);
 }
 
 void DistortionCorrectorComponent::pointcloud_callback(PointCloud2::UniquePtr pointcloud_msg)
 {
-  pointcloud_timestamp_ = rclcpp::Time(pointcloud_msg->header.stamp).seconds();
-
   stop_watch_ptr_->toc("processing_time", true);
   const auto points_sub_count = undistorted_pointcloud_pub_->get_subscription_count() +
                                 undistorted_pointcloud_pub_->get_intra_process_subscription_count();
@@ -126,16 +132,18 @@ void DistortionCorrectorComponent::pointcloud_callback(PointCloud2::UniquePtr po
   }
 
   distortion_corrector_->undistort_pointcloud(use_imu_, angle_conversion_opt_, *pointcloud_msg);
-  undistorted_pointcloud_pub_->publish(std::move(pointcloud_msg));
+
+  const rclcpp::Time stamp(pointcloud_msg->header.stamp);
+  pointcloud_timestamp_ = stamp.seconds();
 
   const double cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);
   const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
   const double pipeline_latency_ms =
     std::chrono::duration<double, std::milli>(
-      std::chrono::nanoseconds(
-        (this->get_clock()->now() - pointcloud_msg->header.stamp).nanoseconds()))
+      std::chrono::nanoseconds((this->get_clock()->now() - stamp).nanoseconds()))
       .count();
 
+  undistorted_pointcloud_pub_->publish(std::move(pointcloud_msg));
   if (debug_publisher_) {
     debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/cyclic_time_ms", cyclic_time_ms);
@@ -166,7 +174,7 @@ void DistortionCorrectorComponent::check_diagnostics(
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "Distortion correction successful");
   }
 
-  stat.add("~/input/pointcloud/timestamp", pointcloud_timestamp_);
+  stat.add("timestamp", format_timestamp(pointcloud_timestamp_));
   stat.add("mismatch_count", mismatch_count_);
   stat.add("mismatch_fraction", mismatch_fraction_);
   stat.add("processing_time_ms", last_processing_time_ms_);
