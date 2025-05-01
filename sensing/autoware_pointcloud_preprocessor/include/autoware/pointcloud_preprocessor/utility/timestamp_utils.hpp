@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__POINTCLOUD_PREPROCESSOR__UTILITY__TIMESTAMP_UTILS_HPP_
-#define AUTOWARE__POINTCLOUD_PREPROCESSOR__UTILITY__TIMESTAMP_UTILS_HPP_
+#pragma once
 
 #include <string>
 
@@ -28,5 +27,3 @@ namespace autoware::pointcloud_preprocessor
 std::string format_timestamp(double timestamp);
 
 }  // namespace autoware::pointcloud_preprocessor
-
-#endif  // AUTOWARE__POINTCLOUD_PREPROCESSOR__UTILITY__TIMESTAMP_UTILS_HPP_

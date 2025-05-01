@@ -54,7 +54,7 @@ private:
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
   std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_;
 
-  // parameters
+  // Parameters
   std::string base_frame_;
   bool use_imu_;
   bool use_3d_distortion_correction_;

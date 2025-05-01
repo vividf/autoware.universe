@@ -79,7 +79,7 @@ private:
 
   // Diagnostic
   diagnostic_updater::Updater diagnostic_updater_{this};
-  double pointcloud_timestamp_;
+  double pointcloud_timestamp_{0.0};
   int last_input_count_{0};
   int last_output_count_{0};
   double last_processing_time_ms_{0.0};

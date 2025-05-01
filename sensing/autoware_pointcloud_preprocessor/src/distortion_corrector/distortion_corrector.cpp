@@ -415,8 +415,10 @@ void DistortionCorrector<T>::undistort_pointcloud(
     prev_time_stamp_sec = current_point_stamp;
   }
 
-  const size_t total_points = static_cast<size_t>(pointcloud.width * pointcloud.height);
-  mismatch_fraction_ = total_points > 0 ? static_cast<float>(mismatch_count_) / total_points : 0.0f;
+  const auto total_points = pointcloud.width * pointcloud.height;
+  mismatch_fraction_ = total_points > 0
+                         ? static_cast<float>(mismatch_count_) / static_cast<float>(total_points)
+                         : 0.0f;
 
   warn_if_timestamp_is_too_late(is_twist_time_stamp_too_late, is_imu_time_stamp_too_late);
 }

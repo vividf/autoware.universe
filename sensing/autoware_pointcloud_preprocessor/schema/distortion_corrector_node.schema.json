@@ -30,6 +30,11 @@
           "type": "number",
           "description": "Threshold in seconds. If the processing time of the node exceeds this value, a diagnostic warning will be issued.",
           "default": 0.01
+        },
+        "mismatch_fraction_threshold": {
+          "type": "number",
+          "description": "Threshold for the ratio of points with timestamp mismatches. If the mismatch fraction exceeds this value, a diagnostic error will be issued.",
+          "default": 0.01
         }
       },
       "required": [
