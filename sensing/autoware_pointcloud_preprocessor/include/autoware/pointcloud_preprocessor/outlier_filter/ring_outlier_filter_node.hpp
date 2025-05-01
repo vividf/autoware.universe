@@ -80,10 +80,10 @@ private:
   // Diagnostic
   diagnostic_updater::Updater diagnostic_updater_{this};
   double pointcloud_timestamp_;
-  int last_input_count_ = 0;
-  int last_output_count_ = 0;
-  double last_processing_time_ms_ = 0.0;
-  double last_pipeline_latency_ = 0.0;
+  int last_input_count_{0};
+  int last_output_count_{0};
+  double last_processing_time_ms_{0.0};
+  double last_pipeline_latency_{0.0};
 
   /** \brief Parameter service callback result : needed to be hold */
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
@@ -91,8 +91,8 @@ private:
   /** \brief Parameter service callback */
   rcl_interfaces::msg::SetParametersResult paramCallback(const std::vector<rclcpp::Parameter> & p);
 
-  bool isCluster(
-    const PointCloud2ConstPtr & input, std::pair<int, int> data_idx_both_ends, int walk_size)
+  bool is_cluster(
+    const PointCloud2ConstPtr & input, std::pair<int, int> data_idx_both_ends, int walk_size) const
   {
     if (walk_size > num_points_threshold_) return true;
 
@@ -108,9 +108,9 @@ private:
     return x * x + y * y + z * z >= object_length_threshold_ * object_length_threshold_;
   }
 
-  void setUpPointCloudFormat(
+  void set_up_pointcloud_format(
     const PointCloud2ConstPtr & input, PointCloud2 & formatted_points, size_t points_size);
-  float calculateVisibilityScore(const PointCloud2 & input);
+  float calculate_visibility_score(const PointCloud2 & input) const;
 
   void check_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
 

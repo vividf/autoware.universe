@@ -78,29 +78,29 @@ protected:
     const PointCloud2ConstPtr & input, const IndicesPtr & indices, PointCloud2 & output,
     const TransformInfo & transform_info) override;
 
-  void publishCropBoxPolygon();
+  void publish_crop_box_polygon();
 
 private:
   struct CropBoxParam
   {
-    float min_x;
-    float max_x;
-    float min_y;
-    float max_y;
-    float min_z;
-    float max_z;
+    double min_x{0.0};
+    double max_x{0.0};
+    double min_y{0.0};
+    double max_y{0.0};
+    double min_z{0.0};
+    double max_z{0.0};
     bool negative{false};
+    double processing_time_threshold{0.0};
   } param_;
 
   diagnostic_updater::Updater diagnostic_updater_{this};
   double pointcloud_timestamp_;
-  double processing_time_threshold_;
-  int last_input_count_ = 0;
-  int last_output_count_ = 0;
-  int last_skipped_nan_count_ = 0;
-  double last_pass_rate_ = 0.0;
-  double last_processing_time_ms_ = 0.0;
-  double last_latency_ms_ = 0.0;
+  int last_input_count_{0};
+  int last_output_count_{0};
+  int last_skipped_nan_count_{0};
+  double last_pass_rate_{0.0};
+  double last_processing_time_ms_{0.0};
+  double last_latency_ms_{0.0};
 
   rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr crop_box_polygon_pub_;
 

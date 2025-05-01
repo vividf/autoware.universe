@@ -179,6 +179,8 @@ void DistortionCorrectorComponent::check_diagnostics(
   stat.add("mismatch_fraction", mismatch_fraction_);
   stat.add("processing_time_ms", last_processing_time_ms_);
   stat.add("pipeline_latency_ms", last_pipeline_latency_ms_);
+  stat.add("use_3d_distortion_correction", use_3d_distortion_correction_);
+  stat.add("update_azimuth_and_distance", update_azimuth_and_distance_);
 }
 
 }  // namespace autoware::pointcloud_preprocessor

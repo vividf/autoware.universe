@@ -77,19 +77,18 @@ CropBoxFilterComponent::CropBoxFilterComponent(const rclcpp::NodeOptions & optio
   // set initial parameters
   {
     auto & p = param_;
-    p.min_x = declare_parameter<float>("min_x");
-    p.min_y = declare_parameter<float>("min_y");
-    p.min_z = declare_parameter<float>("min_z");
-    p.max_x = declare_parameter<float>("max_x");
-    p.max_y = declare_parameter<float>("max_y");
-    p.max_z = declare_parameter<float>("max_z");
+    p.min_x = declare_parameter<double>("min_x");
+    p.min_y = declare_parameter<double>("min_y");
+    p.min_z = declare_parameter<double>("min_z");
+    p.max_x = declare_parameter<double>("max_x");
+    p.max_y = declare_parameter<double>("max_y");
+    p.max_z = declare_parameter<double>("max_z");
     p.negative = declare_parameter<bool>("negative");
+    p.processing_time_threshold = declare_parameter<double>("processing_time_threshold");
     if (tf_input_frame_.empty()) {
       throw std::invalid_argument("Crop box requires non-empty input_frame");
     }
   }
-
-  processing_time_threshold_ = declare_parameter<float>("processing_time_threshold");
 
   // Diagnostic Updater
   std::ostringstream hardware_id_stream;
@@ -205,7 +204,7 @@ void CropBoxFilterComponent::faster_filter(
   output.width = static_cast<uint32_t>(output.data.size() / output.height / output.point_step);
   output.row_step = static_cast<uint32_t>(output.data.size() / output.height);
 
-  publishCropBoxPolygon();
+  publish_crop_box_polygon();
 
   const double cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);
   const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
@@ -241,7 +240,7 @@ void CropBoxFilterComponent::faster_filter(
   diagnostic_updater_.force_update();
 }
 
-void CropBoxFilterComponent::publishCropBoxPolygon()
+void CropBoxFilterComponent::publish_crop_box_polygon()
 {
   auto generatePoint = [](double x, double y, double z) {
     geometry_msgs::msg::Point32 point;
@@ -333,11 +332,9 @@ void CropBoxFilterComponent::check_diagnostics(diagnostic_updater::DiagnosticSta
 {
   if (last_output_count_ == 0) {
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No output points generated");
-  } else if (last_processing_time_ms_ > processing_time_threshold_ * 1000.0) {
+  } else if (last_processing_time_ms_ > param_.processing_time_threshold * 1000.0) {
     stat.summary(
       diagnostic_msgs::msg::DiagnosticStatus::WARN, "Processing time exceeded threshold");
-  } else if (last_pass_rate_ < 0.1) {
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "Too few points passed the filter");
   } else {
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "CropBoxFilter operating normally");
   }

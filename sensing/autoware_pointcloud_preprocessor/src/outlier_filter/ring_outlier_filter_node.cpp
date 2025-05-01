@@ -165,7 +165,7 @@ void RingOutlierFilterComponent::faster_filter(
         continue;                               // Determined to be included in the same walk
       }
 
-      if (isCluster(
+      if (is_cluster(
             input, std::make_pair(indices[walk_first_idx], indices[walk_last_idx]),
             walk_last_idx - walk_first_idx + 1)) {
         for (int i = walk_first_idx; i <= walk_last_idx; i++) {
@@ -220,7 +220,7 @@ void RingOutlierFilterComponent::faster_filter(
 
     if (walk_first_idx > walk_last_idx) continue;
 
-    if (isCluster(
+    if (is_cluster(
           input, std::make_pair(indices[walk_first_idx], indices[walk_last_idx]),
           walk_last_idx - walk_first_idx + 1)) {
       for (int i = walk_first_idx; i <= walk_last_idx; i++) {
@@ -269,7 +269,7 @@ void RingOutlierFilterComponent::faster_filter(
     }
   }
 
-  setUpPointCloudFormat(input, output, output_size);
+  set_up_pointcloud_format(input, output, output_size);
 
   if (publish_outlier_pointcloud_) {
     PointCloud2 outlier;
@@ -278,7 +278,7 @@ void RingOutlierFilterComponent::faster_filter(
     outlier_pointcloud_publisher_->publish(outlier);
 
     autoware_internal_debug_msgs::msg::Float32Stamped visibility_msg;
-    visibility_msg.data = calculateVisibilityScore(outlier);
+    visibility_msg.data = calculate_visibility_score(outlier);
     visibility_msg.stamp = input->header.stamp;
     visibility_pub_->publish(visibility_msg);
   }
@@ -366,7 +366,7 @@ rcl_interfaces::msg::SetParametersResult RingOutlierFilterComponent::paramCallba
   return result;
 }
 
-void RingOutlierFilterComponent::setUpPointCloudFormat(
+void RingOutlierFilterComponent::set_up_pointcloud_format(
   const PointCloud2ConstPtr & input, PointCloud2 & formatted_points, size_t points_size)
 {
   formatted_points.data.resize(points_size);
@@ -387,8 +387,8 @@ void RingOutlierFilterComponent::setUpPointCloudFormat(
   formatted_points.fields = msg_aux.fields;
 }
 
-float RingOutlierFilterComponent::calculateVisibilityScore(
-  const sensor_msgs::msg::PointCloud2 & input)
+float RingOutlierFilterComponent::calculate_visibility_score(
+  const sensor_msgs::msg::PointCloud2 & input) const
 {
   pcl::PointCloud<InputPointType>::Ptr input_cloud(new pcl::PointCloud<InputPointType>);
   pcl::fromROSMsg(input, *input_cloud);
