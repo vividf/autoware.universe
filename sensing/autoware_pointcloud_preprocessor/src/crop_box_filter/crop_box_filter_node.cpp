@@ -114,7 +114,7 @@ CropBoxFilterComponent::CropBoxFilterComponent(const rclcpp::NodeOptions & optio
   {
     using std::placeholders::_1;
     set_param_res_ = this->add_on_set_parameters_callback(
-      std::bind(&CropBoxFilterComponent::paramCallback, this, _1));
+      std::bind(&CropBoxFilterComponent::param_callback, this, _1));
   }
 }
 
@@ -227,16 +227,15 @@ void CropBoxFilterComponent::faster_filter(
       "debug/pipeline_latency_ms", pipeline_latency_ms);
   }
 
-  // Store for diagnostics
+  // Update diagnostic
   pointcloud_timestamp_ = rclcpp::Time(input->header.stamp).seconds();
   last_input_count_ = input_count;
   last_output_count_ = output_count;
-  last_skipped_nan_count_ = skipped_count;
   last_pass_rate_ = pass_rate;
   last_processing_time_ms_ = processing_time_ms;
-  last_latency_ms_ = pipeline_latency_ms;
+  last_pipeline_latency_ = pipeline_latency_ms;
+  last_skipped_nan_count_ = skipped_count;
 
-  // Update diagnostic
   diagnostic_updater_.force_update();
 }
 
@@ -291,7 +290,7 @@ void CropBoxFilterComponent::publish_crop_box_polygon()
   crop_box_polygon_pub_->publish(polygon_msg);
 }
 
-rcl_interfaces::msg::SetParametersResult CropBoxFilterComponent::paramCallback(
+rcl_interfaces::msg::SetParametersResult CropBoxFilterComponent::param_callback(
   const std::vector<rclcpp::Parameter> & p)
 {
   std::scoped_lock lock(mutex_);
@@ -309,13 +308,13 @@ rcl_interfaces::msg::SetParametersResult CropBoxFilterComponent::paramCallback(
       param_.min_z != new_param.min_z || param_.max_z != new_param.max_z ||
       param_.negative != new_param.negative) {
       RCLCPP_DEBUG(
-        get_logger(), "[%s::paramCallback] Setting the minimum point to: %f %f %f.", get_name(),
+        get_logger(), "[%s::param_callback] Setting the minimum point to: %f %f %f.", get_name(),
         new_param.min_x, new_param.min_y, new_param.min_z);
       RCLCPP_DEBUG(
-        get_logger(), "[%s::paramCallback] Setting the minimum point to: %f %f %f.", get_name(),
+        get_logger(), "[%s::param_callback] Setting the minimum point to: %f %f %f.", get_name(),
         new_param.max_x, new_param.max_y, new_param.max_z);
       RCLCPP_DEBUG(
-        get_logger(), "[%s::paramCallback] Setting the filter negative flag to: %s.", get_name(),
+        get_logger(), "[%s::param_callback] Setting the filter negative flag to: %s.", get_name(),
         new_param.negative ? "true" : "false");
       param_ = new_param;
     }
@@ -331,7 +330,7 @@ rcl_interfaces::msg::SetParametersResult CropBoxFilterComponent::paramCallback(
 void CropBoxFilterComponent::check_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
   if (last_output_count_ == 0) {
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No output points generated");
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No valid output points");
   } else if (last_processing_time_ms_ > param_.processing_time_threshold * 1000.0) {
     stat.summary(
       diagnostic_msgs::msg::DiagnosticStatus::WARN, "Processing time exceeded threshold");
@@ -345,7 +344,7 @@ void CropBoxFilterComponent::check_diagnostics(diagnostic_updater::DiagnosticSta
   stat.add("skipped_nan_point_count", last_skipped_nan_count_);
   stat.add("pass_rate", last_pass_rate_);
   stat.add("processing_time_ms", last_processing_time_ms_);
-  stat.add("pipeline_latency_ms", last_latency_ms_);
+  stat.add("pipeline_latency_ms", last_pipeline_latency_);
 }
 
 }  // namespace autoware::pointcloud_preprocessor

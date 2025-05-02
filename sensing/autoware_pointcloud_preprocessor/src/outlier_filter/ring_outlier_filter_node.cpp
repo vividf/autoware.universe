@@ -83,7 +83,7 @@ RingOutlierFilterComponent::RingOutlierFilterComponent(const rclcpp::NodeOptions
 
   using std::placeholders::_1;
   set_param_res_ = this->add_on_set_parameters_callback(
-    std::bind(&RingOutlierFilterComponent::paramCallback, this, _1));
+    std::bind(&RingOutlierFilterComponent::param_callback, this, _1));
 }
 
 // TODO(sykwer): Temporary Implementation: Rename this function to `filter()` when all the filter
@@ -290,6 +290,10 @@ void RingOutlierFilterComponent::faster_filter(
       std::chrono::nanoseconds((this->get_clock()->now() - input->header.stamp).nanoseconds()))
       .count();
 
+  const int input_count = static_cast<int>(input->width * input->height);
+  const int output_count = static_cast<int>(output.width * output.height);
+  const double pass_rate = input_count > 0 ? static_cast<double>(output_count) / input_count : 0.0;
+
   // Debug output
   if (debug_publisher_) {
     debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
@@ -300,12 +304,13 @@ void RingOutlierFilterComponent::faster_filter(
       "debug/pipeline_latency_ms", pipeline_latency_ms);
   }
 
-  // Update diagnostic info
+  // Update diagnostic
   pointcloud_timestamp_ = rclcpp::Time(input->header.stamp).seconds();
-  last_input_count_ = static_cast<int>(input->width * input->height);
-  last_output_count_ = static_cast<int>(output.width * output.height);
+  last_input_count_ = input_count;
+  last_output_count_ = output_count;
   last_processing_time_ms_ = processing_time_ms;
   last_pipeline_latency_ = pipeline_latency_ms;
+  last_pass_rate_ = pass_rate;
 
   diagnostic_updater_.force_update();
 }
@@ -321,7 +326,7 @@ void RingOutlierFilterComponent::filter(
   (void)output;
 }
 
-rcl_interfaces::msg::SetParametersResult RingOutlierFilterComponent::paramCallback(
+rcl_interfaces::msg::SetParametersResult RingOutlierFilterComponent::param_callback(
   const std::vector<rclcpp::Parameter> & p)
 {
   std::scoped_lock lock(mutex_);
@@ -458,6 +463,7 @@ void RingOutlierFilterComponent::check_diagnostics(
   stat.add("timestamp", format_timestamp(pointcloud_timestamp_));
   stat.add("input_point_count", last_input_count_);
   stat.add("output_point_count", last_output_count_);
+  stat.add("pass_rate", last_pass_rate_);
   stat.add("processing_time_ms", last_processing_time_ms_);
   stat.add("pipeline_latency_ms", last_pipeline_latency_);
 }

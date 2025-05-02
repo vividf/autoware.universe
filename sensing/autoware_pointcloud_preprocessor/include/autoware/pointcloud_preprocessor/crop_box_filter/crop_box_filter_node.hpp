@@ -93,14 +93,8 @@ private:
     double processing_time_threshold{0.0};
   } param_;
 
-  diagnostic_updater::Updater diagnostic_updater_{this};
-  double pointcloud_timestamp_;
-  int last_input_count_{0};
-  int last_output_count_{0};
+  // Diagnostic message
   int last_skipped_nan_count_{0};
-  double last_pass_rate_{0.0};
-  double last_processing_time_ms_{0.0};
-  double last_latency_ms_{0.0};
 
   rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr crop_box_polygon_pub_;
 
@@ -108,8 +102,7 @@ private:
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
   /** \brief Parameter service callback */
-  rcl_interfaces::msg::SetParametersResult paramCallback(const std::vector<rclcpp::Parameter> & p);
-
+  rcl_interfaces::msg::SetParametersResult param_callback(const std::vector<rclcpp::Parameter> & p);
   void check_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
 public:

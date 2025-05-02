@@ -73,6 +73,7 @@ private:
   double pointcloud_timestamp_{0.0};
   double last_processing_time_ms_{0.0};
   double last_pipeline_latency_ms_{0.0};
+  double last_pass_rate_{0.0};
 
   void check_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
 

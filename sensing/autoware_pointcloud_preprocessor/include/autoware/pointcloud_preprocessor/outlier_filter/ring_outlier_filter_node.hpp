@@ -77,19 +77,13 @@ private:
   float max_azimuth_deg_;
   float max_distance_;
 
-  // Diagnostic
-  diagnostic_updater::Updater diagnostic_updater_{this};
-  double pointcloud_timestamp_{0.0};
-  int last_input_count_{0};
-  int last_output_count_{0};
-  double last_processing_time_ms_{0.0};
-  double last_pipeline_latency_{0.0};
+  void check_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
   /** \brief Parameter service callback result : needed to be hold */
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
   /** \brief Parameter service callback */
-  rcl_interfaces::msg::SetParametersResult paramCallback(const std::vector<rclcpp::Parameter> & p);
+  rcl_interfaces::msg::SetParametersResult param_callback(const std::vector<rclcpp::Parameter> & p);
 
   bool is_cluster(
     const PointCloud2ConstPtr & input, std::pair<int, int> data_idx_both_ends, int walk_size) const
@@ -111,8 +105,6 @@ private:
   void set_up_pointcloud_format(
     const PointCloud2ConstPtr & input, PointCloud2 & formatted_points, size_t points_size);
   float calculate_visibility_score(const PointCloud2 & input) const;
-
-  void check_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
 public:
   PCL_MAKE_ALIGNED_OPERATOR_NEW
