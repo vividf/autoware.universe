@@ -172,7 +172,7 @@ protected:
   /** \brief Internal mutex. */
   std::mutex mutex_;
 
-  /** \brief The diagnositic message */
+  /** \brief The diagnostic message */
   diagnostic_updater::Updater diagnostic_updater_{this};
   double pointcloud_timestamp_{0.0};
   int last_input_count_{0};

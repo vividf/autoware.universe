@@ -65,7 +65,7 @@ private:
 
   std::unique_ptr<DistortionCorrectorBase> distortion_corrector_;
 
-  // Diagnositc
+  // Diagnostic
   diagnostic_updater::Updater diagnostic_updater_{this};
   int mismatch_count_{0};
   double mismatch_fraction_{0.0};
