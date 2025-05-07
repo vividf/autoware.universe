@@ -51,7 +51,7 @@
 
 #include "autoware/pointcloud_preprocessor/crop_box_filter/crop_box_filter_node.hpp"
 
-#include "autoware/pointcloud_preprocessor/utility/timestamp_utils.hpp"
+#include "autoware/pointcloud_preprocessor/utility/diagnostic_utils.hpp"
 
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
@@ -91,16 +91,7 @@ CropBoxFilterComponent::CropBoxFilterComponent(const rclcpp::NodeOptions & optio
   }
 
   // Diagnostic Updater
-  std::ostringstream hardware_id_stream;
-  hardware_id_stream << this->get_fully_qualified_name() << "_checker";
-  std::string hardware_id = hardware_id_stream.str();
-
-  std::ostringstream diagnostic_name_stream;
-  diagnostic_name_stream << this->get_fully_qualified_name() << "_status";
-  std::string diagnostic_name = diagnostic_name_stream.str();
-
-  diagnostic_updater_.setHardwareID(hardware_id);
-  diagnostic_updater_.add(diagnostic_name, this, &CropBoxFilterComponent::check_diagnostics);
+  setup_diagnostics(this, diagnostic_updater_, this, &CropBoxFilterComponent::check_diagnostics);
 
   // set additional publishers
   {

@@ -14,16 +14,30 @@
 
 #pragma once
 
+#include <diagnostic_updater/diagnostic_updater.hpp>
+
+#include <iomanip>
+#include <sstream>
 #include <string>
 
 namespace autoware::pointcloud_preprocessor
 {
 
-/**
- * @brief Format a timestamp to a string with 9 decimal places.
- * @param timestamp The timestamp to format.
- * @return A string representation of the timestamp.
- */
-std::string format_timestamp(double timestamp);
+inline std::string format_timestamp(double timestamp)
+{
+  std::ostringstream oss;
+  oss << std::fixed << std::setprecision(9) << timestamp;
+  return oss.str();
+}
+
+template <typename NodeT, typename ComponentT>
+void setup_diagnostics(
+  NodeT * node, diagnostic_updater::Updater & updater, ComponentT * component,
+  void (ComponentT::*check_fn)(diagnostic_updater::DiagnosticStatusWrapper &))
+{
+  const std::string node_name = node->get_fully_qualified_name();
+  updater.setHardwareID(node_name + "_checker");
+  updater.add(node_name + "_status", component, check_fn);
+}
 
 }  // namespace autoware::pointcloud_preprocessor

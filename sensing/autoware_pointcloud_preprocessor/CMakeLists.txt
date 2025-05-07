@@ -71,7 +71,6 @@ add_library(concatenate_data SHARED
   src/concatenate_data/cloud_collector.cpp
   src/concatenate_data/collector_matching_strategy.cpp
   src/concatenate_data/concatenate_pointclouds.cpp
-  src/utility/timestamp_utils.cpp
 )
 
 target_include_directories(concatenate_data PUBLIC
@@ -115,7 +114,6 @@ ament_auto_add_library(pointcloud_preprocessor_filter SHARED
   src/polygon_remover/polygon_remover.cpp
   src/vector_map_filter/vector_map_inside_area_filter_node.cpp
   src/utility/geometry.cpp
-  src/utility/timestamp_utils.cpp
   src/pointcloud_densifier/pointcloud_densifier_node.cpp
   src/pointcloud_densifier/occupancy_grid.cpp
 )

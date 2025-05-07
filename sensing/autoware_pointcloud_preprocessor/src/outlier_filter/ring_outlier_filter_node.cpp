@@ -15,7 +15,7 @@
 #include "autoware/pointcloud_preprocessor/outlier_filter/ring_outlier_filter_node.hpp"
 
 #include "autoware/point_types/types.hpp"
-#include "autoware/pointcloud_preprocessor/utility/timestamp_utils.hpp"
+#include "autoware/pointcloud_preprocessor/utility/diagnostic_utils.hpp"
 
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
@@ -70,15 +70,8 @@ RingOutlierFilterComponent::RingOutlierFilterComponent(const rclcpp::NodeOptions
   }
 
   // Diagnostic Updater
-  std::ostringstream hardware_id_stream;
-  hardware_id_stream << this->get_fully_qualified_name() << "_checker";
-  std::string hardware_id = hardware_id_stream.str();
-
-  std::ostringstream diagnostic_name_stream;
-  diagnostic_name_stream << this->get_fully_qualified_name() << "_status";
-  std::string diagnostic_name = diagnostic_name_stream.str();
-  diagnostic_updater_.setHardwareID(hardware_id);
-  diagnostic_updater_.add(diagnostic_name, this, &RingOutlierFilterComponent::check_diagnostics);
+  setup_diagnostics(
+    this, diagnostic_updater_, this, &RingOutlierFilterComponent::check_diagnostics);
 
   using std::placeholders::_1;
   set_param_res_ = this->add_on_set_parameters_callback(
