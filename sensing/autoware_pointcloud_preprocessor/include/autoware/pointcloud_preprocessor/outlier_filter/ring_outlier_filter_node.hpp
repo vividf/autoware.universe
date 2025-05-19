@@ -76,15 +76,13 @@ private:
   float max_azimuth_deg_;
   float max_distance_;
 
-  void check_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
-
   /** \brief Parameter service callback result : needed to be hold */
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
   /** \brief Parameter service callback */
   rcl_interfaces::msg::SetParametersResult param_callback(const std::vector<rclcpp::Parameter> & p);
 
-  bool is_cluster(const PointCloud2ConstPtr & input, std::pair<int, int> data_idx_both_ends)
+  bool is_cluster(const PointCloud2ConstPtr & input, std::pair<int, int> data_idx_both_ends) const
   {
     auto first_point =
       reinterpret_cast<const InputPointType *>(&input->data[data_idx_both_ends.first]);

@@ -15,7 +15,7 @@
 #include "autoware/pointcloud_preprocessor/outlier_filter/ring_outlier_filter_node.hpp"
 
 #include "autoware/point_types/types.hpp"
-#include "autoware/pointcloud_preprocessor/utility/diagnostic_utils.hpp"
+#include "autoware/pointcloud_preprocessor/utility/format_utils.hpp"
 
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
@@ -69,9 +69,9 @@ RingOutlierFilterComponent::RingOutlierFilterComponent(const rclcpp::NodeOptions
     processing_time_threshold_ = declare_parameter<float>("processing_time_threshold");
   }
 
-  // Diagnostic Updater
-  setup_diagnostics(
-    this, diagnostic_updater_, this, &RingOutlierFilterComponent::check_diagnostics);
+  // Diagnostic
+  diagnostics_interface_ =
+    std::make_unique<autoware_utils::DiagnosticsInterface>(this, this->get_fully_qualified_name());
 
   using std::placeholders::_1;
   set_param_res_ = this->add_on_set_parameters_callback(
@@ -293,14 +293,27 @@ void RingOutlierFilterComponent::faster_filter(
   }
 
   // Update diagnostic
-  pointcloud_timestamp_ = rclcpp::Time(input->header.stamp).seconds();
-  last_input_count_ = input_count;
-  last_output_count_ = output_count;
-  last_processing_time_ms_ = processing_time_ms;
-  last_pipeline_latency_ = pipeline_latency_ms;
-  last_pass_rate_ = pass_rate;
+  diagnostics_interface_->clear();
+  if (output_count == 0) {
+    diagnostics_interface_->update_level_and_message(
+      diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No valid output points");
+  } else if (processing_time_ms > processing_time_threshold_ * 1000.0) {
+    diagnostics_interface_->update_level_and_message(
+      diagnostic_msgs::msg::DiagnosticStatus::WARN, "Processing time exceeded threshold");
+  } else {
+    diagnostics_interface_->update_level_and_message(
+      diagnostic_msgs::msg::DiagnosticStatus::OK, "RingOutlierFilter operating normally");
+  }
 
-  diagnostic_updater_.force_update();
+  diagnostics_interface_->add_key_value(
+    "timestamp", format_timestamp(rclcpp::Time(input->header.stamp).seconds()));
+  diagnostics_interface_->add_key_value("input_point_count", input_count);
+  diagnostics_interface_->add_key_value("output_point_count", output_count);
+  diagnostics_interface_->add_key_value("pass_rate", pass_rate);
+  diagnostics_interface_->add_key_value("processing_time_ms", processing_time_ms);
+  diagnostics_interface_->add_key_value("pipeline_latency_ms", pipeline_latency_ms);
+
+  diagnostics_interface_->publish(this->get_clock()->now());
 }
 
 // TODO(sykwer): Temporary Implementation: Delete this function definition when all the filter nodes
@@ -430,27 +443,6 @@ float RingOutlierFilterComponent::calculate_visibility_score(
     static_cast<float>(num_pixels) / static_cast<float>(vertical_bins * horizontal_bins);
 
   return 1.0f - num_filled_pixels;
-}
-
-void RingOutlierFilterComponent::check_diagnostics(
-  diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  if (last_output_count_ == 0) {
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No valid output points");
-  } else if (last_processing_time_ms_ > processing_time_threshold_ * 1000.0) {
-    stat.summary(
-      diagnostic_msgs::msg::DiagnosticStatus::WARN, "Processing time exceeded threshold");
-  } else {
-    stat.summary(
-      diagnostic_msgs::msg::DiagnosticStatus::OK, "RingOutlierFilter operating normally");
-  }
-
-  stat.add("timestamp", format_timestamp(pointcloud_timestamp_));
-  stat.add("input_point_count", last_input_count_);
-  stat.add("output_point_count", last_output_count_);
-  stat.add("pass_rate", last_pass_rate_);
-  stat.add("processing_time_ms", last_processing_time_ms_);
-  stat.add("pipeline_latency_ms", last_pipeline_latency_);
 }
 
 }  // namespace autoware::pointcloud_preprocessor

@@ -54,8 +54,6 @@
 
 #include "autoware/pointcloud_preprocessor/transform_info.hpp"
 
-#include <diagnostic_updater/diagnostic_updater.hpp>
-
 #include <boost/thread/mutex.hpp>
 
 #include <message_filters/subscriber.h>
@@ -76,6 +74,7 @@
 
 // Autoware utils
 #include <autoware_utils/ros/debug_publisher.hpp>
+#include <autoware_utils/ros/diagnostics_interface.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
 #include <managed_transform_buffer/managed_transform_buffer.hpp>
@@ -173,13 +172,7 @@ protected:
   std::mutex mutex_;
 
   /** \brief The diagnostic message */
-  diagnostic_updater::Updater diagnostic_updater_{this};
-  double pointcloud_timestamp_{0.0};
-  int last_input_count_{0};
-  int last_output_count_{0};
-  double last_pass_rate_{0.0};
-  double last_processing_time_ms_{0.0};
-  double last_pipeline_latency_{0.0};
+  std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface> diagnostics_interface_;
 
   /** \brief processing time publisher. **/
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;

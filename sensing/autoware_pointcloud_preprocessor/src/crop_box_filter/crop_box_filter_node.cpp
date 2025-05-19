@@ -51,7 +51,7 @@
 
 #include "autoware/pointcloud_preprocessor/crop_box_filter/crop_box_filter_node.hpp"
 
-#include "autoware/pointcloud_preprocessor/utility/diagnostic_utils.hpp"
+#include "autoware/pointcloud_preprocessor/utility/format_utils.hpp"
 
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
@@ -90,9 +90,9 @@ CropBoxFilterComponent::CropBoxFilterComponent(const rclcpp::NodeOptions & optio
     }
   }
 
-  // Diagnostic Updater
-  setup_diagnostics(this, diagnostic_updater_, this, &CropBoxFilterComponent::check_diagnostics);
-
+  // Diagnostic
+  diagnostics_interface_ =
+    std::make_unique<autoware_utils::DiagnosticsInterface>(this, this->get_fully_qualified_name());
   // set additional publishers
   {
     rclcpp::PublisherOptions pub_options;
@@ -219,15 +219,26 @@ void CropBoxFilterComponent::faster_filter(
   }
 
   // Update diagnostic
-  pointcloud_timestamp_ = rclcpp::Time(input->header.stamp).seconds();
-  last_input_count_ = input_count;
-  last_output_count_ = output_count;
-  last_pass_rate_ = pass_rate;
-  last_processing_time_ms_ = processing_time_ms;
-  last_pipeline_latency_ = pipeline_latency_ms;
-  last_skipped_nan_count_ = skipped_count;
+  diagnostics_interface_->clear();
+  if (output_count == 0) {
+    diagnostics_interface_->update_level_and_message(
+      diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No valid output points");
+  } else if (processing_time_ms > param_.processing_time_threshold * 1000.0) {
+    diagnostics_interface_->update_level_and_message(
+      diagnostic_msgs::msg::DiagnosticStatus::WARN, "Processing time exceeded threshold");
+  } else {
+    diagnostics_interface_->update_level_and_message(
+      diagnostic_msgs::msg::DiagnosticStatus::OK, "CropBoxFilter operating normally");
+  }
 
-  diagnostic_updater_.force_update();
+  diagnostics_interface_->add_key_value(
+    "timestamp", format_timestamp(rclcpp::Time(input->header.stamp).seconds()));
+  diagnostics_interface_->add_key_value("input_point_count", input_count);
+  diagnostics_interface_->add_key_value("output_point_count", output_count);
+  diagnostics_interface_->add_key_value("pass_rate", pass_rate);
+  diagnostics_interface_->add_key_value("skipped_nan_point_count", skipped_count);
+  diagnostics_interface_->add_key_value("processing_time_ms", processing_time_ms);
+  diagnostics_interface_->add_key_value("pipeline_latency_ms", pipeline_latency_ms);
 }
 
 void CropBoxFilterComponent::publish_crop_box_polygon()
@@ -316,26 +327,6 @@ rcl_interfaces::msg::SetParametersResult CropBoxFilterComponent::param_callback(
   result.reason = "success";
 
   return result;
-}
-
-void CropBoxFilterComponent::check_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  if (last_output_count_ == 0) {
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No valid output points");
-  } else if (last_processing_time_ms_ > param_.processing_time_threshold * 1000.0) {
-    stat.summary(
-      diagnostic_msgs::msg::DiagnosticStatus::WARN, "Processing time exceeded threshold");
-  } else {
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "CropBoxFilter operating normally");
-  }
-
-  stat.add("timestamp", format_timestamp(pointcloud_timestamp_));
-  stat.add("input_point_count", last_input_count_);
-  stat.add("output_point_count", last_output_count_);
-  stat.add("skipped_nan_point_count", last_skipped_nan_count_);
-  stat.add("pass_rate", last_pass_rate_);
-  stat.add("processing_time_ms", last_processing_time_ms_);
-  stat.add("pipeline_latency_ms", last_pipeline_latency_);
 }
 
 }  // namespace autoware::pointcloud_preprocessor

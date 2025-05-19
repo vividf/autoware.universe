@@ -30,14 +30,4 @@ inline std::string format_timestamp(double timestamp)
   return oss.str();
 }
 
-template <typename NodeT, typename ComponentT>
-void setup_diagnostics(
-  NodeT * node, diagnostic_updater::Updater & updater, ComponentT * component,
-  void (ComponentT::*check_fn)(diagnostic_updater::DiagnosticStatusWrapper &))
-{
-  const std::string node_name = node->get_fully_qualified_name();
-  updater.setHardwareID(node_name + "_checker");
-  updater.add(node_name + "_status", component, check_fn);
-}
-
 }  // namespace autoware::pointcloud_preprocessor
