@@ -239,6 +239,8 @@ void CropBoxFilterComponent::faster_filter(
   diagnostics_interface_->add_key_value("skipped_nan_point_count", skipped_count);
   diagnostics_interface_->add_key_value("processing_time_ms", processing_time_ms);
   diagnostics_interface_->add_key_value("pipeline_latency_ms", pipeline_latency_ms);
+
+  diagnostics_interface_->publish(this->get_clock()->now());
 }
 
 void CropBoxFilterComponent::publish_crop_box_polygon()
