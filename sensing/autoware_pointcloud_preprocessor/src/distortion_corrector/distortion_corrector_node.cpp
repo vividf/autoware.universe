@@ -148,12 +148,20 @@ void DistortionCorrectorComponent::pointcloud_callback(PointCloud2::UniquePtr po
 
   // diagnostic
   diagnostics_interface_->clear();
-  if (distortion_corrector_->get_mismatch_fraction() > mismatch_fraction_threshold_) {
+
+  auto mismatch_fraction = distortion_corrector_->get_mismatch_fraction();
+  if (mismatch_fraction > mismatch_fraction_threshold_) {
     diagnostics_interface_->update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::ERROR, "Mismatch_fraction exceed the threshold");
+      diagnostic_msgs::msg::DiagnosticStatus::ERROR,
+      "Mismatch fraction " + std::to_string(mismatch_fraction) + " exceeded threshold of " +
+        std::to_string(mismatch_fraction_threshold_));
   } else if (processing_time_ms > processing_time_threshold_ * 1000.0) {
     diagnostics_interface_->update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::WARN, "Processing time exceeded threshold");
+      diagnostic_msgs::msg::DiagnosticStatus::WARN,
+      "Processing time " + std::to_string(processing_time_ms) +
+        " ms "
+        "exceeded threshold of " +
+        std::to_string(processing_time_threshold_ * 1000.0) + " ms");
   } else {
     diagnostics_interface_->update_level_and_message(
       diagnostic_msgs::msg::DiagnosticStatus::OK, "Distortion correction successful");

@@ -225,7 +225,11 @@ void CropBoxFilterComponent::faster_filter(
       diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No valid output points");
   } else if (processing_time_ms > param_.processing_time_threshold * 1000.0) {
     diagnostics_interface_->update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::WARN, "Processing time exceeded threshold");
+      diagnostic_msgs::msg::DiagnosticStatus::WARN,
+      "Processing time " + std::to_string(processing_time_ms) +
+        " ms "
+        "exceeded threshold of " +
+        std::to_string(param_.processing_time_threshold * 1000.0) + " ms");
   } else {
     diagnostics_interface_->update_level_and_message(
       diagnostic_msgs::msg::DiagnosticStatus::OK, "CropBoxFilter operating normally");
