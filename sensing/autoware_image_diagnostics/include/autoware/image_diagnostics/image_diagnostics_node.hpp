@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include <diagnostic_updater/diagnostic_updater.hpp>
+#include <autoware_utils/ros/diagnostics_interface.hpp>
 #include <image_transport/image_transport.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -31,13 +31,12 @@
 #include <cv_bridge/cv_bridge.h>
 #endif
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 
 namespace autoware::image_diagnostics
 {
-using diagnostic_updater::DiagnosticStatusWrapper;
-using diagnostic_updater::Updater;
 
 class ImageDiagNode : public rclcpp::Node
 {
@@ -73,18 +72,21 @@ private:
     int backlight_intensity_thresh{230};
   } params_;
 
-  int diagnostic_status_{-1};
-  int64_t num_of_regions_normal_{0};
-  int64_t num_of_regions_dark_{0};
-  int64_t num_of_regions_blockage_{0};
-  int64_t num_of_regions_low_visibility_{0};
-  int64_t num_of_regions_backlight_{0};
+  struct DiagnosticInfo
+  {
+    int diagnostic_status{-1};
+    int64_t num_of_regions_normal{0};
+    int64_t num_of_regions_dark{0};
+    int64_t num_of_regions_blockage{0};
+    int64_t num_of_regions_low_visibility{0};
+    int64_t num_of_regions_backlight{0};
+  };
 
   void image_checker(const sensor_msgs::msg::Image::ConstSharedPtr input_image_msg);
   static void shift_image(cv::Mat & img);
-  void on_image_diag_checker(DiagnosticStatusWrapper & stat);
+  void on_image_diag_checker(DiagnosticInfo diagnostic_info);
 
-  Updater updater_{this};
+  std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface> diagnostics_interface_;
 
 public:
   explicit ImageDiagNode(const rclcpp::NodeOptions & node_options);

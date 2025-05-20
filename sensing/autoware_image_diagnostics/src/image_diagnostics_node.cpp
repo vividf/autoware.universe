@@ -16,6 +16,7 @@
 
 #include <std_msgs/msg/header.hpp>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -63,35 +64,38 @@ ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
   params_.low_visibility_freq_thresh = declare_parameter<float>("low_visibility_freq_thresh");
   params_.backlight_intensity_thresh = declare_parameter<int>("backlight_intensity_thresh");
 
-  updater_.setHardwareID("Image_Diagnostics");
-  updater_.add(
-    std::string(this->get_namespace()) + ": Image_Diagnostics", this,
-    &ImageDiagNode::on_image_diag_checker);
-  updater_.setPeriod(0.1);
+  diagnostics_interface_ =
+    std::make_unique<autoware_utils::DiagnosticsInterface>(this, this->get_fully_qualified_name());
 }
 
-void ImageDiagNode::on_image_diag_checker(DiagnosticStatusWrapper & stat)
+void ImageDiagNode::on_image_diag_checker(DiagnosticInfo diagnostic_info)
 {
-  stat.add("number dark regions ", std::to_string(num_of_regions_dark_));
-  stat.add("number blockage regions ", std::to_string(num_of_regions_blockage_));
-  stat.add("number low visibility regions ", std::to_string(num_of_regions_low_visibility_));
-  stat.add("number backlight  regions ", std::to_string(num_of_regions_backlight_));
+  diagnostics_interface_->clear();
+  diagnostics_interface_->add_key_value(
+    "number dark regions ", std::to_string(diagnostic_info.num_of_regions_dark));
+  diagnostics_interface_->add_key_value(
+    "number blockage regions ", std::to_string(diagnostic_info.num_of_regions_blockage));
+  diagnostics_interface_->add_key_value(
+    "number low visibility regions ",
+    std::to_string(diagnostic_info.num_of_regions_low_visibility));
+  diagnostics_interface_->add_key_value(
+    "number backlight  regions ", std::to_string(diagnostic_info.num_of_regions_backlight));
 
-  auto level = DiagnosticStatusWrapper::OK;
-  std::string msg = "OK";
-
-  if (diagnostic_status_ < 0) {
-    level = DiagnosticStatusWrapper::STALE;
-    msg = "STALE";
-  } else if (diagnostic_status_ == 1) {
-    level = DiagnosticStatusWrapper::WARN;
-    msg = "WARNING: abnormal state in image diagnostics";
-  } else if (diagnostic_status_ == 2) {
-    level = DiagnosticStatusWrapper::ERROR;
-    msg = "ERROR: abnormal state in image diagnostics";
+  if (diagnostic_info.diagnostic_status < 0) {
+    diagnostics_interface_->update_level_and_message(
+      diagnostic_msgs::msg::DiagnosticStatus::STALE, "STALE");
+  } else if (diagnostic_info.diagnostic_status == 0) {
+    diagnostics_interface_->update_level_and_message(
+      diagnostic_msgs::msg::DiagnosticStatus::OK, "OK: ok state in image diagnostics");
+  } else if (diagnostic_info.diagnostic_status == 1) {
+    diagnostics_interface_->update_level_and_message(
+      diagnostic_msgs::msg::DiagnosticStatus::WARN, "WARNING: abnormal state in image diagnostics");
+  } else if (diagnostic_info.diagnostic_status == 2) {
+    diagnostics_interface_->update_level_and_message(
+      diagnostic_msgs::msg::DiagnosticStatus::ERROR, "ERROR: abnormal state in image diagnostics");
   }
 
-  stat.summary(level, msg);
+  diagnostics_interface_->publish(this->get_clock()->now());
 }
 
 void ImageDiagNode::image_checker(const sensor_msgs::msg::Image::ConstSharedPtr input_image_msg)
@@ -120,10 +124,10 @@ void ImageDiagNode::image_checker(const sensor_msgs::msg::Image::ConstSharedPtr 
   cv::threshold(
     img_gray, img_gray_blockage_bin, params_.blockage_intensity_thresh, 255, cv::THRESH_BINARY);
   img_gray.convertTo(img_gray_32b, CV_32FC1);
-  cv::Mat imgDCT(size, CV_32FC1);
-  imgDCT.setTo(0.0);
-  cv::Mat imgDFT(size, CV_32FC1);
-  imgDFT.setTo(0.0);
+  cv::Mat img_dct(size, CV_32FC1);
+  img_dct.setTo(0.0);
+  cv::Mat img_dft(size, CV_32FC1);
+  img_dft.setTo(0.0);
   // calculate the features of each small block in image
   for (int v = 0; v < params_.number_block_vertical; v++) {
     for (int h = 0; h < params_.number_block_horizontal; h++) {
@@ -154,7 +158,7 @@ void ImageDiagNode::image_checker(const sensor_msgs::msg::Image::ConstSharedPtr 
       cv::split(freq_comp, channel_img);
       cv::Rect original_roi(0, 0, block_size_h, block_size_v);
       channel_img[0](original_roi)
-        .copyTo(imgDFT(cv::Rect(roi.x, roi.y, block_size_h, block_size_v)));
+        .copyTo(img_dft(cv::Rect(roi.x, roi.y, block_size_h, block_size_v)));
 
       cv::Mat rect_tmp = img_gray_32b(roi);
       channel_img[0](original_roi).copyTo(rect_tmp);
@@ -230,45 +234,46 @@ void ImageDiagNode::image_checker(const sensor_msgs::msg::Image::ConstSharedPtr 
   }
 
   // summary image status based on all blocks state
-  num_of_regions_normal_ =
+  DiagnosticInfo diagnostic_info;
+  diagnostic_info.num_of_regions_normal =
     std::count(region_state_vec.begin(), region_state_vec.end(), Image_State::NORMAL);
-  num_of_regions_dark_ =
+  diagnostic_info.num_of_regions_dark =
     std::count(region_state_vec.begin(), region_state_vec.end(), Image_State::DARK);
-  num_of_regions_blockage_ =
+  diagnostic_info.num_of_regions_blockage =
     std::count(region_state_vec.begin(), region_state_vec.end(), Image_State::BLOCKAGE);
-  num_of_regions_low_visibility_ =
+  diagnostic_info.num_of_regions_low_visibility =
     std::count(region_state_vec.begin(), region_state_vec.end(), Image_State::LOW_VIS);
-  num_of_regions_backlight_ =
+  diagnostic_info.num_of_regions_backlight =
     std::count(region_state_vec.begin(), region_state_vec.end(), Image_State::BACKLIGHT);
 
   // diagnose whole image status
   if (
-    (num_of_regions_dark_ > params_.dark_regions_num_error_thresh) ||
-    (num_of_regions_blockage_ > params_.blockage_region_num_error_thresh) ||
-    (num_of_regions_low_visibility_ > params_.lowVis_region_num_error_thresh) ||
-    (num_of_regions_backlight_ > params_.backlight_region_num_error_thresh)) {
-    diagnostic_status_ = 2;
+    (diagnostic_info.num_of_regions_dark > params_.dark_regions_num_error_thresh) ||
+    (diagnostic_info.num_of_regions_blockage > params_.blockage_region_num_error_thresh) ||
+    (diagnostic_info.num_of_regions_low_visibility > params_.lowVis_region_num_error_thresh) ||
+    (diagnostic_info.num_of_regions_backlight > params_.backlight_region_num_error_thresh)) {
+    diagnostic_info.diagnostic_status = 2;
   } else if (
-    (num_of_regions_dark_ > params_.dark_regions_num_warn_thresh) ||
-    (num_of_regions_blockage_ > params_.blockage_region_num_warn_thresh) ||
-    (num_of_regions_low_visibility_ > params_.lowVis_region_num_warn_thresh) ||
-    (num_of_regions_backlight_ > params_.backlight_region_num_warn_thresh)) {
-    diagnostic_status_ = 1;
+    (diagnostic_info.num_of_regions_dark > params_.dark_regions_num_warn_thresh) ||
+    (diagnostic_info.num_of_regions_blockage > params_.blockage_region_num_warn_thresh) ||
+    (diagnostic_info.num_of_regions_low_visibility > params_.lowVis_region_num_warn_thresh) ||
+    (diagnostic_info.num_of_regions_backlight > params_.backlight_region_num_warn_thresh)) {
+    diagnostic_info.diagnostic_status = 1;
   } else {
-    diagnostic_status_ = 0;
+    diagnostic_info.diagnostic_status = 0;
   }
   autoware_internal_debug_msgs::msg::Int32Stamped image_state_out;
-  image_state_out.data = diagnostic_status_;
+  image_state_out.data = diagnostic_info.diagnostic_status;
   image_state_pub_->publish(image_state_out);
 
   img_gray.convertTo(img_gray, CV_8UC1);
-  imgDFT.convertTo(imgDFT, CV_8UC1);
+  img_dft.convertTo(img_dft, CV_8UC1);
 
   // publish topics
   sensor_msgs::msg::Image::SharedPtr gray_image_msg =
     cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", img_gray).toImageMsg();
   sensor_msgs::msg::Image::SharedPtr dft_image_msg =
-    cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", imgDFT).toImageMsg();
+    cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", img_dft).toImageMsg();
   sensor_msgs::msg::Image::SharedPtr block_diag_image_msg =
     cv_bridge::CvImage(std_msgs::msg::Header(), "bgr8", diag_block_image).toImageMsg();
 
@@ -279,6 +284,8 @@ void ImageDiagNode::image_checker(const sensor_msgs::msg::Image::ConstSharedPtr 
   gray_image_pub_.publish(gray_image_msg);
   dft_image_pub_.publish(dft_image_msg);
   block_diag_image_pub_.publish(block_diag_image_msg);
+
+  on_image_diag_checker(diagnostic_info);
 }
 
 void ImageDiagNode::shift_image(cv::Mat & img)
