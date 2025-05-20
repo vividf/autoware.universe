@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Parameters for Image Diagnostics Node",
+  "type": "object",
+  "definitions": {
+    "image_diagnostics_node": {
+      "type": "object",
+      "properties": {
+        "image_resize_height": {
+          "type": "integer",
+          "description": "Target height to resize the input image before block analysis. Width is scaled proportionally."
+        },
+        "number_block_horizontal": {
+          "type": "integer",
+          "description": "Number of horizontal blocks to divide the image into for diagnostics."
+        },
+        "number_block_vertical": {
+          "type": "integer",
+          "description": "Number of vertical blocks to divide the image into for diagnostics."
+        },
+        "dark_regions_num_warn_thresh": {
+          "type": "integer",
+          "description": "Warning threshold for number of dark image blocks."
+        },
+        "blockage_region_num_warn_thresh": {
+          "type": "integer",
+          "description": "Warning threshold for number of blocked image blocks."
+        },
+        "lowVis_region_num_warn_thresh": {
+          "type": "integer",
+          "description": "Warning threshold for number of low visibility image blocks."
+        },
+        "backlight_region_num_warn_thresh": {
+          "type": "integer",
+          "description": "Warning threshold for number of backlight image blocks."
+        },
+        "dark_regions_num_error_thresh": {
+          "type": "integer",
+          "description": "Error threshold for number of dark image blocks."
+        },
+        "blockage_region_num_error_thresh": {
+          "type": "integer",
+          "description": "Error threshold for number of blocked image blocks."
+        },
+        "lowVis_region_num_error_thresh": {
+          "type": "integer",
+          "description": "Error threshold for number of low visibility image blocks."
+        },
+        "backlight_region_num_error_thresh": {
+          "type": "integer",
+          "description": "Error threshold for number of backlight image blocks."
+        },
+        "blockage_ratio_thresh": {
+          "type": "number",
+          "description": "Threshold for the ratio of non-black pixels in a block to be considered blocked."
+        },
+        "blockage_intensity_thresh": {
+          "type": "integer",
+          "description": "Pixel intensity threshold used to binarize grayscale image for blockage detection."
+        },
+        "blockage_freq_ratio_thresh": {
+          "type": "number",
+          "description": "Threshold for average frequency magnitude below which a block is considered blocked."
+        },
+        "dark_intensity_thresh": {
+          "type": "integer",
+          "description": "Grayscale intensity threshold under which a block is considered dark."
+        },
+        "low_visibility_freq_thresh": {
+          "type": "number",
+          "description": "Threshold for average frequency magnitude below which a block is considered low visibility (e.g., blurry or foggy)."
+        },
+        "backlight_intensity_thresh": {
+          "type": "integer",
+          "description": "Grayscale intensity threshold above which a block is considered overexposed (backlight)."
+        }
+      },
+      "required": [
+        "image_resize_height",
+        "number_block_horizontal",
+        "number_block_vertical",
+        "dark_regions_num_warn_thresh",
+        "blockage_region_num_warn_thresh",
+        "lowVis_region_num_warn_thresh",
+        "backlight_region_num_warn_thresh",
+        "dark_regions_num_error_thresh",
+        "blockage_region_num_error_thresh",
+        "lowVis_region_num_error_thresh",
+        "backlight_region_num_error_thresh",
+        "blockage_ratio_thresh",
+        "blockage_intensity_thresh",
+        "blockage_freq_ratio_thresh",
+        "dark_intensity_thresh",
+        "low_visibility_freq_thresh",
+        "backlight_intensity_thresh"
+      ]
+    }
+  },
+  "properties": {
+    "/**": {
+      "type": "object",
+      "properties": {
+        "ros__parameters": {
+          "$ref": "#/definitions/image_diagnostics_node"
+        }
+      },
+      "required": ["ros__parameters"]
+    }
+  },
+  "required": ["/**"]
+}

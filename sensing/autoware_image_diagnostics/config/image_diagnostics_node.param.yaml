@@ -1,0 +1,23 @@
+/**:
+  ros__parameters:
+    image_resize_height: 480
+    number_block_horizontal: 5
+    number_block_vertical: 5
+    # Warning threshold
+    dark_regions_num_warn_thresh: 10
+    blockage_region_num_warn_thresh: 3
+    lowVis_region_num_warn_thresh: 2
+    backlight_region_num_warn_thresh: 2
+    # Error threshold
+    dark_regions_num_error_thresh: 20
+    blockage_region_num_error_thresh: 5
+    lowVis_region_num_error_thresh: 4
+    backlight_region_num_error_thresh: 3
+
+    blockage_ratio_thresh: 0.9
+    blockage_intensity_thresh: 10
+    blockage_freq_ratio_thresh: 0.3
+
+    dark_intensity_thresh: 10
+    low_visibility_freq_thresh: 4.0
+    backlight_intensity_thresh: 230
