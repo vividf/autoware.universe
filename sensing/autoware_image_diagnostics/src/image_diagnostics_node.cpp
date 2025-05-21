@@ -16,6 +16,7 @@
 
 #include <std_msgs/msg/header.hpp>
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -185,130 +186,69 @@ void ImageDiagNode::update_image_diagnostics(const std::vector<int> & states)
 {
   diagnostics_interface_->clear();
 
-  auto num_of_normal_region = std::count(states.begin(), states.end(), Image_State::NORMAL);
-  auto num_of_shadow_region = std::count(states.begin(), states.end(), Image_State::DARK);
-  auto num_of_blockage_region = std::count(states.begin(), states.end(), Image_State::BLOCKAGE);
-  auto num_of_low_visibility_region =
-    std::count(states.begin(), states.end(), Image_State::LOW_VIS);
-  auto num_of_highligt_region = std::count(states.begin(), states.end(), Image_State::BACKLIGHT);
+  const auto total_blocks = params_.num_blocks_horizontal * params_.num_blocks_vertical;
+  const auto num_normal = std::count(states.begin(), states.end(), Image_State::NORMAL);
+  const auto num_shadow = std::count(states.begin(), states.end(), Image_State::DARK);
+  const auto num_blockage = std::count(states.begin(), states.end(), Image_State::BLOCKAGE);
+  const auto num_low_vis = std::count(states.begin(), states.end(), Image_State::LOW_VIS);
+  const auto num_highlight = std::count(states.begin(), states.end(), Image_State::BACKLIGHT);
 
-  const int total_blocks = params_.num_blocks_horizontal * params_.num_blocks_vertical;
-  const float normal_ratio =
-    static_cast<float>(num_of_normal_region) / static_cast<float>(total_blocks);
-  const float blockage_ratio =
-    static_cast<float>(num_of_blockage_region) / static_cast<float>(total_blocks);
-  const float highlight_ratio =
-    static_cast<float>(num_of_highligt_region) / static_cast<float>(total_blocks);
-  const float shadow_ratio =
-    static_cast<float>(num_of_shadow_region) / static_cast<float>(total_blocks);
-  const float low_vis_ratio =
-    static_cast<float>(num_of_low_visibility_region) / static_cast<float>(total_blocks);
-
-  std::vector<std::string> error_messages;
-
-  // Normal
-  diagnostics_interface_->add_key_value("normal_ratio", std::to_string(normal_ratio));
-
-  // Blockage
-  std::string blockage_status = "OK";
-  if (num_of_blockage_region > params_.blockage_region_error_threshold) {
-    blockage_status = "ERROR";
-    error_messages.emplace_back("Blockage status: ERROR (above threshold)");
-  } else if (num_of_blockage_region > params_.blockage_region_warn_threshold) {
-    blockage_status = "WARN";
-  }
-  diagnostics_interface_->add_key_value("blockage_status", blockage_status);
-  diagnostics_interface_->add_key_value("blockage_ratio", std::to_string(blockage_ratio));
-
-  // Highlight clipping
-  std::string highlight_status = "OK";
-  if (num_of_highligt_region > params_.highlight_region_error_threshold) {
-    highlight_status = "ERROR";
-    error_messages.emplace_back("Highlight clipping status: ERROR (above threshold)");
-  } else if (num_of_highligt_region > params_.highlight_region_warn_threshold) {
-    highlight_status = "WARN";
-  }
-  diagnostics_interface_->add_key_value("highlight_clipping_status", highlight_status);
-  diagnostics_interface_->add_key_value("highlight_ratio", std::to_string(highlight_ratio));
-
-  // Shadow clipping
-  std::string shadow_status = "OK";
-  if (num_of_shadow_region > params_.shadow_region_error_threshold) {
-    shadow_status = "ERROR";
-    error_messages.emplace_back("Shadow clipping status: ERROR (above threshold)");
-  } else if (num_of_shadow_region > params_.shadow_region_warn_threshold) {
-    shadow_status = "WARN";
-  }
-  diagnostics_interface_->add_key_value("shadow_clipping_status", shadow_status);
-  diagnostics_interface_->add_key_value("shadow_ratio", std::to_string(shadow_ratio));
-
-  // Low visibility
-  std::string low_vis_status = "OK";
-  if (num_of_low_visibility_region > params_.low_visibility_region_error_threshold) {
-    low_vis_status = "ERROR";
-    error_messages.emplace_back("Low visibility status: ERROR (above threshold)");
-  } else if (num_of_low_visibility_region > params_.low_visibility_region_warn_threshold) {
-    low_vis_status = "WARN";
-  }
-  diagnostics_interface_->add_key_value("low_visibility_status", low_vis_status);
-  diagnostics_interface_->add_key_value("low_visibility_ratio", std::to_string(low_vis_ratio));
-
-  // Summary diagnostic message
+  const auto ratio_normal = static_cast<float>(num_normal) / static_cast<float>(total_blocks);
+  const auto ratio_blockage = static_cast<float>(num_blockage) / static_cast<float>(total_blocks);
+  const auto ratio_shadow = static_cast<float>(num_shadow) / static_cast<float>(total_blocks);
+  const auto ratio_low_vis = static_cast<float>(num_low_vis) / static_cast<float>(total_blocks);
+  const auto ratio_highlight = static_cast<float>(num_highlight) / static_cast<float>(total_blocks);
 
   int8_t level = diagnostic_msgs::msg::DiagnosticStatus::OK;
-  if (
-    blockage_status == "ERROR" || highlight_status == "ERROR" || shadow_status == "ERROR" ||
-    low_vis_status == "ERROR") {
-    level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-  } else if (
-    blockage_status == "WARN" || highlight_status == "WARN" || shadow_status == "WARN" ||
-    low_vis_status == "WARN") {
-    level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
-  }
+  std::vector<std::string> status_details;
+
+  auto check_status = [&](
+                        const std::string & label, int64_t count, int warn_thresh, int err_thresh,
+                        const std::string & key_prefix, float ratio) {
+    std::string status = "OK";
+    if (count > err_thresh) {
+      status = "ERROR";
+      level = std::max(level, static_cast<int8_t>(diagnostic_msgs::msg::DiagnosticStatus::ERROR));
+      status_details.emplace_back(
+        label + ": ERROR (count = " + std::to_string(count) +
+        ", error threshold = " + std::to_string(err_thresh) + ")");
+    } else if (count > warn_thresh) {
+      status = "WARNING";
+      level = std::max(level, static_cast<int8_t>(diagnostic_msgs::msg::DiagnosticStatus::WARN));
+      status_details.emplace_back(
+        label + ": WARNING (count = " + std::to_string(count) +
+        ", warning threshold = " + std::to_string(warn_thresh) + ")");
+    }
+    diagnostics_interface_->add_key_value(key_prefix + "_status", status);
+    diagnostics_interface_->add_key_value(key_prefix + "_number", std::to_string(count));
+    diagnostics_interface_->add_key_value(key_prefix + "_ratio", std::to_string(ratio));
+  };
+
+  diagnostics_interface_->add_key_value("normal_ratio", std::to_string(ratio_normal));
+
+  check_status(
+    "Blockage", num_blockage, params_.blockage_region_warn_threshold,
+    params_.blockage_region_error_threshold, "blockage", ratio_blockage);
+
+  check_status(
+    "Highlight clipping", num_highlight, params_.highlight_region_warn_threshold,
+    params_.highlight_region_error_threshold, "highlight_clipping", ratio_highlight);
+
+  check_status(
+    "Shadow clipping", num_shadow, params_.shadow_region_warn_threshold,
+    params_.shadow_region_error_threshold, "shadow_clipping", ratio_shadow);
+
+  check_status(
+    "Low visibility", num_low_vis, params_.low_visibility_region_warn_threshold,
+    params_.low_visibility_region_error_threshold, "low_visibility", ratio_low_vis);
 
   std::ostringstream status_msg;
-
-  if (!error_messages.empty()) {
+  if (level != diagnostic_msgs::msg::DiagnosticStatus::OK) {
+    status_msg << "Image status: "
+               << (level == diagnostic_msgs::msg::DiagnosticStatus::ERROR ? "ERROR" : "WARNING");
     status_msg << "\nDetails:\n";
-    if (blockage_status != "OK") {
-      status_msg << "- Blockage: " << blockage_status << " (value = " << blockage_ratio
-                 << ", warn threshold = "
-                 << static_cast<float>(params_.blockage_region_warn_threshold) /
-                      static_cast<float>(total_blocks)
-                 << ", error threshold = "
-                 << static_cast<float>(params_.blockage_region_error_threshold) /
-                      static_cast<float>(total_blocks)
-                 << ")\n";
-    }
-    if (highlight_status != "OK") {
-      status_msg << "- Highlight clipping: " << highlight_status << " (value = " << highlight_ratio
-                 << ", warn threshold = "
-                 << static_cast<float>(params_.highlight_region_warn_threshold) /
-                      static_cast<float>(total_blocks)
-                 << ", error threshold = "
-                 << static_cast<float>(params_.highlight_region_error_threshold) /
-                      static_cast<float>(total_blocks)
-                 << ")\n";
-    }
-    if (shadow_status != "OK") {
-      status_msg << "- Shadow clipping: " << shadow_status << " (value = " << shadow_ratio
-                 << ", warn threshold = "
-                 << static_cast<float>(params_.shadow_region_warn_threshold) /
-                      static_cast<float>(total_blocks)
-                 << ", error threshold = "
-                 << static_cast<float>(params_.shadow_region_error_threshold) /
-                      static_cast<float>(total_blocks)
-                 << ")\n";
-    }
-    if (low_vis_status != "OK") {
-      status_msg << "- Low visibility: " << low_vis_status << " (value = " << low_vis_ratio
-                 << ", warn threshold = "
-                 << static_cast<float>(params_.low_visibility_region_warn_threshold) /
-                      static_cast<float>(total_blocks)
-                 << ", error threshold = "
-                 << static_cast<float>(params_.low_visibility_region_error_threshold) /
-                      static_cast<float>(total_blocks)
-                 << ")\n";
+    for (const auto & msg : status_details) {
+      status_msg << "- " << msg << "\n";
     }
   }
 
