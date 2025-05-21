@@ -78,16 +78,6 @@ private:
     float low_visibility_frequency_threshold;
   } params_;
 
-  struct DiagnosticInfo
-  {
-    int diagnostic_status{-1};
-    int64_t num_of_regions_normal{0};
-    int64_t num_of_regions_dark{0};
-    int64_t num_of_regions_blockage{0};
-    int64_t num_of_regions_low_visibility{0};
-    int64_t num_of_regions_backlight{0};
-  };
-
   struct RegionFeatures
   {
     std::vector<int> avg_intensity;
@@ -100,15 +90,13 @@ private:
   cv::Mat preprocess_image(const sensor_msgs::msg::Image::ConstSharedPtr & msg) const;
   RegionFeatures compute_image_features(const cv::Mat & gray_image) const;
   std::vector<int> classify_regions(const RegionFeatures & features) const;
-  DiagnosticInfo summarize_diagnostics(const std::vector<int> & states) const;
   cv::Mat draw_diagnostic_overlay(const std::vector<int> & states, const cv::Size & size);
   void publish_debug_images(
     const std_msgs::msg::Header & header, const cv::Mat & gray_image, const cv::Mat & dft_image,
     const cv::Mat & diag_block_image);
-  void publish_diagnostic_status(const DiagnosticInfo & info);
   static std::string get_state_string(int state);
   static void shift_image(cv::Mat & img);
-  void update_image_diagnostics(DiagnosticInfo diagnostic_info);
+  void update_image_diagnostics(const std::vector<int> & states);
 
   std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface> diagnostics_interface_;
 
