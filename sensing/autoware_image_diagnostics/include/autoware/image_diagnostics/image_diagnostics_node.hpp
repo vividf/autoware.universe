@@ -51,31 +51,31 @@ private:
   struct Parameters
   {
     // General settings
-    int image_resize_height{480};
-    int num_blocks_horizontal{5};
-    int num_blocks_vertical{5};
+    int image_resize_height;
+    int num_blocks_horizontal;
+    int num_blocks_vertical;
 
     // Blockage threshold
-    int blockage_region_warn_threshold{3};
-    int blockage_region_error_threshold{5};
-    float blockage_ratio_threshold{0.9f};
-    int blockage_intensity_threshold{10};
-    float blockage_frequency_ratio_threshold{0.3f};
+    int blockage_region_warn_threshold;
+    int blockage_region_error_threshold;
+    float blockage_ratio_threshold;
+    int blockage_intensity_threshold;
+    float blockage_frequency_ratio_threshold;
 
     // Shadow clipping theshold
-    int shadow_region_warn_threshold{10};
-    int shadow_region_error_threshold{20};
-    int shadow_intensity_threshold{10};
+    int shadow_region_warn_threshold;
+    int shadow_region_error_threshold;
+    int shadow_intensity_threshold;
 
     // Highlight clipping theshold
-    int highlight_region_warn_threshold{2};
-    int highlight_region_error_threshold{3};
-    int highlight_intensity_threshold{230};
+    int highlight_region_warn_threshold;
+    int highlight_region_error_threshold;
+    int highlight_intensity_threshold;
 
     // Low visibility threshold
-    int low_visibility_region_warn_threshold{2};
-    int low_visibility_region_error_threshold{4};
-    float low_visibility_frequency_threshold{4.0f};
+    int low_visibility_region_warn_threshold;
+    int low_visibility_region_error_threshold;
+    float low_visibility_frequency_threshold;
   } params_;
 
   struct DiagnosticInfo
@@ -108,7 +108,7 @@ private:
   void publish_diagnostic_status(const DiagnosticInfo & info);
   static std::string get_state_string(int state);
   static void shift_image(cv::Mat & img);
-  void on_image_diag_checker(DiagnosticInfo diagnostic_info);
+  void update_image_diagnostics(DiagnosticInfo diagnostic_info);
 
   std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface> diagnostics_interface_;
 

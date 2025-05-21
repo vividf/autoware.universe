@@ -38,40 +38,44 @@ ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
     "image_diag/image_state_diag", rclcpp::SensorDataQoS());
 
   // Parameters
+  // Parameters
   params_.image_resize_height = declare_parameter<int>("image_resize_height");
   params_.num_blocks_horizontal = declare_parameter<int>("num_blocks_horizontal");
   params_.num_blocks_vertical = declare_parameter<int>("num_blocks_vertical");
 
-  params_.shadow_region_warn_threshold = declare_parameter<int>("shadow_region_warn_threshold");
+  // Blockage thresholds
   params_.blockage_region_warn_threshold = declare_parameter<int>("blockage_region_warn_threshold");
-  params_.low_visibility_region_warn_threshold =
-    declare_parameter<int>("low_visibility_region_warn_threshold");
-  params_.highlight_region_warn_threshold =
-    declare_parameter<int>("highlight_region_warn_threshold");
-
-  params_.shadow_region_error_threshold = declare_parameter<int>("shadow_region_error_threshold");
   params_.blockage_region_error_threshold =
     declare_parameter<int>("blockage_region_error_threshold");
-  params_.low_visibility_region_error_threshold =
-    declare_parameter<int>("low_visibility_region_error_threshold");
-  params_.highlight_region_error_threshold =
-    declare_parameter<int>("highlight_region_error_threshold");
-
   params_.blockage_ratio_threshold = declare_parameter<float>("blockage_ratio_threshold");
   params_.blockage_intensity_threshold = declare_parameter<int>("blockage_intensity_threshold");
   params_.blockage_frequency_ratio_threshold =
     declare_parameter<float>("blockage_frequency_ratio_threshold");
 
+  // Shadow clipping thresholds
+  params_.shadow_region_warn_threshold = declare_parameter<int>("shadow_region_warn_threshold");
+  params_.shadow_region_error_threshold = declare_parameter<int>("shadow_region_error_threshold");
   params_.shadow_intensity_threshold = declare_parameter<int>("shadow_intensity_threshold");
-  params_.low_visibility_frequency_threshold =
-    declare_parameter<float>("low_visibility_frequency_threshold");
+
+  // Highlight clipping thresholds
+  params_.highlight_region_warn_threshold =
+    declare_parameter<int>("highlight_region_warn_threshold");
+  params_.highlight_region_error_threshold =
+    declare_parameter<int>("highlight_region_error_threshold");
   params_.highlight_intensity_threshold = declare_parameter<int>("highlight_intensity_threshold");
 
+  // Low visibility thresholds
+  params_.low_visibility_region_warn_threshold =
+    declare_parameter<int>("low_visibility_region_warn_threshold");
+  params_.low_visibility_region_error_threshold =
+    declare_parameter<int>("low_visibility_region_error_threshold");
+  params_.low_visibility_frequency_threshold =
+    declare_parameter<float>("low_visibility_frequency_threshold");
   diagnostics_interface_ =
     std::make_unique<autoware_utils::DiagnosticsInterface>(this, this->get_fully_qualified_name());
 }
 
-void ImageDiagNode::on_image_diag_checker(DiagnosticInfo diagnostic_info)
+void ImageDiagNode::update_image_diagnostics(DiagnosticInfo diagnostic_info)
 {
   diagnostics_interface_->clear();
   diagnostics_interface_->add_key_value(
@@ -112,7 +116,7 @@ void ImageDiagNode::run_image_diagnostics(
   const cv::Mat diag_block_image = draw_diagnostic_overlay(region_states, gray_img.size());
   publish_debug_images(input_image_msg->header, gray_img, features.freq_map, diag_block_image);
   publish_diagnostic_status(diag_info);
-  on_image_diag_checker(diag_info);
+  update_image_diagnostics(diag_info);
 }
 
 cv::Mat ImageDiagNode::preprocess_image(const sensor_msgs::msg::Image::ConstSharedPtr & msg) const
