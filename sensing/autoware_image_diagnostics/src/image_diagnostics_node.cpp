@@ -30,15 +30,11 @@ ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
   image_sub_ = create_subscription<sensor_msgs::msg::Image>(
     "input/raw_image", rclcpp::SensorDataQoS(),
     std::bind(&ImageDiagNode::run_image_diagnostics, this, std::placeholders::_1));
-  block_diag_image_pub_ =
+  diagnostic_image_pub_ =
     image_transport::create_publisher(this, "image_diag/debug/diag_block_image");
   dft_image_pub_ = image_transport::create_publisher(this, "image_diag/debug/dft_image");
   gray_image_pub_ = image_transport::create_publisher(this, "image_diag/debug/gray_image");
 
-  image_state_pub_ = create_publisher<autoware_internal_debug_msgs::msg::Int32Stamped>(
-    "image_diag/image_state_diag", rclcpp::SensorDataQoS());
-
-  // Parameters
   // Parameters
   params_.image_resize_height = declare_parameter<int>("image_resize_height");
   params_.num_blocks_horizontal = declare_parameter<int>("num_blocks_horizontal");
@@ -83,8 +79,8 @@ void ImageDiagNode::run_image_diagnostics(
   const RegionFeatures features = compute_image_features(gray_img);
   const std::vector<Image_State> region_states = classify_regions(features);
 
-  const cv::Mat diag_block_image = draw_diagnostic_overlay(region_states, gray_img.size());
-  publish_debug_images(input_image_msg->header, gray_img, features.freq_map, diag_block_image);
+  const cv::Mat diagnostic_image = generate_diagnostic_image(region_states, gray_img.size());
+  publish_debug_images(input_image_msg->header, gray_img, features.frequency_map, diagnostic_image);
   update_image_diagnostics(region_states);
 }
 
@@ -105,7 +101,7 @@ ImageDiagNode::RegionFeatures ImageDiagNode::compute_image_features(
   // Compute the width and height of each block
   const int block_w = std::floor(gray_image.cols / params_.num_blocks_horizontal);
   const int block_h = std::floor(gray_image.rows / params_.num_blocks_vertical);
-  const int region_pix_count = block_w * block_h;
+  const int num_region_pixels = block_w * block_h;
   // Get optimal sizes for DFT computation (padded sizes)
   const int dft_w = cv::getOptimalDFTSize(block_w);
   const int dft_h = cv::getOptimalDFTSize(block_h);
@@ -118,7 +114,7 @@ ImageDiagNode::RegionFeatures ImageDiagNode::compute_image_features(
   // Convert to 32-bit float for frequency domain processing
   cv::Mat gray_image_32f;
   gray_image.convertTo(gray_image_32f, CV_32FC1);
-  features.freq_map = cv::Mat(gray_image.size(), CV_32FC1, cv::Scalar(0));
+  features.frequency_map = cv::Mat(gray_image.size(), CV_32FC1, cv::Scalar(0));
 
   // Iterate over each image block
   for (int v = 0; v < params_.num_blocks_vertical; ++v) {
@@ -127,8 +123,9 @@ ImageDiagNode::RegionFeatures ImageDiagNode::compute_image_features(
 
       // Compute average intensity and blockage ratio
       int avg_intensity = static_cast<int>(cv::mean(gray_image(roi))[0]);
-      int blocked = cv::countNonZero(bin_image(roi));
-      float ratio = static_cast<float>(region_pix_count - blocked) / region_pix_count;
+      int num_blocked_pixels = cv::countNonZero(bin_image(roi));
+      float ratio = static_cast<float>(num_region_pixels - num_blocked_pixels) /
+                    static_cast<float>(num_region_pixels);
 
       // Extract and pad block for DFT
       cv::Mat gray_img_roi = gray_image_32f(roi);
@@ -137,23 +134,24 @@ ImageDiagNode::RegionFeatures ImageDiagNode::compute_image_features(
         gray_img_roi, padded_roi, 0, dft_h - block_h, 0, dft_w - block_w, cv::BORDER_CONSTANT);
 
       // Perform DFT to obtain frequency components
-      std::vector<cv::Mat> channel_img = {padded_roi, cv::Mat::zeros(padded_roi.size(), CV_32FC1)};
+      std::vector<cv::Mat> dft_channel_img = {
+        padded_roi, cv::Mat::zeros(padded_roi.size(), CV_32FC1)};
       cv::Mat complex_img;
-      cv::merge(channel_img, complex_img);
+      cv::merge(dft_channel_img, complex_img);
       cv::dft(complex_img, complex_img);
       shift_image(complex_img);
-      cv::split(complex_img, channel_img);
+      cv::split(complex_img, dft_channel_img);
 
       // Crop back to original block size and compute log frequency spectrum
-      cv::Mat freq_roi = channel_img[0](cv::Rect(0, 0, block_w, block_h));
-      cv::log(freq_roi, freq_roi);
-      float freq_mean = static_cast<float>(cv::mean(freq_roi)[0]);
+      cv::Mat frequency_roi = dft_channel_img[0](cv::Rect(0, 0, block_w, block_h));
+      cv::log(frequency_roi, frequency_roi);
+      float freq_mean = static_cast<float>(cv::mean(frequency_roi)[0]);
 
       // Store features
-      freq_roi.copyTo(features.freq_map(roi));
+      frequency_roi.copyTo(features.frequency_map(roi));
       features.avg_intensity.push_back(avg_intensity);
       features.blockage_ratio.push_back(ratio);
-      features.freq_sum.push_back(freq_mean);
+      features.frequency_mean.push_back(freq_mean);
     }
   }
   return features;
@@ -169,10 +167,10 @@ std::vector<ImageDiagNode::Image_State> ImageDiagNode::classify_regions(
       state = Image_State::DARK;
     } else if (
       features.blockage_ratio[i] > params_.blockage_ratio_threshold &&
-      features.freq_sum[i] < params_.blockage_frequency_ratio_threshold) {
+      features.frequency_mean[i] < params_.blockage_frequency_ratio_threshold) {
       state = Image_State::BLOCKAGE;
     } else if (
-      features.freq_sum[i] < params_.low_visibility_frequency_threshold &&
+      features.frequency_mean[i] < params_.low_visibility_frequency_threshold &&
       features.avg_intensity[i] < params_.highlight_intensity_threshold) {
       state = Image_State::LOW_VIS;
     } else if (features.avg_intensity[i] > params_.highlight_intensity_threshold) {
@@ -257,7 +255,7 @@ void ImageDiagNode::update_image_diagnostics(const std::vector<Image_State> & st
   diagnostics_interface_->publish(this->get_clock()->now());
 }
 
-cv::Mat ImageDiagNode::draw_diagnostic_overlay(
+cv::Mat ImageDiagNode::generate_diagnostic_image(
   const std::vector<Image_State> & states, const cv::Size & size)
 {
   cv::Mat diag_block_image(size, CV_8UC3);
@@ -286,14 +284,14 @@ cv::Mat ImageDiagNode::draw_diagnostic_overlay(
 
 void ImageDiagNode::publish_debug_images(
   const std_msgs::msg::Header & header, const cv::Mat & gray_image, const cv::Mat & dft_image,
-  const cv::Mat & diag_block_image)
+  const cv::Mat & diagnostic_image)
 {
   auto gray_image_msg = cv_bridge::CvImage(header, "mono8", gray_image).toImageMsg();
   auto dft_image_msg = cv_bridge::CvImage(header, "mono8", dft_image).toImageMsg();
-  auto block_diag_image_msg = cv_bridge::CvImage(header, "bgr8", diag_block_image).toImageMsg();
+  auto diagnostic_image_msg = cv_bridge::CvImage(header, "bgr8", diagnostic_image).toImageMsg();
   gray_image_pub_.publish(gray_image_msg);
   dft_image_pub_.publish(dft_image_msg);
-  block_diag_image_pub_.publish(block_diag_image_msg);
+  diagnostic_image_pub_.publish(diagnostic_image_msg);
 }
 
 void ImageDiagNode::shift_image(cv::Mat & img)
