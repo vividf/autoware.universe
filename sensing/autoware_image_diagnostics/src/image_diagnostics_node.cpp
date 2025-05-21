@@ -16,6 +16,7 @@
 
 #include <std_msgs/msg/header.hpp>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -45,10 +46,9 @@ ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
 
 void ImageDiagNode::onImageDiagChecker(DiagnosticStatusWrapper & stat)
 {
-  stat.add("number dark regions ", std::to_string(params_.num_of_regions_dark));
-  stat.add("number blockage regions ", std::to_string(params_.num_of_regions_blockage));
-  stat.add("number low visibility regions ", std::to_string(params_.num_of_regions_low_visibility));
-  stat.add("number backlight  regions ", std::to_string(params_.num_of_regions_backlight));
+  const cv::Mat gray_img = preprocess_image(input_image_msg);
+  const RegionFeatures features = compute_image_features(gray_img);
+  const std::vector<Image_State> region_states = classify_regions(features);
 
   auto level = DiagnosticStatusWrapper::OK;
   std::string msg = "OK";
@@ -133,139 +133,157 @@ void ImageDiagNode::ImageChecker(const sensor_msgs::msg::Image::ConstSharedPtr i
     }
   }
 
-  std::vector<int> region_state_vec;
-  int region_state;
-  // estimate the state of each small block in image
-  for (int region = 0; region < params_.number_block_horizontal * params_.number_block_vertical;
-       region += 1) {
-    if (region_average_vec[region] < params_.dark_intensity_thresh) {
-      region_state = Image_State::DARK;
-    } else if (
-      region_blockage_ratio_vec[region] > params_.blockage_ratio_thresh &&
-      region_freq_sum_vec[region] < params_.blockage_freq_ratio_thresh) {
-      region_state = Image_State::BLOCKAGE;
-    } else if (
-      region_freq_sum_vec[region] < params_.lowVis_freq_thresh &&
-      region_average_vec[region] < params_.backlight_intensity_thresh) {
-      region_state = Image_State::LOW_VIS;
-    } else if (region_average_vec[region] > params_.backlight_intensity_thresh) {
-      region_state = Image_State::BACKLIGHT;
-    } else {
-      region_state = Image_State::NORMAL;
-    }
-    region_state_vec.push_back(region_state);
-  }
-
-  cv::Mat diag_block_image(size, CV_8UC3);
-  int j = 0;
-  // colorize image block state
-  for (int v = 0; v < params_.number_block_vertical; v++) {
-    for (int h = 0; h < params_.number_block_horizontal; h++) {
-      int x = h * block_size_h;
-      int y = v * block_size_v;
-      if (region_state_vec[j] == Image_State::DARK) {
-        cv::rectangle(
-          diag_block_image, cv::Point(x, y), cv::Point(x + block_size_h, y + block_size_v),
-          state_color_map_["DARK"], -1, cv::LINE_AA);
-      } else if (region_state_vec[j] == Image_State::BLOCKAGE) {
-        cv::rectangle(
-          diag_block_image, cv::Point(x, y), cv::Point(x + block_size_h, y + block_size_v),
-          state_color_map_["BLOCKAGE"], -1, cv::LINE_AA);
-      } else if (region_state_vec[j] == Image_State::LOW_VIS) {
-        cv::rectangle(
-          diag_block_image, cv::Point(x, y), cv::Point(x + block_size_h, y + block_size_v),
-          state_color_map_["BACKLIGHT"], -1, cv::LINE_AA);
-      } else if (region_state_vec[j] == Image_State::BACKLIGHT) {
-        cv::rectangle(
-          diag_block_image, cv::Point(x, y), cv::Point(x + block_size_h, y + block_size_v),
-          state_color_map_["BACKLIGHT"], -1, cv::LINE_AA);
-      } else if (region_state_vec[j] == Image_State::NORMAL) {
-        cv::rectangle(
-          diag_block_image, cv::Point(x, y), cv::Point(x + block_size_h, y + block_size_v),
-          state_color_map_["NORMAL"], -1, cv::LINE_AA);
+  std::vector<ImageDiagNode::Image_State> ImageDiagNode::classify_regions(
+    const RegionFeatures & features) const
+  {
+    std::vector<Image_State> states;
+    for (size_t i = 0; i < features.avg_intensity.size(); ++i) {
+      Image_State state = Image_State::NORMAL;
+      if (features.avg_intensity[i] < params_.shadow_intensity_threshold) {
+        state = Image_State::DARK;
+      } else if (
+        region_blockage_ratio_vec[region] > params_.blockage_ratio_thresh &&
+        region_freq_sum_vec[region] < params_.blockage_freq_ratio_thresh) {
+        region_state = Image_State::BLOCKAGE;
+      } else if (
+        features.freq_sum[i] < params_.low_visibility_frequency_threshold &&
+        features.avg_intensity[i] < params_.highlight_intensity_threshold) {
+        state = Image_State::LOW_VIS;
+      } else if (features.avg_intensity[i] > params_.highlight_intensity_threshold) {
+        state = Image_State::BACKLIGHT;
       }
-      j = j + 1;
+      states.push_back(state);
     }
-  }
-  // draw boundary of blocks
-  for (int v = 1; v < params_.number_block_vertical; v++) {
-    cv::line(
-      diag_block_image, cv::Point(0, v * block_size_v), cv::Point(size.width, v * block_size_v),
-      state_color_map_["BORDER"], 1, cv::LINE_AA, 0);
-  }
-  for (int h = 1; h < params_.number_block_horizontal; h++) {
-    cv::line(
-      diag_block_image, cv::Point(h * block_size_h, 0), cv::Point(h * block_size_h, size.height),
-      state_color_map_["BORDER"], 1, cv::LINE_AA, 0);
+    return states;
   }
 
-  // summary image status based on all blocks state
-  params_.num_of_regions_normal =
-    std::count(region_state_vec.begin(), region_state_vec.end(), Image_State::NORMAL);
-  params_.num_of_regions_dark =
-    std::count(region_state_vec.begin(), region_state_vec.end(), Image_State::DARK);
-  params_.num_of_regions_blockage =
-    std::count(region_state_vec.begin(), region_state_vec.end(), Image_State::BLOCKAGE);
-  params_.num_of_regions_low_visibility =
-    std::count(region_state_vec.begin(), region_state_vec.end(), Image_State::LOW_VIS);
-  params_.num_of_regions_backlight =
-    std::count(region_state_vec.begin(), region_state_vec.end(), Image_State::BACKLIGHT);
+  void ImageDiagNode::update_image_diagnostics(const std::vector<Image_State> & states)
+  {
+    diagnostics_interface_->clear();
 
-  // diagnose whole image status
-  if (
-    (params_.num_of_regions_dark > params_.dark_regions_num_error_thresh) ||
-    (params_.num_of_regions_blockage > params_.blockage_region_num_error_thresh) ||
-    (params_.num_of_regions_low_visibility > params_.lowVis_region_num_error_thresh) ||
-    (params_.num_of_regions_backlight > params_.backlight_region_num_error_thresh)) {
-    params_.diagnostic_status = 2;
-  } else if (
-    (params_.num_of_regions_dark > params_.dark_regions_num_warn_thresh) ||
-    (params_.num_of_regions_blockage > params_.blockage_region_num_warn_thresh) ||
-    (params_.num_of_regions_low_visibility > params_.lowVis_region_num_warn_thresh) ||
-    (params_.num_of_regions_backlight > params_.backlight_region_num_warn_thresh)) {
-    params_.diagnostic_status = 1;
-  } else {
-    params_.diagnostic_status = 0;
+    const auto total_blocks = params_.num_blocks_horizontal * params_.num_blocks_vertical;
+    const auto num_normal = std::count(states.begin(), states.end(), Image_State::NORMAL);
+    const auto num_shadow = std::count(states.begin(), states.end(), Image_State::DARK);
+    const auto num_blockage = std::count(states.begin(), states.end(), Image_State::BLOCKAGE);
+    const auto num_low_vis = std::count(states.begin(), states.end(), Image_State::LOW_VIS);
+    const auto num_highlight = std::count(states.begin(), states.end(), Image_State::BACKLIGHT);
+
+    const auto ratio_normal = static_cast<float>(num_normal) / static_cast<float>(total_blocks);
+    const auto ratio_blockage = static_cast<float>(num_blockage) / static_cast<float>(total_blocks);
+    const auto ratio_shadow = static_cast<float>(num_shadow) / static_cast<float>(total_blocks);
+    const auto ratio_low_vis = static_cast<float>(num_low_vis) / static_cast<float>(total_blocks);
+    const auto ratio_highlight =
+      static_cast<float>(num_highlight) / static_cast<float>(total_blocks);
+
+    int8_t level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+    std::vector<std::string> status_details;
+
+    auto check_status = [&](
+                          const std::string & label, int64_t count, int warn_thresh, int err_thresh,
+                          const std::string & key_prefix, float ratio) {
+      std::string status = "OK";
+      if (count > err_thresh) {
+        status = "ERROR";
+        level = std::max(level, static_cast<int8_t>(diagnostic_msgs::msg::DiagnosticStatus::ERROR));
+        status_details.emplace_back(
+          label + ": ERROR (count = " + std::to_string(count) +
+          ", error threshold = " + std::to_string(err_thresh) + ")");
+      } else if (count > warn_thresh) {
+        status = "WARNING";
+        level = std::max(level, static_cast<int8_t>(diagnostic_msgs::msg::DiagnosticStatus::WARN));
+        status_details.emplace_back(
+          label + ": WARNING (count = " + std::to_string(count) +
+          ", warning threshold = " + std::to_string(warn_thresh) + ")");
+      }
+      diagnostics_interface_->add_key_value(key_prefix + "_status", status);
+      diagnostics_interface_->add_key_value(key_prefix + "_number", std::to_string(count));
+      diagnostics_interface_->add_key_value(key_prefix + "_ratio", std::to_string(ratio));
+    };
+
+    diagnostics_interface_->add_key_value("normal_ratio", std::to_string(ratio_normal));
+
+    check_status(
+      "Blockage", num_blockage, params_.blockage_region_warn_threshold,
+      params_.blockage_region_error_threshold, "blockage", ratio_blockage);
+
+    check_status(
+      "Highlight clipping", num_highlight, params_.highlight_region_warn_threshold,
+      params_.highlight_region_error_threshold, "highlight_clipping", ratio_highlight);
+
+    check_status(
+      "Shadow clipping", num_shadow, params_.shadow_region_warn_threshold,
+      params_.shadow_region_error_threshold, "shadow_clipping", ratio_shadow);
+
+    check_status(
+      "Low visibility", num_low_vis, params_.low_visibility_region_warn_threshold,
+      params_.low_visibility_region_error_threshold, "low_visibility", ratio_low_vis);
+
+    std::ostringstream status_msg;
+    if (level != diagnostic_msgs::msg::DiagnosticStatus::OK) {
+      status_msg << "Image status: "
+                 << (level == diagnostic_msgs::msg::DiagnosticStatus::ERROR ? "ERROR" : "WARNING");
+      status_msg << "\nDetails:\n";
+      for (const auto & msg : status_details) {
+        status_msg << "- " << msg << "\n";
+      }
+      region_state_vec.push_back(region_state);
+    }
+
+    diagnostics_interface_->update_level_and_message(level, status_msg.str());
+    diagnostics_interface_->publish(this->get_clock()->now());
   }
-  tier4_debug_msgs::msg::Int32Stamped image_state_out;
-  image_state_out.data = params_.diagnostic_status;
-  image_state_pub_->publish(image_state_out);
 
-  img_gray.convertTo(img_gray, CV_8UC1);
-  imgDFT.convertTo(imgDFT, CV_8UC1);
+  cv::Mat ImageDiagNode::draw_diagnostic_overlay(
+    const std::vector<Image_State> & states, const cv::Size & size)
+  {
+    cv::Mat diag_block_image(size, CV_8UC3);
+    int block_w = std::floor(size.width / params_.num_blocks_horizontal);
+    int block_h = std::floor(size.height / params_.num_blocks_vertical);
 
-  // publish topics
-  sensor_msgs::msg::Image::SharedPtr gray_image_msg =
-    cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", img_gray).toImageMsg();
-  sensor_msgs::msg::Image::SharedPtr dft_image_msg =
-    cv_bridge::CvImage(std_msgs::msg::Header(), "mono8", imgDFT).toImageMsg();
-  sensor_msgs::msg::Image::SharedPtr block_diag_image_msg =
-    cv_bridge::CvImage(std_msgs::msg::Header(), "bgr8", diag_block_image).toImageMsg();
+    int idx = 0;
+    for (int v = 0; v < params_.num_blocks_vertical; ++v) {
+      for (int h = 0; h < params_.num_blocks_horizontal; ++h, ++idx) {
+        cv::Rect r(h * block_w, v * block_h, block_w, block_h);
+        cv::rectangle(diag_block_image, r, state_color_map_.at(states[idx]), -1);
+      }
+    }
+    // draw boundary of blocks
+    for (int v = 1; v < params_.number_block_vertical; v++) {
+      cv::line(
+        diag_block_image, cv::Point(0, v * block_h), cv::Point(size.width, v * block_h),
+        border_color_, 1, cv::LINE_AA, 0);
+      for (int h = 1; h < params_.num_blocks_horizontal; ++h)
+        cv::line(
+          diag_block_image, cv::Point(h * block_w, 0), cv::Point(h * block_w, size.height),
+          border_color_, 1, cv::LINE_AA, 0);
+      return diag_block_image;
+    }
 
-  gray_image_msg->header = input_image_msg->header;
-  dft_image_msg->header = input_image_msg->header;
-  block_diag_image_msg->header = input_image_msg->header;
+    gray_image_pub_.publish(gray_image_msg);
+    dft_image_pub_.publish(dft_image_msg);
+    block_diag_image_pub_.publish(block_diag_image_msg);
+  }
 
-  gray_image_pub_.publish(gray_image_msg);
-  dft_image_pub_.publish(dft_image_msg);
-  block_diag_image_pub_.publish(block_diag_image_msg);
-}
+  void ImageDiagNode::shift_image(cv::Mat & img)
+  {
+    int cx = img.cols / 2;
+    int cy = img.rows / 2;
 
-void ImageDiagNode::shiftImage(cv::Mat & img)
-{
-  int cx = img.cols / 2, cy = img.rows / 2;
-  cv::Mat left_top(img, cv::Rect(0, 0, cx, cy)), right_top(img, cv::Rect(cx, 0, cx, cy));
-  cv::Mat left_bottom(img, cv::Rect(0, cy, cx, cy)), right_bottom(img, cv::Rect(cx, cy, cx, cy)),
-    tmp;
-  left_top.copyTo(tmp);
-  right_bottom.copyTo(left_top);
-  tmp.copyTo(right_bottom);
+    cv::Mat left_top(img, cv::Rect(0, 0, cx, cy));
+    cv::Mat right_top(img, cv::Rect(cx, 0, cx, cy));
+    cv::Mat left_bottom(img, cv::Rect(0, cy, cx, cy));
+    cv::Mat right_bottom(img, cv::Rect(cx, cy, cx, cy));
 
-  right_top.copyTo(tmp);
-  left_bottom.copyTo(right_top);
-  tmp.copyTo(left_bottom);
-}
+    cv::Mat tmp;
 
+    left_top.copyTo(tmp);
+    right_bottom.copyTo(left_top);
+    tmp.copyTo(right_bottom);
+
+    right_top.copyTo(tmp);
+    left_bottom.copyTo(right_top);
+    tmp.copyTo(left_bottom);
+  }
 }  // namespace autoware::image_diagnostics
 
 #include <rclcpp_components/register_node_macro.hpp>
