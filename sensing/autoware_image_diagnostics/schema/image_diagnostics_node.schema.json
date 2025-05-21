@@ -10,89 +10,89 @@
           "type": "integer",
           "description": "Target height to resize the input image before block analysis. Width is scaled proportionally."
         },
-        "number_block_horizontal": {
+        "num_blocks_horizontal": {
           "type": "integer",
           "description": "Number of horizontal blocks to divide the image into for diagnostics."
         },
-        "number_block_vertical": {
+        "num_blocks_vertical": {
           "type": "integer",
           "description": "Number of vertical blocks to divide the image into for diagnostics."
         },
-        "dark_regions_num_warn_thresh": {
+        "shadow_region_warn_threshold": {
           "type": "integer",
           "description": "Warning threshold for number of dark image blocks."
         },
-        "blockage_region_num_warn_thresh": {
+        "blockage_region_warn_threshold": {
           "type": "integer",
           "description": "Warning threshold for number of blocked image blocks."
         },
-        "lowVis_region_num_warn_thresh": {
+        "low_visibility_region_warn_threshold": {
           "type": "integer",
           "description": "Warning threshold for number of low visibility image blocks."
         },
-        "backlight_region_num_warn_thresh": {
+        "highlight_region_warn_threshold": {
           "type": "integer",
           "description": "Warning threshold for number of backlight image blocks."
         },
-        "dark_regions_num_error_thresh": {
+        "shadow_region_error_threshold": {
           "type": "integer",
           "description": "Error threshold for number of dark image blocks."
         },
-        "blockage_region_num_error_thresh": {
+        "blockage_region_error_threshold": {
           "type": "integer",
           "description": "Error threshold for number of blocked image blocks."
         },
-        "lowVis_region_num_error_thresh": {
+        "low_visibility_region_error_threshold": {
           "type": "integer",
           "description": "Error threshold for number of low visibility image blocks."
         },
-        "backlight_region_num_error_thresh": {
+        "highlight_region_error_threshold": {
           "type": "integer",
           "description": "Error threshold for number of backlight image blocks."
         },
-        "blockage_ratio_thresh": {
+        "blockage_ratio_threshold": {
           "type": "number",
           "description": "Threshold for the ratio of non-black pixels in a block to be considered blocked."
         },
-        "blockage_intensity_thresh": {
+        "blockage_intensity_threshold": {
           "type": "integer",
           "description": "Pixel intensity threshold used to binarize grayscale image for blockage detection."
         },
-        "blockage_freq_ratio_thresh": {
+        "blockage_frequency_ratio_threshold": {
           "type": "number",
           "description": "Threshold for average frequency magnitude below which a block is considered blocked."
         },
-        "dark_intensity_thresh": {
+        "shadow_intensity_threshold": {
           "type": "integer",
           "description": "Grayscale intensity threshold under which a block is considered dark."
         },
-        "low_visibility_freq_thresh": {
+        "low_visibility_frequency_threshold": {
           "type": "number",
           "description": "Threshold for average frequency magnitude below which a block is considered low visibility (e.g., blurry or foggy)."
         },
-        "backlight_intensity_thresh": {
+        "highlight_intensity_threshold": {
           "type": "integer",
           "description": "Grayscale intensity threshold above which a block is considered overexposed (backlight)."
         }
       },
       "required": [
         "image_resize_height",
-        "number_block_horizontal",
-        "number_block_vertical",
-        "dark_regions_num_warn_thresh",
-        "blockage_region_num_warn_thresh",
-        "lowVis_region_num_warn_thresh",
-        "backlight_region_num_warn_thresh",
-        "dark_regions_num_error_thresh",
-        "blockage_region_num_error_thresh",
-        "lowVis_region_num_error_thresh",
-        "backlight_region_num_error_thresh",
-        "blockage_ratio_thresh",
-        "blockage_intensity_thresh",
-        "blockage_freq_ratio_thresh",
-        "dark_intensity_thresh",
-        "low_visibility_freq_thresh",
-        "backlight_intensity_thresh"
+        "num_blocks_horizontal",
+        "num_blocks_vertical",
+        "shadow_region_warn_threshold",
+        "blockage_region_warn_threshold",
+        "low_visibility_region_warn_threshold",
+        "highlight_region_warn_threshold",
+        "shadow_region_error_threshold",
+        "blockage_region_error_threshold",
+        "low_visibility_region_error_threshold",
+        "highlight_region_error_threshold",
+        "blockage_ratio_threshold",
+        "blockage_intensity_threshold",
+        "blockage_frequency_ratio_threshold",
+        "shadow_intensity_threshold",
+        "low_visibility_frequency_threshold",
+        "highlight_intensity_threshold"
       ]
     }
   },

@@ -50,27 +50,32 @@ private:
 
   struct Parameters
   {
+    // General settings
     int image_resize_height{480};
-    int number_block_horizontal{5};
-    int number_block_vertical{5};
+    int num_blocks_horizontal{5};
+    int num_blocks_vertical{5};
 
-    int dark_regions_num_warn_thresh{10};
-    int blockage_region_num_warn_thresh{3};
-    int lowVis_region_num_warn_thresh{2};
-    int backlight_region_num_warn_thresh{2};
+    // Blockage threshold
+    int blockage_region_warn_threshold{3};
+    int blockage_region_error_threshold{5};
+    float blockage_ratio_threshold{0.9f};
+    int blockage_intensity_threshold{10};
+    float blockage_frequency_ratio_threshold{0.3f};
 
-    int dark_regions_num_error_thresh{20};
-    int blockage_region_num_error_thresh{5};
-    int lowVis_region_num_error_thresh{4};
-    int backlight_region_num_error_thresh{3};
+    // Shadow clipping theshold
+    int shadow_region_warn_threshold{10};
+    int shadow_region_error_threshold{20};
+    int shadow_intensity_threshold{10};
 
-    float blockage_ratio_thresh{0.9f};
-    int blockage_intensity_thresh{10};
-    float blockage_freq_ratio_thresh{0.3f};
+    // Highlight clipping theshold
+    int highlight_region_warn_threshold{2};
+    int highlight_region_error_threshold{3};
+    int highlight_intensity_threshold{230};
 
-    int dark_intensity_thresh{10};
-    float low_visibility_freq_thresh{4.0f};
-    int backlight_intensity_thresh{230};
+    // Low visibility threshold
+    int low_visibility_region_warn_threshold{2};
+    int low_visibility_region_error_threshold{4};
+    float low_visibility_frequency_threshold{4.0f};
   } params_;
 
   struct DiagnosticInfo

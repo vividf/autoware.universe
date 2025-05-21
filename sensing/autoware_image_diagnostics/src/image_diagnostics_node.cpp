@@ -1,4 +1,4 @@
-// Copyright 2022 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,30 +39,33 @@ ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
 
   // Parameters
   params_.image_resize_height = declare_parameter<int>("image_resize_height");
-  params_.number_block_horizontal = declare_parameter<int>("number_block_horizontal");
-  params_.number_block_vertical = declare_parameter<int>("number_block_vertical");
+  params_.num_blocks_horizontal = declare_parameter<int>("num_blocks_horizontal");
+  params_.num_blocks_vertical = declare_parameter<int>("num_blocks_vertical");
 
-  params_.dark_regions_num_warn_thresh = declare_parameter<int>("dark_regions_num_warn_thresh");
-  params_.blockage_region_num_warn_thresh =
-    declare_parameter<int>("blockage_region_num_warn_thresh");
-  params_.lowVis_region_num_warn_thresh = declare_parameter<int>("lowVis_region_num_warn_thresh");
-  params_.backlight_region_num_warn_thresh =
-    declare_parameter<int>("backlight_region_num_warn_thresh");
+  params_.shadow_region_warn_threshold = declare_parameter<int>("shadow_region_warn_threshold");
+  params_.blockage_region_warn_threshold = declare_parameter<int>("blockage_region_warn_threshold");
+  params_.low_visibility_region_warn_threshold =
+    declare_parameter<int>("low_visibility_region_warn_threshold");
+  params_.highlight_region_warn_threshold =
+    declare_parameter<int>("highlight_region_warn_threshold");
 
-  params_.dark_regions_num_error_thresh = declare_parameter<int>("dark_regions_num_error_thresh");
-  params_.blockage_region_num_error_thresh =
-    declare_parameter<int>("blockage_region_num_error_thresh");
-  params_.lowVis_region_num_error_thresh = declare_parameter<int>("lowVis_region_num_error_thresh");
-  params_.backlight_region_num_error_thresh =
-    declare_parameter<int>("backlight_region_num_error_thresh");
+  params_.shadow_region_error_threshold = declare_parameter<int>("shadow_region_error_threshold");
+  params_.blockage_region_error_threshold =
+    declare_parameter<int>("blockage_region_error_threshold");
+  params_.low_visibility_region_error_threshold =
+    declare_parameter<int>("low_visibility_region_error_threshold");
+  params_.highlight_region_error_threshold =
+    declare_parameter<int>("highlight_region_error_threshold");
 
-  params_.blockage_ratio_thresh = declare_parameter<float>("blockage_ratio_thresh");
-  params_.blockage_intensity_thresh = declare_parameter<int>("blockage_intensity_thresh");
-  params_.blockage_freq_ratio_thresh = declare_parameter<float>("blockage_freq_ratio_thresh");
+  params_.blockage_ratio_threshold = declare_parameter<float>("blockage_ratio_threshold");
+  params_.blockage_intensity_threshold = declare_parameter<int>("blockage_intensity_threshold");
+  params_.blockage_frequency_ratio_threshold =
+    declare_parameter<float>("blockage_frequency_ratio_threshold");
 
-  params_.dark_intensity_thresh = declare_parameter<int>("dark_intensity_thresh");
-  params_.low_visibility_freq_thresh = declare_parameter<float>("low_visibility_freq_thresh");
-  params_.backlight_intensity_thresh = declare_parameter<int>("backlight_intensity_thresh");
+  params_.shadow_intensity_threshold = declare_parameter<int>("shadow_intensity_threshold");
+  params_.low_visibility_frequency_threshold =
+    declare_parameter<float>("low_visibility_frequency_threshold");
+  params_.highlight_intensity_threshold = declare_parameter<int>("highlight_intensity_threshold");
 
   diagnostics_interface_ =
     std::make_unique<autoware_utils::DiagnosticsInterface>(this, this->get_fully_qualified_name());
@@ -127,8 +130,8 @@ ImageDiagNode::RegionFeatures ImageDiagNode::compute_image_features(
   RegionFeatures features;
 
   // Compute the width and height of each block
-  const int block_w = std::floor(gray_image.cols / params_.number_block_horizontal);
-  const int block_h = std::floor(gray_image.rows / params_.number_block_vertical);
+  const int block_w = std::floor(gray_image.cols / params_.num_blocks_horizontal);
+  const int block_h = std::floor(gray_image.rows / params_.num_blocks_vertical);
   const int region_pix_count = block_w * block_h;
   // Get optimal sizes for DFT computation (padded sizes)
   const int dft_w = cv::getOptimalDFTSize(block_w);
@@ -136,7 +139,8 @@ ImageDiagNode::RegionFeatures ImageDiagNode::compute_image_features(
 
   // Threshold image to find low-intensity (possibly blocked) pixels
   cv::Mat bin_image;
-  cv::threshold(gray_image, bin_image, params_.blockage_intensity_thresh, 255, cv::THRESH_BINARY);
+  cv::threshold(
+    gray_image, bin_image, params_.blockage_intensity_threshold, 255, cv::THRESH_BINARY);
 
   // Convert to 32-bit float for frequency domain processing
   cv::Mat gray_image_32f;
@@ -144,8 +148,8 @@ ImageDiagNode::RegionFeatures ImageDiagNode::compute_image_features(
   features.freq_map = cv::Mat(gray_image.size(), CV_32FC1, cv::Scalar(0));
 
   // Iterate over each image block
-  for (int v = 0; v < params_.number_block_vertical; ++v) {
-    for (int h = 0; h < params_.number_block_horizontal; ++h) {
+  for (int v = 0; v < params_.num_blocks_vertical; ++v) {
+    for (int h = 0; h < params_.num_blocks_horizontal; ++h) {
       cv::Rect roi(h * block_w, v * block_h, block_w, block_h);
 
       // Compute average intensity and blockage ratio
@@ -187,17 +191,17 @@ std::vector<int> ImageDiagNode::classify_regions(const RegionFeatures & features
   std::vector<int> states;
   for (size_t i = 0; i < features.avg_intensity.size(); ++i) {
     int state = Image_State::NORMAL;
-    if (features.avg_intensity[i] < params_.dark_intensity_thresh) {
+    if (features.avg_intensity[i] < params_.shadow_intensity_threshold) {
       state = Image_State::DARK;
     } else if (
-      features.blockage_ratio[i] > params_.blockage_ratio_thresh &&
-      features.freq_sum[i] < params_.blockage_freq_ratio_thresh) {
+      features.blockage_ratio[i] > params_.blockage_ratio_threshold &&
+      features.freq_sum[i] < params_.blockage_frequency_ratio_threshold) {
       state = Image_State::BLOCKAGE;
     } else if (
-      features.freq_sum[i] < params_.low_visibility_freq_thresh &&
-      features.avg_intensity[i] < params_.backlight_intensity_thresh) {
+      features.freq_sum[i] < params_.low_visibility_frequency_threshold &&
+      features.avg_intensity[i] < params_.highlight_intensity_threshold) {
       state = Image_State::LOW_VIS;
-    } else if (features.avg_intensity[i] > params_.backlight_intensity_thresh) {
+    } else if (features.avg_intensity[i] > params_.highlight_intensity_threshold) {
       state = Image_State::BACKLIGHT;
     }
     states.push_back(state);
@@ -217,16 +221,16 @@ ImageDiagNode::DiagnosticInfo ImageDiagNode::summarize_diagnostics(
   info.num_of_regions_backlight = std::count(states.begin(), states.end(), Image_State::BACKLIGHT);
 
   if (
-    info.num_of_regions_dark > params_.dark_regions_num_error_thresh ||
-    info.num_of_regions_blockage > params_.blockage_region_num_error_thresh ||
-    info.num_of_regions_low_visibility > params_.lowVis_region_num_error_thresh ||
-    info.num_of_regions_backlight > params_.backlight_region_num_error_thresh) {
+    info.num_of_regions_dark > params_.shadow_region_error_threshold ||
+    info.num_of_regions_blockage > params_.blockage_region_error_threshold ||
+    info.num_of_regions_low_visibility > params_.low_visibility_region_error_threshold ||
+    info.num_of_regions_backlight > params_.highlight_region_error_threshold) {
     info.diagnostic_status = 2;
   } else if (
-    info.num_of_regions_dark > params_.dark_regions_num_warn_thresh ||
-    info.num_of_regions_blockage > params_.blockage_region_num_warn_thresh ||
-    info.num_of_regions_low_visibility > params_.lowVis_region_num_warn_thresh ||
-    info.num_of_regions_backlight > params_.backlight_region_num_warn_thresh) {
+    info.num_of_regions_dark > params_.shadow_region_warn_threshold ||
+    info.num_of_regions_blockage > params_.blockage_region_warn_threshold ||
+    info.num_of_regions_low_visibility > params_.low_visibility_region_warn_threshold ||
+    info.num_of_regions_backlight > params_.highlight_region_warn_threshold) {
     info.diagnostic_status = 1;
   } else {
     info.diagnostic_status = 0;
@@ -238,12 +242,12 @@ cv::Mat ImageDiagNode::draw_diagnostic_overlay(
   const std::vector<int> & states, const cv::Size & size)
 {
   cv::Mat diag_block_image(size, CV_8UC3);
-  int block_w = std::floor(size.width / params_.number_block_horizontal);
-  int block_h = std::floor(size.height / params_.number_block_vertical);
+  int block_w = std::floor(size.width / params_.num_blocks_horizontal);
+  int block_h = std::floor(size.height / params_.num_blocks_vertical);
 
   int idx = 0;
-  for (int v = 0; v < params_.number_block_vertical; ++v) {
-    for (int h = 0; h < params_.number_block_horizontal; ++h, ++idx) {
+  for (int v = 0; v < params_.num_blocks_vertical; ++v) {
+    for (int h = 0; h < params_.num_blocks_horizontal; ++h, ++idx) {
       cv::Rect r(h * block_w, v * block_h, block_w, block_h);
       const std::string state = get_state_string(states[idx]);
       cv::rectangle(diag_block_image, r, state_color_map_.at(state), -1);
@@ -251,11 +255,11 @@ cv::Mat ImageDiagNode::draw_diagnostic_overlay(
   }
 
   // draw boundary of blocks
-  for (int v = 1; v < params_.number_block_vertical; ++v)
+  for (int v = 1; v < params_.num_blocks_vertical; ++v)
     cv::line(
       diag_block_image, cv::Point(0, v * block_h), cv::Point(size.width, v * block_h),
       state_color_map_["BORDER"], 1, cv::LINE_AA, 0);
-  for (int h = 1; h < params_.number_block_horizontal; ++h)
+  for (int h = 1; h < params_.num_blocks_horizontal; ++h)
     cv::line(
       diag_block_image, cv::Point(h * block_w, 0), cv::Point(h * block_w, size.height),
       state_color_map_["BORDER"], 1, cv::LINE_AA, 0);
