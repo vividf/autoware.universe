@@ -42,13 +42,19 @@ namespace autoware::image_diagnostics
 class ImageDiagNode : public rclcpp::Node
 {
 private:
-  enum Image_State : uint8_t { NORMAL, DARK, BLOCKAGE, LOW_VIS, BACKLIGHT };
+  enum Image_State : uint8_t {
+    NORMAL,
+    SHADOW_CLIPPING,
+    BLOCKAGE,
+    LOW_VISIBILITY,
+    HIGHLIGHT_CLIPPING
+  };
   std::unordered_map<Image_State, cv::Scalar> state_color_map_ = {
     {Image_State::NORMAL, cv::Scalar(100, 100, 100)},
-    {Image_State::DARK, cv::Scalar(0, 0, 0)},
+    {Image_State::SHADOW_CLIPPING, cv::Scalar(0, 0, 0)},
     {Image_State::BLOCKAGE, cv::Scalar(0, 0, 200)},
-    {Image_State::LOW_VIS, cv::Scalar(0, 200, 200)},
-    {Image_State::BACKLIGHT, cv::Scalar(200, 0, 200)},
+    {Image_State::LOW_VISIBILITY, cv::Scalar(0, 200, 200)},
+    {Image_State::HIGHLIGHT_CLIPPING, cv::Scalar(200, 0, 200)},
   };
 
   cv::Scalar border_color_ = cv::Scalar(255, 255, 255);
