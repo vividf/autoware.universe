@@ -87,19 +87,18 @@ private:
   {
     std::vector<int> avg_intensity;
     std::vector<float> blockage_ratio;
-    std::vector<float> freq_sum;
-    cv::Mat freq_map;
+    std::vector<float> frequency_mean;
+    cv::Mat frequency_map;
   };
 
   void run_image_diagnostics(const sensor_msgs::msg::Image::ConstSharedPtr input_image_msg);
   cv::Mat preprocess_image(const sensor_msgs::msg::Image::ConstSharedPtr & msg) const;
   RegionFeatures compute_image_features(const cv::Mat & gray_image) const;
   std::vector<ImageDiagNode::Image_State> classify_regions(const RegionFeatures & features) const;
-  cv::Mat draw_diagnostic_overlay(const std::vector<Image_State> & states, const cv::Size & size);
+  cv::Mat generate_diagnostic_image(const std::vector<Image_State> & states, const cv::Size & size);
   void publish_debug_images(
     const std_msgs::msg::Header & header, const cv::Mat & gray_image, const cv::Mat & dft_image,
-    const cv::Mat & diag_block_image);
-  static std::string get_state_string(int state);
+    const cv::Mat & diagnostic_image);
   static void shift_image(cv::Mat & img);
   void update_image_diagnostics(const std::vector<Image_State> & states);
 
@@ -110,12 +109,11 @@ public:
 
 protected:
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;
-  image_transport::Publisher block_diag_image_pub_;
+  image_transport::Publisher diagnostic_image_pub_;
   image_transport::Publisher dft_image_pub_;
   image_transport::Publisher gray_image_pub_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
     average_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Int32Stamped>::SharedPtr image_state_pub_;
 };
 
 }  // namespace autoware::image_diagnostics
