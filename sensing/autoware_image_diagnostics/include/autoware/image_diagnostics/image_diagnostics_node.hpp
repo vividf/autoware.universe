@@ -34,6 +34,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace autoware::image_diagnostics
 {
@@ -82,7 +83,25 @@ private:
     int64_t num_of_regions_backlight{0};
   };
 
-  void image_checker(const sensor_msgs::msg::Image::ConstSharedPtr input_image_msg);
+  struct RegionFeatures
+  {
+    std::vector<int> avg_intensity;
+    std::vector<float> blockage_ratio;
+    std::vector<float> freq_sum;
+    cv::Mat freq_map;
+  };
+
+  void run_image_diagnostics(const sensor_msgs::msg::Image::ConstSharedPtr input_image_msg);
+  cv::Mat preprocess_image(const sensor_msgs::msg::Image::ConstSharedPtr & msg) const;
+  RegionFeatures compute_image_features(const cv::Mat & gray_image) const;
+  std::vector<int> classify_regions(const RegionFeatures & features) const;
+  DiagnosticInfo summarize_diagnostics(const std::vector<int> & states) const;
+  cv::Mat draw_diagnostic_overlay(const std::vector<int> & states, const cv::Size & size);
+  void publish_debug_images(
+    const std_msgs::msg::Header & header, const cv::Mat & gray_image, const cv::Mat & dft_image,
+    const cv::Mat & diag_block_image);
+  void publish_diagnostic_status(const DiagnosticInfo & info);
+  static std::string get_state_string(int state);
   static void shift_image(cv::Mat & img);
   void on_image_diag_checker(DiagnosticInfo diagnostic_info);
 
