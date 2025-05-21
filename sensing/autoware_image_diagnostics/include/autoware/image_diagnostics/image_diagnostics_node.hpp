@@ -42,11 +42,16 @@ namespace autoware::image_diagnostics
 class ImageDiagNode : public rclcpp::Node
 {
 private:
-  enum Image_State : uint8_t { NORMAL = 0, DARK, BLOCKAGE, LOW_VIS, BACKLIGHT };
-  std::unordered_map<std::string, cv::Scalar> state_color_map_ = {
-    {"NORMAL", cv::Scalar(100, 100, 100)},  {"DARK", cv::Scalar(0, 0, 0)},
-    {"BLOCKAGE", cv::Scalar(0, 0, 200)},    {"LOW_VIS", cv::Scalar(0, 200, 200)},
-    {"BACKLIGHT", cv::Scalar(200, 0, 200)}, {"BORDER", cv::Scalar(255, 255, 255)}};
+  enum Image_State : uint8_t { NORMAL, DARK, BLOCKAGE, LOW_VIS, BACKLIGHT };
+  std::unordered_map<Image_State, cv::Scalar> state_color_map_ = {
+    {Image_State::NORMAL, cv::Scalar(100, 100, 100)},
+    {Image_State::DARK, cv::Scalar(0, 0, 0)},
+    {Image_State::BLOCKAGE, cv::Scalar(0, 0, 200)},
+    {Image_State::LOW_VIS, cv::Scalar(0, 200, 200)},
+    {Image_State::BACKLIGHT, cv::Scalar(200, 0, 200)},
+  };
+
+  cv::Scalar border_color_ = cv::Scalar(255, 255, 255);
 
   struct Parameters
   {
@@ -89,14 +94,14 @@ private:
   void run_image_diagnostics(const sensor_msgs::msg::Image::ConstSharedPtr input_image_msg);
   cv::Mat preprocess_image(const sensor_msgs::msg::Image::ConstSharedPtr & msg) const;
   RegionFeatures compute_image_features(const cv::Mat & gray_image) const;
-  std::vector<int> classify_regions(const RegionFeatures & features) const;
-  cv::Mat draw_diagnostic_overlay(const std::vector<int> & states, const cv::Size & size);
+  std::vector<ImageDiagNode::Image_State> classify_regions(const RegionFeatures & features) const;
+  cv::Mat draw_diagnostic_overlay(const std::vector<Image_State> & states, const cv::Size & size);
   void publish_debug_images(
     const std_msgs::msg::Header & header, const cv::Mat & gray_image, const cv::Mat & dft_image,
     const cv::Mat & diag_block_image);
   static std::string get_state_string(int state);
   static void shift_image(cv::Mat & img);
-  void update_image_diagnostics(const std::vector<int> & states);
+  void update_image_diagnostics(const std::vector<Image_State> & states);
 
   std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface> diagnostics_interface_;
 

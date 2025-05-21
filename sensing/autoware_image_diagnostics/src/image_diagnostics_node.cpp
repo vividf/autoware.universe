@@ -81,7 +81,7 @@ void ImageDiagNode::run_image_diagnostics(
 {
   const cv::Mat gray_img = preprocess_image(input_image_msg);
   const RegionFeatures features = compute_image_features(gray_img);
-  const std::vector<int> region_states = classify_regions(features);
+  const std::vector<Image_State> region_states = classify_regions(features);
 
   const cv::Mat diag_block_image = draw_diagnostic_overlay(region_states, gray_img.size());
   publish_debug_images(input_image_msg->header, gray_img, features.freq_map, diag_block_image);
@@ -159,11 +159,12 @@ ImageDiagNode::RegionFeatures ImageDiagNode::compute_image_features(
   return features;
 }
 
-std::vector<int> ImageDiagNode::classify_regions(const RegionFeatures & features) const
+std::vector<ImageDiagNode::Image_State> ImageDiagNode::classify_regions(
+  const RegionFeatures & features) const
 {
-  std::vector<int> states;
+  std::vector<Image_State> states;
   for (size_t i = 0; i < features.avg_intensity.size(); ++i) {
-    int state = Image_State::NORMAL;
+    Image_State state = Image_State::NORMAL;
     if (features.avg_intensity[i] < params_.shadow_intensity_threshold) {
       state = Image_State::DARK;
     } else if (
@@ -182,7 +183,7 @@ std::vector<int> ImageDiagNode::classify_regions(const RegionFeatures & features
   return states;
 }
 
-void ImageDiagNode::update_image_diagnostics(const std::vector<int> & states)
+void ImageDiagNode::update_image_diagnostics(const std::vector<Image_State> & states)
 {
   diagnostics_interface_->clear();
 
@@ -257,7 +258,7 @@ void ImageDiagNode::update_image_diagnostics(const std::vector<int> & states)
 }
 
 cv::Mat ImageDiagNode::draw_diagnostic_overlay(
-  const std::vector<int> & states, const cv::Size & size)
+  const std::vector<Image_State> & states, const cv::Size & size)
 {
   cv::Mat diag_block_image(size, CV_8UC3);
   int block_w = std::floor(size.width / params_.num_blocks_horizontal);
@@ -267,8 +268,7 @@ cv::Mat ImageDiagNode::draw_diagnostic_overlay(
   for (int v = 0; v < params_.num_blocks_vertical; ++v) {
     for (int h = 0; h < params_.num_blocks_horizontal; ++h, ++idx) {
       cv::Rect r(h * block_w, v * block_h, block_w, block_h);
-      const std::string state = get_state_string(states[idx]);
-      cv::rectangle(diag_block_image, r, state_color_map_.at(state), -1);
+      cv::rectangle(diag_block_image, r, state_color_map_.at(states[idx]), -1);
     }
   }
 
@@ -276,11 +276,11 @@ cv::Mat ImageDiagNode::draw_diagnostic_overlay(
   for (int v = 1; v < params_.num_blocks_vertical; ++v)
     cv::line(
       diag_block_image, cv::Point(0, v * block_h), cv::Point(size.width, v * block_h),
-      state_color_map_["BORDER"], 1, cv::LINE_AA, 0);
+      border_color_, 1, cv::LINE_AA, 0);
   for (int h = 1; h < params_.num_blocks_horizontal; ++h)
     cv::line(
       diag_block_image, cv::Point(h * block_w, 0), cv::Point(h * block_w, size.height),
-      state_color_map_["BORDER"], 1, cv::LINE_AA, 0);
+      border_color_, 1, cv::LINE_AA, 0);
   return diag_block_image;
 }
 
@@ -294,22 +294,6 @@ void ImageDiagNode::publish_debug_images(
   gray_image_pub_.publish(gray_image_msg);
   dft_image_pub_.publish(dft_image_msg);
   block_diag_image_pub_.publish(block_diag_image_msg);
-}
-
-std::string ImageDiagNode::get_state_string(int state)
-{
-  switch (state) {
-    case Image_State::DARK:
-      return "DARK";
-    case Image_State::BLOCKAGE:
-      return "BLOCKAGE";
-    case Image_State::LOW_VIS:
-    case Image_State::BACKLIGHT:
-      return "BACKLIGHT";
-    case Image_State::NORMAL:
-    default:
-      return "NORMAL";
-  }
 }
 
 void ImageDiagNode::shift_image(cv::Mat & img)
