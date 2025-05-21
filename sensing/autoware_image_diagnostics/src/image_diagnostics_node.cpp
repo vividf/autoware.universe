@@ -68,8 +68,43 @@ ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
     declare_parameter<int>("low_visibility_region_error_threshold");
   params_.low_visibility_frequency_threshold =
     declare_parameter<float>("low_visibility_frequency_threshold");
+
   diagnostics_interface_ =
     std::make_unique<autoware_utils::DiagnosticsInterface>(this, this->get_fully_qualified_name());
+
+  check_parameters();
+}
+
+void ImageDiagNode::check_parameters() const
+{
+  const int total_blocks = params_.num_blocks_horizontal * params_.num_blocks_vertical;
+
+  auto validate_threshold = [&](const std::string & name, int warn_thresh, int err_thresh) {
+    if (warn_thresh < 0 || err_thresh < 0) {
+      throw std::runtime_error(name + " thresholds must not be negative.");
+    }
+    if (warn_thresh > err_thresh) {
+      throw std::runtime_error(
+        name + ": warning threshold (" + std::to_string(warn_thresh) +
+        ") must not be greater than error threshold (" + std::to_string(err_thresh) + ").");
+    }
+    if (warn_thresh > total_blocks || err_thresh > total_blocks) {
+      throw std::runtime_error(
+        name + ": thresholds exceed total number of blocks (" + std::to_string(total_blocks) +
+        ").");
+    }
+  };
+
+  // Validate thresholds that are per-block count
+  validate_threshold(
+    "blockage", params_.blockage_region_warn_threshold, params_.blockage_region_error_threshold);
+  validate_threshold(
+    "shadow", params_.shadow_region_warn_threshold, params_.shadow_region_error_threshold);
+  validate_threshold(
+    "highlight", params_.highlight_region_warn_threshold, params_.highlight_region_error_threshold);
+  validate_threshold(
+    "low_visibility", params_.low_visibility_region_warn_threshold,
+    params_.low_visibility_region_error_threshold);
 }
 
 void ImageDiagNode::onImageDiagChecker(DiagnosticStatusWrapper & stat)
