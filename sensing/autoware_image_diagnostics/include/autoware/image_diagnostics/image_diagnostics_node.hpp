@@ -67,12 +67,12 @@ private:
     int blockage_intensity_threshold;
     float blockage_frequency_ratio_threshold;
 
-    // Shadow clipping theshold
+    // Shadow clipping threshold
     int shadow_region_warn_threshold;
     int shadow_region_error_threshold;
     int shadow_intensity_threshold;
 
-    // Highlight clipping theshold
+    // Highlight clipping threshold
     int highlight_region_warn_threshold;
     int highlight_region_error_threshold;
     int highlight_intensity_threshold;
