@@ -56,7 +56,7 @@
         },
         "blockage_intensity_threshold": {
           "type": "integer",
-          "description": "Pixel intensity threshold used to binarize grayscale image for blockage detection."
+          "description": "Pixel intensity threshold used to binarize image for blockage detection."
         },
         "blockage_frequency_ratio_threshold": {
           "type": "number",
@@ -64,7 +64,7 @@
         },
         "shadow_intensity_threshold": {
           "type": "integer",
-          "description": "Grayscale intensity threshold under which a block is considered dark."
+          "description": "Shadhow intensity threshold under which a block is considered dark."
         },
         "low_visibility_frequency_threshold": {
           "type": "number",
@@ -72,7 +72,7 @@
         },
         "highlight_intensity_threshold": {
           "type": "integer",
-          "description": "Grayscale intensity threshold above which a block is considered overexposed (backlight)."
+          "description": "Highlight intensity threshold above which a block is considered overexposed (backlight)."
         }
       },
       "required": [
