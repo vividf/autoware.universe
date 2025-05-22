@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -27,14 +28,6 @@ using image_diagnostics::Image_State;
 ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
 : Node("image_diagnostics_node", node_options)
 {
-  image_sub_ = create_subscription<sensor_msgs::msg::Image>(
-    "input/raw_image", rclcpp::SensorDataQoS(),
-    std::bind(&ImageDiagNode::run_image_diagnostics, this, std::placeholders::_1));
-  diagnostic_image_pub_ =
-    image_transport::create_publisher(this, "image_diag/debug/diag_block_image");
-  dft_image_pub_ = image_transport::create_publisher(this, "image_diag/debug/dft_image");
-  gray_image_pub_ = image_transport::create_publisher(this, "image_diag/debug/gray_image");
-
   // Parameters
   params_.image_resize_height = declare_parameter<int>("image_resize_height");
   params_.num_blocks_horizontal = declare_parameter<int>("num_blocks_horizontal");
@@ -69,10 +62,32 @@ ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
   params_.low_visibility_frequency_threshold =
     declare_parameter<float>("low_visibility_frequency_threshold");
 
+  // Velocity threshold
+  params_.use_twist = declare_parameter<bool>("twist.use_twist");
+  params_.velocity_threshold = declare_parameter<float>("twist.velocity_threshold");
+
+  check_parameters();
+
+  // Publisher and Subscriber
+  image_sub_ = create_subscription<sensor_msgs::msg::Image>(
+    "input/raw_image", rclcpp::SensorDataQoS(),
+    std::bind(&ImageDiagNode::run_image_diagnostics, this, std::placeholders::_1));
+  diagnostic_image_pub_ =
+    image_transport::create_publisher(this, "image_diag/debug/diag_block_image");
+  dft_image_pub_ = image_transport::create_publisher(this, "image_diag/debug/dft_image");
+  gray_image_pub_ = image_transport::create_publisher(this, "image_diag/debug/gray_image");
   diagnostics_interface_ =
     std::make_unique<autoware_utils::DiagnosticsInterface>(this, this->get_fully_qualified_name());
 
-  check_parameters();
+  if (params_.use_twist) {
+    // Twist queue size needs to be larger than 'twist frequency' / 'image frequency'.
+    // To avoid individual tuning, a sufficiently large value is hard-coded.
+    // With 100, it can handle twist updates up to 1000Hz if the image publish frequency is 10Hz.
+    const uint16_t TWIST_QUEUE_SIZE = 100;
+    twist_sub_ = autoware_utils::InterProcessPollingSubscriber<
+      geometry_msgs::msg::TwistWithCovarianceStamped, autoware_utils::polling_policy::All>::
+      create_subscription(this, "~/input/twist", rclcpp::QoS(TWIST_QUEUE_SIZE));
+  }
 }
 
 void ImageDiagNode::check_parameters() const
@@ -215,9 +230,66 @@ std::vector<ImageDiagNode::Image_State> ImageDiagNode::classify_regions(
   return states;
 }
 
+std::optional<double> ImageDiagNode::get_twist_velocity(double image_header_timestamp)
+{
+  std::vector<geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr> twist_msgs =
+    twist_sub_->take_data();
+
+  for (const auto & twist_msg : twist_msgs) {
+    geometry_msgs::msg::TwistStamped msg;
+    msg.header = twist_msg->header;
+    msg.twist = twist_msg->twist.twist;
+
+    // If time jumps backwards, clear queue
+    if (
+      !twist_queue_.empty() &&
+      rclcpp::Time(twist_queue_.front().header.stamp) > rclcpp::Time(msg.header.stamp)) {
+      twist_queue_.clear();
+    }
+
+    const auto cutoff_time = rclcpp::Time(msg.header.stamp) - rclcpp::Duration::from_seconds(1.0);
+    while (!twist_queue_.empty() && rclcpp::Time(twist_queue_.front().header.stamp) < cutoff_time) {
+      twist_queue_.pop_front();
+    }
+
+    twist_queue_.push_back(msg);
+  }
+
+  if (twist_queue_.empty()) {
+    RCLCPP_WARN_STREAM_THROTTLE(get_logger(), *get_clock(), 1000, " Twist queue is empty.");
+    return std::nullopt;
+  }
+
+  auto it_twist = std::lower_bound(
+    twist_queue_.begin(), twist_queue_.end(), image_header_timestamp,
+    [](const geometry_msgs::msg::TwistStamped & x, const double t) {
+      return rclcpp::Time(x.header.stamp).seconds() < t;
+    });
+
+  it_twist = it_twist == std::end(twist_queue_) ? std::end(twist_queue_) - 1 : it_twist;
+
+  const double twist_time = rclcpp::Time(it_twist->header.stamp).seconds();
+  const double time_diff = std::abs(twist_time - image_header_timestamp);
+  constexpr double diff_threshold = 0.1;
+
+  if (time_diff > diff_threshold) {
+    RCLCPP_WARN_STREAM_THROTTLE(
+      get_logger(), *get_clock(), 1000, "Twist timestamp mismatch: diff = " << time_diff << " [s]");
+    return std::nullopt;
+  }
+
+  return it_twist->twist.linear.x;
+}
+
 void ImageDiagNode::update_image_diagnostics(const std::vector<Image_State> & states)
 {
   diagnostics_interface_->clear();
+
+  // TODO(vividf):
+  // Only count the it as an error if velocity is less than the velocity_threshold and also num of
+  // shadow, blockage, low_vis, highlight exceeds the their theshold. Additionally, it need to have
+  // three consecutive frame that has error to finally trigger error. Otherwise, the level of frame
+  // should be warning.
 
   const auto total_blocks = params_.num_blocks_horizontal * params_.num_blocks_vertical;
   const auto num_normal = std::count(states.begin(), states.end(), Image_State::NORMAL);
