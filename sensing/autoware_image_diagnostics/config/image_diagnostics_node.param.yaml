@@ -24,4 +24,4 @@
 
     twist:
       use_twist: true
-      velocity_threshold: 20
+      velocity_threshold: 20.0
