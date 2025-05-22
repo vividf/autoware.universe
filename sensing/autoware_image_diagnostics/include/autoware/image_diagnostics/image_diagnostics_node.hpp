@@ -15,6 +15,7 @@
 #pragma once
 
 #include <autoware_utils/ros/diagnostics_interface.hpp>
+#include <autoware_utils/ros/polling_subscriber.hpp>
 #include <image_transport/image_transport.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -23,6 +24,8 @@
 #include <autoware_internal_debug_msgs/msg/float32_multi_array_stamped.hpp>
 #include <autoware_internal_debug_msgs/msg/float32_stamped.hpp>
 #include <autoware_internal_debug_msgs/msg/int32_stamped.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
+#include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <sensor_msgs/msg/image.hpp>
 
 #if __has_include(<cv_bridge/cv_bridge.hpp>)
@@ -31,6 +34,7 @@
 #include <cv_bridge/cv_bridge.h>
 #endif
 
+#include <deque>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -87,6 +91,9 @@ private:
     int low_visibility_region_warn_threshold;
     int low_visibility_region_error_threshold;
     float low_visibility_frequency_threshold;
+
+    bool use_twist;
+    float velocity_threshold;
   } params_;
 
   struct RegionFeatures
@@ -96,8 +103,10 @@ private:
     std::vector<float> frequency_mean;
     cv::Mat frequency_map;
   };
+  std::deque<geometry_msgs::msg::TwistStamped> twist_queue_;
 
   void check_parameters() const;
+  std::optional<double> get_twist_velocity(double image_header_timestamp);
   void run_image_diagnostics(const sensor_msgs::msg::Image::ConstSharedPtr input_image_msg);
   cv::Mat preprocess_image(const sensor_msgs::msg::Image::ConstSharedPtr & msg) const;
   RegionFeatures compute_image_features(const cv::Mat & gray_image) const;
@@ -121,6 +130,9 @@ protected:
   image_transport::Publisher gray_image_pub_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
     average_pub_;
+  autoware_utils::InterProcessPollingSubscriber<
+    geometry_msgs::msg::TwistWithCovarianceStamped, autoware_utils::polling_policy::All>::SharedPtr
+    twist_sub_;
 };
 
 }  // namespace autoware::image_diagnostics

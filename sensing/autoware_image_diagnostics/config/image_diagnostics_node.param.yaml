@@ -25,3 +25,7 @@
     low_visibility_region_warn_threshold: 2
     low_visibility_region_error_threshold: 4
     low_visibility_frequency_threshold: 4.0
+
+    twist:
+      use_twist: true
+      velocity_threshold: 20
