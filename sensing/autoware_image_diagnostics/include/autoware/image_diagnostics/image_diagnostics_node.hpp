@@ -71,24 +71,20 @@ private:
     int num_blocks_vertical;
 
     // Blockage threshold
-    int blockage_region_warn_threshold;
     int blockage_region_error_threshold;
     float blockage_ratio_threshold;
     int blockage_intensity_threshold;
     float blockage_frequency_ratio_threshold;
 
     // Shadow clipping threshold
-    int shadow_region_warn_threshold;
     int shadow_region_error_threshold;
     int shadow_intensity_threshold;
 
     // Highlight clipping threshold
-    int highlight_region_warn_threshold;
     int highlight_region_error_threshold;
     int highlight_intensity_threshold;
 
     // Low visibility threshold
-    int low_visibility_region_warn_threshold;
     int low_visibility_region_error_threshold;
     float low_visibility_frequency_threshold;
 

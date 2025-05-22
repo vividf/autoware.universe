@@ -34,7 +34,6 @@ ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
   params_.num_blocks_vertical = declare_parameter<int>("num_blocks_vertical");
 
   // Blockage thresholds
-  params_.blockage_region_warn_threshold = declare_parameter<int>("blockage_region_warn_threshold");
   params_.blockage_region_error_threshold =
     declare_parameter<int>("blockage_region_error_threshold");
   params_.blockage_ratio_threshold = declare_parameter<float>("blockage_ratio_threshold");
@@ -43,20 +42,15 @@ ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
     declare_parameter<float>("blockage_frequency_ratio_threshold");
 
   // Shadow clipping thresholds
-  params_.shadow_region_warn_threshold = declare_parameter<int>("shadow_region_warn_threshold");
   params_.shadow_region_error_threshold = declare_parameter<int>("shadow_region_error_threshold");
   params_.shadow_intensity_threshold = declare_parameter<int>("shadow_intensity_threshold");
 
   // Highlight clipping thresholds
-  params_.highlight_region_warn_threshold =
-    declare_parameter<int>("highlight_region_warn_threshold");
   params_.highlight_region_error_threshold =
     declare_parameter<int>("highlight_region_error_threshold");
   params_.highlight_intensity_threshold = declare_parameter<int>("highlight_intensity_threshold");
 
   // Low visibility thresholds
-  params_.low_visibility_region_warn_threshold =
-    declare_parameter<int>("low_visibility_region_warn_threshold");
   params_.low_visibility_region_error_threshold =
     declare_parameter<int>("low_visibility_region_error_threshold");
   params_.low_visibility_frequency_threshold =
@@ -94,16 +88,8 @@ void ImageDiagNode::check_parameters() const
 {
   const int total_blocks = params_.num_blocks_horizontal * params_.num_blocks_vertical;
 
-  auto validate_threshold = [&](const std::string & name, int warn_thresh, int err_thresh) {
-    if (warn_thresh < 0 || err_thresh < 0) {
-      throw std::runtime_error(name + " thresholds must not be negative.");
-    }
-    if (warn_thresh > err_thresh) {
-      throw std::runtime_error(
-        name + ": warning threshold (" + std::to_string(warn_thresh) +
-        ") must not be greater than error threshold (" + std::to_string(err_thresh) + ").");
-    }
-    if (warn_thresh > total_blocks || err_thresh > total_blocks) {
+  auto validate_threshold = [&](const std::string & name, int err_thresh) {
+    if (err_thresh > total_blocks) {
       throw std::runtime_error(
         name + ": thresholds exceed total number of blocks (" + std::to_string(total_blocks) +
         ").");
@@ -111,15 +97,10 @@ void ImageDiagNode::check_parameters() const
   };
 
   // Validate thresholds that are per-block count
-  validate_threshold(
-    "blockage", params_.blockage_region_warn_threshold, params_.blockage_region_error_threshold);
-  validate_threshold(
-    "shadow", params_.shadow_region_warn_threshold, params_.shadow_region_error_threshold);
-  validate_threshold(
-    "highlight", params_.highlight_region_warn_threshold, params_.highlight_region_error_threshold);
-  validate_threshold(
-    "low_visibility", params_.low_visibility_region_warn_threshold,
-    params_.low_visibility_region_error_threshold);
+  validate_threshold("blockage", params_.blockage_region_error_threshold);
+  validate_threshold("shadow", params_.shadow_region_error_threshold);
+  validate_threshold("highlight", params_.highlight_region_error_threshold);
+  validate_threshold("low_visibility", params_.low_visibility_region_error_threshold);
 }
 
 void ImageDiagNode::onImageDiagChecker(DiagnosticStatusWrapper & stat)
@@ -309,7 +290,7 @@ void ImageDiagNode::update_image_diagnostics(const std::vector<Image_State> & st
   std::vector<std::string> status_details;
 
   auto check_status = [&](
-                        const std::string & label, int64_t count, int warn_thresh, int err_thresh,
+                        const std::string & label, int64_t count, int err_thresh,
                         const std::string & key_prefix, float ratio) {
     std::string status = "OK";
     if (count > err_thresh) {
@@ -318,12 +299,6 @@ void ImageDiagNode::update_image_diagnostics(const std::vector<Image_State> & st
       status_details.emplace_back(
         label + ": ERROR (count = " + std::to_string(count) +
         ", error threshold = " + std::to_string(err_thresh) + ")");
-    } else if (count > warn_thresh) {
-      status = "WARNING";
-      level = std::max(level, static_cast<int8_t>(diagnostic_msgs::msg::DiagnosticStatus::WARN));
-      status_details.emplace_back(
-        label + ": WARNING (count = " + std::to_string(count) +
-        ", warning threshold = " + std::to_string(warn_thresh) + ")");
     }
     diagnostics_interface_->add_key_value(key_prefix + "_status", status);
     diagnostics_interface_->add_key_value(key_prefix + "_number", std::to_string(count));
@@ -333,20 +308,19 @@ void ImageDiagNode::update_image_diagnostics(const std::vector<Image_State> & st
   diagnostics_interface_->add_key_value("normal_ratio", std::to_string(ratio_normal));
 
   check_status(
-    "Blockage", num_blockage, params_.blockage_region_warn_threshold,
-    params_.blockage_region_error_threshold, "blockage", ratio_blockage);
+    "Blockage", num_blockage, params_.blockage_region_error_threshold, "blockage", ratio_blockage);
 
   check_status(
-    "Highlight clipping", num_highlight, params_.highlight_region_warn_threshold,
-    params_.highlight_region_error_threshold, "highlight_clipping", ratio_highlight);
+    "Highlight clipping", num_highlight, params_.highlight_region_error_threshold,
+    "highlight_clipping", ratio_highlight);
 
   check_status(
-    "Shadow clipping", num_shadow, params_.shadow_region_warn_threshold,
-    params_.shadow_region_error_threshold, "shadow_clipping", ratio_shadow);
+    "Shadow clipping", num_shadow, params_.shadow_region_error_threshold, "shadow_clipping",
+    ratio_shadow);
 
   check_status(
-    "Low visibility", num_low_vis, params_.low_visibility_region_warn_threshold,
-    params_.low_visibility_region_error_threshold, "low_visibility", ratio_low_vis);
+    "Low visibility", num_low_vis, params_.low_visibility_region_error_threshold, "low_visibility",
+    ratio_low_vis);
 
   std::ostringstream status_msg;
   if (level != diagnostic_msgs::msg::DiagnosticStatus::OK) {
