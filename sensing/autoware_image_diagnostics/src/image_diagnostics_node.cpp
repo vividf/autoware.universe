@@ -39,7 +39,7 @@ ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
   params_.blockage_ratio_threshold = declare_parameter<float>("blockage_ratio_threshold");
   params_.blockage_intensity_threshold = declare_parameter<int>("blockage_intensity_threshold");
   params_.blockage_frequency_ratio_threshold =
-    declare_parameter<float>("blockage_frequency_ratio_threshold");
+    declare_parameter<double>("blockage_frequency_ratio_threshold");
 
   // Shadow clipping thresholds
   params_.shadow_region_error_threshold = declare_parameter<int>("shadow_region_error_threshold");
@@ -54,11 +54,11 @@ ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
   params_.low_visibility_region_error_threshold =
     declare_parameter<int>("low_visibility_region_error_threshold");
   params_.low_visibility_frequency_threshold =
-    declare_parameter<float>("low_visibility_frequency_threshold");
+    declare_parameter<double>("low_visibility_frequency_threshold");
 
   // Velocity threshold
   params_.use_twist = declare_parameter<bool>("twist.use_twist");
-  params_.velocity_threshold = declare_parameter<float>("twist.velocity_threshold");
+  params_.velocity_threshold = declare_parameter<double>("twist.velocity_threshold");
 
   check_parameters();
 
@@ -77,10 +77,10 @@ ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
     // Twist queue size needs to be larger than 'twist frequency' / 'image frequency'.
     // To avoid individual tuning, a sufficiently large value is hard-coded.
     // With 100, it can handle twist updates up to 1000Hz if the image publish frequency is 10Hz.
-    const uint16_t TWIST_QUEUE_SIZE = 100;
+    const uint16_t twist_queue_size = 100;
     twist_sub_ = autoware_utils::InterProcessPollingSubscriber<
       geometry_msgs::msg::TwistWithCovarianceStamped, autoware_utils::polling_policy::All>::
-      create_subscription(this, "~/input/twist", rclcpp::QoS(TWIST_QUEUE_SIZE));
+      create_subscription(this, "~/input/twist", rclcpp::QoS(twist_queue_size));
   }
 }
 
