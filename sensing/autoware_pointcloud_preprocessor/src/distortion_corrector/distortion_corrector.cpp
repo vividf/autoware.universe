@@ -349,6 +349,7 @@ void DistortionCorrector<T>::undistort_pointcloud(
   // If there is a point in a pointcloud that cannot be associated, record it to issue a warning
   bool is_twist_time_stamp_too_late = false;
   bool is_imu_time_stamp_too_late = false;
+  constexpr double time_diff = 0.1;
 
   for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z, ++it_time_stamp) {
     bool is_twist_valid = true;
@@ -362,7 +363,7 @@ void DistortionCorrector<T>::undistort_pointcloud(
       ++it_twist;
       twist_stamp = rclcpp::Time(it_twist->header.stamp).seconds();
     }
-    if (std::abs(current_point_stamp - twist_stamp) > 0.1) {
+    if (std::abs(current_point_stamp - twist_stamp) > time_diff) {
       is_twist_time_stamp_too_late = true;
       is_twist_valid = false;
     }
@@ -374,7 +375,7 @@ void DistortionCorrector<T>::undistort_pointcloud(
         imu_stamp = rclcpp::Time(it_imu->header.stamp).seconds();
       }
 
-      if (std::abs(current_point_stamp - imu_stamp) > 0.1) {
+      if (std::abs(current_point_stamp - imu_stamp) > time_diff) {
         is_imu_time_stamp_too_late = true;
         is_imu_valid = false;
       }
