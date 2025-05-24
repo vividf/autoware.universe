@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__POINTCLOUD_PREPROCESSOR__DISTORTION_CORRECTOR__DISTORTION_CORRECTOR_NODE_HPP_
 #define AUTOWARE__POINTCLOUD_PREPROCESSOR__DISTORTION_CORRECTOR__DISTORTION_CORRECTOR_NODE_HPP_
 
+#include "autoware/pointcloud_preprocessor/diagnostics/distortion_corrector_diagnostics.hpp"
+#include "autoware/pointcloud_preprocessor/diagnostics/latency_diagnostics.hpp"
 #include "autoware/pointcloud_preprocessor/distortion_corrector/distortion_corrector.hpp"
 
 #include <autoware_utils/ros/debug_publisher.hpp>
@@ -30,6 +32,8 @@
 
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace autoware::pointcloud_preprocessor
 {
@@ -70,6 +74,12 @@ private:
   std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface> diagnostics_interface_;
 
   void pointcloud_callback(PointCloud2::UniquePtr pointcloud_msg);
+  std::pair<int, std::string> evaluate_diagnostic_status(
+    const LatencyDiagnostics & latency_diagnostics,
+    const DistortionCorrectorDiagnostics & distortion_corrector_diagnostics) const;
+  void publish_diagnostics(
+    const std::vector<std::shared_ptr<const DiagnosticsBase>> & diagnostics_vec,
+    const std::pair<int, std::string> & level_and_message);
 };
 
 }  // namespace autoware::pointcloud_preprocessor

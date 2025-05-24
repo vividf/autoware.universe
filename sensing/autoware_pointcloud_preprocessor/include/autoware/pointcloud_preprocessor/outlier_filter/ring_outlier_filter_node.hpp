@@ -16,6 +16,8 @@
 #define AUTOWARE__POINTCLOUD_PREPROCESSOR__OUTLIER_FILTER__RING_OUTLIER_FILTER_NODE_HPP_
 
 #include "autoware/point_types/types.hpp"
+#include "autoware/pointcloud_preprocessor/diagnostics/latency_diagnostics.hpp"
+#include "autoware/pointcloud_preprocessor/diagnostics/pass_rate_diagnostics.hpp"
 #include "autoware/pointcloud_preprocessor/filter.hpp"
 #include "autoware/pointcloud_preprocessor/transform_info.hpp"
 
@@ -99,6 +101,12 @@ private:
   void set_up_pointcloud_format(
     const PointCloud2ConstPtr & input, PointCloud2 & formatted_points, size_t points_size);
   float calculate_visibility_score(const PointCloud2 & input) const;
+  std::pair<int, std::string> evaluate_diagnostic_status(
+    const LatencyDiagnostics & latency_diagnostics,
+    const PassRateDiagnostics & pass_rate_diagnostics) const;
+  void publish_diagnostics(
+    const std::vector<std::shared_ptr<const DiagnosticsBase>> & diagnostics,
+    const std::pair<int, std::string> & level_and_message);
 
 public:
   PCL_MAKE_ALIGNED_OPERATOR_NEW

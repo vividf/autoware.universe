@@ -15,7 +15,6 @@
 #include "autoware/pointcloud_preprocessor/distortion_corrector/distortion_corrector_node.hpp"
 
 #include "autoware/pointcloud_preprocessor/distortion_corrector/distortion_corrector.hpp"
-#include "autoware/pointcloud_preprocessor/utility/format_utils.hpp"
 
 #include <memory>
 #include <string>
@@ -127,7 +126,6 @@ void DistortionCorrectorComponent::pointcloud_callback(PointCloud2::UniquePtr po
   distortion_corrector_->undistort_pointcloud(use_imu_, angle_conversion_opt_, *pointcloud_msg);
 
   const rclcpp::Time stamp(pointcloud_msg->header.stamp);
-  auto pointcloud_timestamp = stamp.seconds();
 
   const double cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);
   const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
@@ -146,38 +144,46 @@ void DistortionCorrectorComponent::pointcloud_callback(PointCloud2::UniquePtr po
       "debug/pipeline_latency_ms", pipeline_latency_ms);
   }
 
+  auto latency_diagnostics =
+    std::make_shared<LatencyDiagnostics>(stamp, processing_time_ms, pipeline_latency_ms);
+  auto distortion_corrector_diagnostics = std::make_shared<DistortionCorrectorDiagnostics>(
+    distortion_corrector_->get_mismatch_count(), distortion_corrector_->get_mismatch_fraction(),
+    use_3d_distortion_correction_, update_azimuth_and_distance_);
+  auto level_and_msg =
+    evaluate_diagnostic_status(*latency_diagnostics, *distortion_corrector_diagnostics);
+  publish_diagnostics({latency_diagnostics, distortion_corrector_diagnostics}, level_and_msg);
+}
+
+std::pair<int, std::string> DistortionCorrectorComponent::evaluate_diagnostic_status(
+  const LatencyDiagnostics & latency_diagnostics,
+  const DistortionCorrectorDiagnostics & distortion_corrector_diagnostics) const
+{
+  if (distortion_corrector_diagnostics.mismatch_fraction > mismatch_fraction_threshold_) {
+    return {
+      diagnostic_msgs::msg::DiagnosticStatus::ERROR,
+      "Mismatch fraction " + std::to_string(distortion_corrector_diagnostics.mismatch_fraction) +
+        " exceeded threshold of " + std::to_string(mismatch_fraction_threshold_)};
+  }
+  if (latency_diagnostics.processing_time_ms > processing_time_threshold_ * 1000.0) {
+    return {
+      diagnostic_msgs::msg::DiagnosticStatus::WARN,
+      "Processing time " + std::to_string(latency_diagnostics.processing_time_ms) +
+        " ms exceeded threshold of " + std::to_string(processing_time_threshold_ * 1000.0) + " ms"};
+  }
+  return {diagnostic_msgs::msg::DiagnosticStatus::OK, "Distortion correction successful"};
+}
+
+void DistortionCorrectorComponent::publish_diagnostics(
+  const std::vector<std::shared_ptr<const DiagnosticsBase>> & diagnostics_vec,
+  const std::pair<int, std::string> & level_and_message)
+{
   // diagnostic
   diagnostics_interface_->clear();
-
-  auto mismatch_fraction = distortion_corrector_->get_mismatch_fraction();
-  if (mismatch_fraction > mismatch_fraction_threshold_) {
-    diagnostics_interface_->update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::ERROR,
-      "Mismatch fraction " + std::to_string(mismatch_fraction) + " exceeded threshold of " +
-        std::to_string(mismatch_fraction_threshold_));
-  } else if (processing_time_ms > processing_time_threshold_ * 1000.0) {
-    diagnostics_interface_->update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::WARN,
-      "Processing time " + std::to_string(processing_time_ms) +
-        " ms "
-        "exceeded threshold of " +
-        std::to_string(processing_time_threshold_ * 1000.0) + " ms");
-  } else {
-    diagnostics_interface_->update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::OK, "Distortion correction successful");
+  diagnostics_interface_->update_level_and_message(
+    level_and_message.first, level_and_message.second);
+  for (const auto & diag : diagnostics_vec) {
+    diag->add_to_interface(*diagnostics_interface_);
   }
-
-  diagnostics_interface_->add_key_value("timestamp", pointcloud_timestamp);
-  diagnostics_interface_->add_key_value(
-    "mismatch_count", distortion_corrector_->get_mismatch_count());
-  diagnostics_interface_->add_key_value(
-    "mismatch_fraction", distortion_corrector_->get_mismatch_fraction());
-  diagnostics_interface_->add_key_value("processing_time_ms", processing_time_ms);
-  diagnostics_interface_->add_key_value("pipeline_latency_ms", pipeline_latency_ms);
-  diagnostics_interface_->add_key_value(
-    "use_3d_distortion_correction", use_3d_distortion_correction_);
-  diagnostics_interface_->add_key_value(
-    "update_azimuth_and_distance", update_azimuth_and_distance_);
 
   diagnostics_interface_->publish(this->get_clock()->now());
 }

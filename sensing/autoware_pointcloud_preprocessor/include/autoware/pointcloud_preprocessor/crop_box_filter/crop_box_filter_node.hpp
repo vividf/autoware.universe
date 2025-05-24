@@ -53,6 +53,9 @@
 #ifndef AUTOWARE__POINTCLOUD_PREPROCESSOR__CROP_BOX_FILTER__CROP_BOX_FILTER_NODE_HPP_
 #define AUTOWARE__POINTCLOUD_PREPROCESSOR__CROP_BOX_FILTER__CROP_BOX_FILTER_NODE_HPP_
 
+#include "autoware/pointcloud_preprocessor/diagnostics/crop_box_diagnostics.hpp"
+#include "autoware/pointcloud_preprocessor/diagnostics/latency_diagnostics.hpp"
+#include "autoware/pointcloud_preprocessor/diagnostics/pass_rate_diagnostics.hpp"
 #include "autoware/pointcloud_preprocessor/filter.hpp"
 #include "autoware/pointcloud_preprocessor/transform_info.hpp"
 
@@ -62,6 +65,8 @@
 
 #include <pcl/filters/crop_box.h>
 
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::pointcloud_preprocessor
@@ -103,7 +108,12 @@ private:
 
   /** \brief Parameter service callback */
   rcl_interfaces::msg::SetParametersResult param_callback(const std::vector<rclcpp::Parameter> & p);
-  void check_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  std::pair<int, std::string> evaluate_diagnostic_status(
+    const LatencyDiagnostics & latency_diagnostics,
+    const PassRateDiagnostics & pass_rate_diagnostics) const;
+  void publish_diagnostics(
+    const std::vector<std::shared_ptr<const DiagnosticsBase>> & diagnostics,
+    const std::pair<int, std::string> & level_and_message);
 
 public:
   PCL_MAKE_ALIGNED_OPERATOR_NEW

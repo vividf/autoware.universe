@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <diagnostic_updater/diagnostic_updater.hpp>
-
 #include <iomanip>
 #include <sstream>
 #include <string>

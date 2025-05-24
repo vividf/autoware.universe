@@ -13,7 +13,7 @@
 // limitations under the License.
 
 #include "autoware/pointcloud_preprocessor/concatenate_data/cloud_collector.hpp"
-#include "autoware/pointcloud_preprocessor/utility/format_utils.hpp"
+#include "autoware/pointcloud_preprocessor/diagnostics/format_utils.hpp"
 #include "autoware/pointcloud_preprocessor/utility/memory.hpp"
 
 #include <pcl_ros/transforms.hpp>
@@ -25,6 +25,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -332,29 +333,48 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::publish
   }
 
 
-  const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
+  const double processing_time = stop_watch_ptr_->toc("processing_time", true);
+  std::unordered_map<std::string, double> topic_to_pipeline_latency_map;
+  double max_pipeline_latency = 0.0;
+  const double now_sec = this->get_clock()->now().seconds();
+
+  for (const auto & [topic, stamp] : concatenated_cloud_result.topic_to_original_stamp_map) {
+    const double latency = (now_sec - stamp) * 1000.0; // ms
+    topic_to_pipeline_latency_map[topic] = latency;
+    max_pipeline_latency = std::max(max_pipeline_latency, latency);
+  }
+
 
   diagnostic_info.publish_pointcloud = publish_pointcloud;
   diagnostic_info.drop_previous_but_late_pointcloud = drop_previous_but_late_pointcloud;
   diagnostic_info.is_concatenated_cloud_empty = is_concatenated_cloud_empty;
   diagnostic_info.collector_info = std::move(collector_info);
   diagnostic_info.topic_to_original_stamp_map = concatenated_cloud_result.topic_to_original_stamp_map;
-  diagnostic_info.processing_time_ms = processing_time_ms;
+  diagnostic_info.processing_time = processing_time;
+  diagnostic_info.pipeline_latency = max_pipeline_latency;
+  diagnostic_info.topic_to_pipeline_latency_map = topic_to_pipeline_latency_map;
   check_concat_status(diagnostic_info);
 
-
   if (debug_publisher_) {
-    const double cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);
-    debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug/cyclic_time_ms", cyclic_time_ms);
-    debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug/processing_time_ms", processing_time_ms);
+    const double cyclic_time = stop_watch_ptr_->toc("cyclic_time", true);
+    publish_debug_message(processing_time, cyclic_time, topic_to_pipeline_latency_map);
+  }
+}
 
-    for (const auto & [topic, stamp] : concatenated_cloud_result.topic_to_original_stamp_map) {
-      const auto pipeline_latency_ms = (this->get_clock()->now().seconds() - stamp) * 1000;
-      debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-        "debug" + topic + "/pipeline_latency_ms", pipeline_latency_ms);
-    }
+
+template <typename MsgTraits>
+void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::publish_debug_message(
+  const double processing_time,
+  const double cyclic_time,
+  const std::unordered_map<std::string, double> & topic_to_pipeline_latency_map)
+{
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "debug/cyclic_time_ms", cyclic_time);
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "debug/processing_time_ms", processing_time);
+  for (const auto & [topic, latency] : topic_to_pipeline_latency_map) {
+    debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug" + topic + "/pipeline_latency_ms", latency);
   }
 }
 
@@ -429,14 +449,15 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::check_c
         "reference_timestamp_max", format_timestamp(advanced_info->timestamp + advanced_info->noise_window));
     }
 
-    diagnostics_interface_->add_key_value("processing_time_ms", diagnostic_info.processing_time_ms);
+    diagnostics_interface_->add_key_value("processing_time_ms", diagnostic_info.processing_time);
+    diagnostics_interface_->add_key_value("pipeline_latency_ms", diagnostic_info.pipeline_latency);
 
     bool topic_miss = false;
     bool concatenation_success = true;
 
     for (const auto & topic : params_.input_topics) {
       bool input_cloud_concatenated = true;
-        if (
+      if (
         diagnostic_info.topic_to_original_stamp_map.find(topic) !=
         diagnostic_info.topic_to_original_stamp_map.end()) {
         diagnostics_interface_->add_key_value(
@@ -447,6 +468,12 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::check_c
         input_cloud_concatenated = false;
       }
       diagnostics_interface_->add_key_value(topic + "/is_concatenated", input_cloud_concatenated);
+
+     if (
+        diagnostic_info.topic_to_pipeline_latency_map.find(topic) !=
+        diagnostic_info.topic_to_pipeline_latency_map.end()) {
+        diagnostics_interface_->add_key_value(topic + "/latency", diagnostic_info.topic_to_pipeline_latency_map[topic]);
+      }
     }
 
     diagnostics_interface_->add_key_value("cloud_concatenation_success", concatenation_success);

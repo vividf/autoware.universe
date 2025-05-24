@@ -51,12 +51,11 @@
 
 #include "autoware/pointcloud_preprocessor/crop_box_filter/crop_box_filter_node.hpp"
 
-#include "autoware/pointcloud_preprocessor/utility/format_utils.hpp"
-
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::pointcloud_preprocessor
@@ -204,10 +203,6 @@ void CropBoxFilterComponent::faster_filter(
       std::chrono::nanoseconds((this->get_clock()->now() - input->header.stamp).nanoseconds()))
       .count();
 
-  const int input_count = static_cast<int>(input->width * input->height);
-  const int output_count = static_cast<int>(output.width * output.height);
-  const double pass_rate = input_count > 0 ? static_cast<double>(output_count) / input_count : 0.0;
-
   // Debug output
   if (debug_publisher_) {
     debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
@@ -218,31 +213,47 @@ void CropBoxFilterComponent::faster_filter(
       "debug/pipeline_latency_ms", pipeline_latency_ms);
   }
 
-  // Update diagnostic
-  diagnostics_interface_->clear();
-  if (output_count == 0) {
-    diagnostics_interface_->update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No valid output points");
-  } else if (processing_time_ms > param_.processing_time_threshold * 1000.0) {
-    diagnostics_interface_->update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::WARN,
-      "Processing time " + std::to_string(processing_time_ms) +
-        " ms "
-        "exceeded threshold of " +
-        std::to_string(param_.processing_time_threshold * 1000.0) + " ms");
-  } else {
-    diagnostics_interface_->update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::OK, "CropBoxFilter operating normally");
+  auto latency_diagnostics = std::make_shared<LatencyDiagnostics>(
+    input->header.stamp, processing_time_ms, pipeline_latency_ms);
+  auto pass_rate_diagnostics = std::make_shared<PassRateDiagnostics>(
+    static_cast<int>(input->width * input->height), static_cast<int>(output.width * output.height));
+  auto crop_box_diagnostics = std::make_shared<CropBoxDiagnostics>(skipped_count);
+
+  auto level_and_msg = evaluate_diagnostic_status(*latency_diagnostics, *pass_rate_diagnostics);
+  publish_diagnostics(
+    {latency_diagnostics, pass_rate_diagnostics, crop_box_diagnostics}, level_and_msg);
+}
+
+std::pair<int, std::string> CropBoxFilterComponent::evaluate_diagnostic_status(
+  const LatencyDiagnostics & latency_diagnostics,
+  const PassRateDiagnostics & pass_rate_diagnostics) const
+{
+  if (pass_rate_diagnostics.output_point_count == 0) {
+    return {diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No valid output points"};
   }
 
-  diagnostics_interface_->add_key_value(
-    "timestamp", format_timestamp(rclcpp::Time(input->header.stamp).seconds()));
-  diagnostics_interface_->add_key_value("input_point_count", input_count);
-  diagnostics_interface_->add_key_value("output_point_count", output_count);
-  diagnostics_interface_->add_key_value("pass_rate", pass_rate);
-  diagnostics_interface_->add_key_value("skipped_nan_point_count", skipped_count);
-  diagnostics_interface_->add_key_value("processing_time_ms", processing_time_ms);
-  diagnostics_interface_->add_key_value("pipeline_latency_ms", pipeline_latency_ms);
+  if (latency_diagnostics.processing_time_ms > param_.processing_time_threshold * 1000.0) {
+    return {
+      diagnostic_msgs::msg::DiagnosticStatus::WARN,
+      "Processing time " + std::to_string(latency_diagnostics.processing_time_ms) +
+        " ms exceeded threshold of " + std::to_string(param_.processing_time_threshold * 1000.0) +
+        " ms"};
+  }
+
+  return {diagnostic_msgs::msg::DiagnosticStatus::OK, "CropBoxFilter operating normally"};
+}
+
+void CropBoxFilterComponent::publish_diagnostics(
+  const std::vector<std::shared_ptr<const DiagnosticsBase>> & diagnostics,
+  const std::pair<int, std::string> & level_and_message)
+{
+  diagnostics_interface_->clear();
+  diagnostics_interface_->update_level_and_message(
+    level_and_message.first, level_and_message.second);
+
+  for (const auto & diag : diagnostics) {
+    diag->add_to_interface(*diagnostics_interface_);
+  }
 
   diagnostics_interface_->publish(this->get_clock()->now());
 }
