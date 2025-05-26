@@ -133,7 +133,7 @@ private:
   void publish_debug_message(
     const double processing_time, const double cyclic_time,
     const std::unordered_map<std::string, double> & topic_to_pipeline_latency_map);
-  void check_concat_status(DiagnosticInfo diagnostic_info);
+  void check_concat_status(const DiagnosticInfo & diagnostic_info);
 
   void initialize_pub_sub();
 

@@ -432,7 +432,7 @@ PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::find_and_res
 }
 
 template <typename MsgTraits>
-void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::check_concat_status(DiagnosticInfo diagnostic_info)
+void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::check_concat_status(const DiagnosticInfo & diagnostic_info)
 {
   diagnostics_interface_->clear();
 
@@ -461,7 +461,7 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::check_c
         diagnostic_info.topic_to_original_stamp_map.find(topic) !=
         diagnostic_info.topic_to_original_stamp_map.end()) {
         diagnostics_interface_->add_key_value(
-          topic + "/timestamp", format_timestamp(diagnostic_info.topic_to_original_stamp_map[topic]));
+          topic + "/timestamp", format_timestamp(diagnostic_info.topic_to_original_stamp_map.at(topic)));
       } else {
         topic_miss = true;
         concatenation_success = false;
@@ -472,7 +472,7 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::check_c
      if (
         diagnostic_info.topic_to_pipeline_latency_map.find(topic) !=
         diagnostic_info.topic_to_pipeline_latency_map.end()) {
-        diagnostics_interface_->add_key_value(topic + "/latency", diagnostic_info.topic_to_pipeline_latency_map[topic]);
+        diagnostics_interface_->add_key_value(topic + "/latency", diagnostic_info.topic_to_pipeline_latency_map.at(topic));
       }
     }
 

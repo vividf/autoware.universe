@@ -98,9 +98,6 @@ private:
     double processing_time_threshold{0.0};
   } param_;
 
-  // Diagnostic message
-  int last_skipped_nan_count_{0};
-
   rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr crop_box_polygon_pub_;
 
   /** \brief Parameter service callback result : needed to be hold */
