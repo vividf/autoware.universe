@@ -14,6 +14,8 @@
 
 #include "autoware/image_diagnostics/image_diagnostics_node.hpp"
 
+#include <rclcpp/time.hpp>
+
 #include <std_msgs/msg/header.hpp>
 
 #include <algorithm>
@@ -112,7 +114,7 @@ void ImageDiagNode::run_image_diagnostics(
 
   const cv::Mat diagnostic_image = generate_diagnostic_image(region_states, gray_img.size());
   publish_debug_images(input_image_msg->header, gray_img, features.frequency_map, diagnostic_image);
-  update_image_diagnostics(region_states);
+  update_image_diagnostics(region_states, input_image_msg->header.stamp);
 }
 
 cv::Mat ImageDiagNode::preprocess_image(const sensor_msgs::msg::Image::ConstSharedPtr & msg) const
@@ -264,7 +266,8 @@ std::optional<double> ImageDiagNode::get_twist_velocity(double image_header_time
   return it_twist->twist.linear.x;
 }
 
-void ImageDiagNode::update_image_diagnostics(const std::vector<Image_State> & states)
+void ImageDiagNode::update_image_diagnostics(
+  const std::vector<Image_State> & states, const rclcpp::Time & timestamp)
 {
   diagnostics_interface_->clear();
 
@@ -307,6 +310,7 @@ void ImageDiagNode::update_image_diagnostics(const std::vector<Image_State> & st
     diagnostics_interface_->add_key_value(key_prefix + "_ratio", std::to_string(ratio));
   };
 
+  diagnostics_interface_->add_key_value("image header timestamp", timestamp.seconds());
   diagnostics_interface_->add_key_value("normal_ratio", std::to_string(ratio_normal));
 
   check_status(

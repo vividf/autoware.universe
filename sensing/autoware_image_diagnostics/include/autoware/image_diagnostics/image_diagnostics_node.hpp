@@ -71,7 +71,7 @@ private:
     int num_blocks_vertical;
 
     // Blockage threshold
-    double blockage_region_error_threshold;
+    int blockage_region_error_threshold;
     float blockage_ratio_threshold;
     int blockage_intensity_threshold;
     double blockage_frequency_ratio_threshold;
@@ -112,7 +112,8 @@ private:
     const std_msgs::msg::Header & header, const cv::Mat & gray_image, const cv::Mat & dft_image,
     const cv::Mat & diagnostic_image);
   static void shift_image(cv::Mat & img);
-  void update_image_diagnostics(const std::vector<Image_State> & states);
+  void update_image_diagnostics(
+    const std::vector<Image_State> & states, const rclcpp::Time & timestamp);
 
   std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface> diagnostics_interface_;
 
