@@ -67,7 +67,7 @@ private:
   uint16_t max_rings_num_;
   size_t max_points_num_per_ring_;
   bool publish_outlier_pointcloud_;
-  double processing_time_threshold_;
+  double processing_time_threshold_sec_;
 
   // for visibility score
   int noise_threshold_;

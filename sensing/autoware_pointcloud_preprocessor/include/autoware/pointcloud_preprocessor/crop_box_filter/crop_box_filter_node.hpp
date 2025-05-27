@@ -95,7 +95,7 @@ private:
     double min_z{0.0};
     double max_z{0.0};
     bool negative{false};
-    double processing_time_threshold{0.0};
+    double processing_time_threshold_sec{0.0};
   } param_;
 
   rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr crop_box_polygon_pub_;

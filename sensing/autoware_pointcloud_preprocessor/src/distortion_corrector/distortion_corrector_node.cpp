@@ -41,7 +41,7 @@ DistortionCorrectorComponent::DistortionCorrectorComponent(const rclcpp::NodeOpt
   use_imu_ = declare_parameter<bool>("use_imu");
   use_3d_distortion_correction_ = declare_parameter<bool>("use_3d_distortion_correction");
   update_azimuth_and_distance_ = declare_parameter<bool>("update_azimuth_and_distance");
-  processing_time_threshold_ = declare_parameter<float>("processing_time_threshold");
+  processing_time_threshold_sec_ = declare_parameter<float>("processing_time_threshold_sec");
   mismatch_fraction_threshold_ = declare_parameter<float>("mismatch_fraction_threshold");
 
   // Publisher
@@ -164,11 +164,12 @@ std::pair<int, std::string> DistortionCorrectorComponent::evaluate_diagnostic_st
       "Mismatch fraction " + std::to_string(distortion_corrector_diagnostics.mismatch_fraction) +
         " exceeded threshold of " + std::to_string(mismatch_fraction_threshold_)};
   }
-  if (latency_diagnostics.processing_time_ms > processing_time_threshold_ * 1000.0) {
+  if (latency_diagnostics.processing_time_ms > processing_time_threshold_sec_ * 1000.0) {
     return {
       diagnostic_msgs::msg::DiagnosticStatus::WARN,
       "Processing time " + std::to_string(latency_diagnostics.processing_time_ms) +
-        " ms exceeded threshold of " + std::to_string(processing_time_threshold_ * 1000.0) + " ms"};
+        " ms exceeded threshold of " + std::to_string(processing_time_threshold_sec_ * 1000.0) +
+        " ms"};
   }
   return {diagnostic_msgs::msg::DiagnosticStatus::OK, "Distortion correction successful"};
 }

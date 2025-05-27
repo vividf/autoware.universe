@@ -83,7 +83,7 @@ CropBoxFilterComponent::CropBoxFilterComponent(const rclcpp::NodeOptions & optio
     p.max_y = declare_parameter<double>("max_y");
     p.max_z = declare_parameter<double>("max_z");
     p.negative = declare_parameter<bool>("negative");
-    p.processing_time_threshold = declare_parameter<double>("processing_time_threshold");
+    p.processing_time_threshold_sec = declare_parameter<double>("processing_time_threshold_sec");
     if (tf_input_frame_.empty()) {
       throw std::invalid_argument("Crop box requires non-empty input_frame");
     }
@@ -232,12 +232,12 @@ std::pair<int, std::string> CropBoxFilterComponent::evaluate_diagnostic_status(
     return {diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No valid output points"};
   }
 
-  if (latency_diagnostics.processing_time_ms > param_.processing_time_threshold * 1000.0) {
+  if (latency_diagnostics.processing_time_ms > param_.processing_time_threshold_sec * 1000.0) {
     return {
       diagnostic_msgs::msg::DiagnosticStatus::WARN,
       "Processing time " + std::to_string(latency_diagnostics.processing_time_ms) +
-        " ms exceeded threshold of " + std::to_string(param_.processing_time_threshold * 1000.0) +
-        " ms"};
+        " ms exceeded threshold of " +
+        std::to_string(param_.processing_time_threshold_sec * 1000.0) + " ms"};
   }
 
   return {diagnostic_msgs::msg::DiagnosticStatus::OK, "CropBoxFilter operating normally"};

@@ -65,7 +65,7 @@ RingOutlierFilterComponent::RingOutlierFilterComponent(const rclcpp::NodeOptions
     vertical_bins_ = declare_parameter<int>("vertical_bins");
     horizontal_bins_ = declare_parameter<int>("horizontal_bins");
     noise_threshold_ = declare_parameter<int>("noise_threshold");
-    processing_time_threshold_ = declare_parameter<float>("processing_time_threshold");
+    processing_time_threshold_sec_ = declare_parameter<float>("processing_time_threshold_sec");
   }
 
   // Diagnostic
@@ -304,11 +304,12 @@ std::pair<int, std::string> RingOutlierFilterComponent::evaluate_diagnostic_stat
     return {diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No valid output points"};
   }
 
-  if (latency_diagnostics.processing_time_ms > processing_time_threshold_ * 1000.0) {
+  if (latency_diagnostics.processing_time_ms > processing_time_threshold_sec_ * 1000.0) {
     return {
       diagnostic_msgs::msg::DiagnosticStatus::WARN,
       "Processing time " + std::to_string(latency_diagnostics.processing_time_ms) +
-        " ms exceeded threshold of " + std::to_string(processing_time_threshold_ * 1000.0) + " ms"};
+        " ms exceeded threshold of " + std::to_string(processing_time_threshold_sec_ * 1000.0) +
+        " ms"};
   }
 
   return {diagnostic_msgs::msg::DiagnosticStatus::OK, "RingOutlierFilter operating normally"};

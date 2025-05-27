@@ -72,7 +72,7 @@
           "default": "2",
           "minimum": 0
         },
-        "processing_time_threshold": {
+        "processing_time_threshold_sec": {
           "type": "number",
           "description": "Threshold in seconds. If the processing time of the node exceeds this value, a diagnostic warning will be issued.",
           "default": 0.01
@@ -90,7 +90,7 @@
         "vertical_bins",
         "horizontal_bins",
         "noise_threshold",
-        "processing_time_threshold"
+        "processing_time_threshold_sec"
       ],
       "additionalProperties": false
     }
