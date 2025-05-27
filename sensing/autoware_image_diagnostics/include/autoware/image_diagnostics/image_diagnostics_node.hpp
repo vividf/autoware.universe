@@ -88,9 +88,6 @@ private:
     // Low visibility threshold
     int low_visibility_region_error_threshold;
     double low_visibility_frequency_threshold;
-
-    bool use_twist;
-    double velocity_threshold;
   } params_;
 
   struct RegionFeatures
@@ -100,10 +97,8 @@ private:
     std::vector<float> frequency_mean;
     cv::Mat frequency_map;
   };
-  std::deque<geometry_msgs::msg::TwistStamped> twist_queue_;
 
   void check_parameters() const;
-  std::optional<double> get_twist_velocity(double image_header_timestamp);
   void run_image_diagnostics(const sensor_msgs::msg::Image::ConstSharedPtr input_image_msg);
   cv::Mat preprocess_image(const sensor_msgs::msg::Image::ConstSharedPtr & msg) const;
   RegionFeatures compute_image_features(const cv::Mat & gray_image) const;
@@ -126,11 +121,6 @@ protected:
   image_transport::Publisher diagnostic_image_pub_;
   image_transport::Publisher dft_image_pub_;
   image_transport::Publisher gray_image_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
-    average_pub_;
-  autoware_utils::InterProcessPollingSubscriber<
-    geometry_msgs::msg::TwistWithCovarianceStamped, autoware_utils::polling_policy::All>::SharedPtr
-    twist_sub_;
 };
 
 }  // namespace autoware::image_diagnostics
