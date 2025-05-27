@@ -70,10 +70,12 @@ ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
   image_sub_ = create_subscription<sensor_msgs::msg::Image>(
     "input/raw_image", rclcpp::SensorDataQoS(),
     std::bind(&ImageDiagNode::run_image_diagnostics, this, std::placeholders::_1));
-  diagnostic_image_pub_ =
-    image_transport::create_publisher(this, "image_diag/debug/diag_block_image");
-  dft_image_pub_ = image_transport::create_publisher(this, "image_diag/debug/dft_image");
-  gray_image_pub_ = image_transport::create_publisher(this, "image_diag/debug/gray_image");
+  diagnostic_image_pub_ = image_transport::create_publisher(
+    this, "image_diag/debug/" + params_.hardware_id + "/diag_block_image");
+  dft_image_pub_ = image_transport::create_publisher(
+    this, "image_diag/debug/" + params_.hardware_id + "/dft_image");
+  gray_image_pub_ = image_transport::create_publisher(
+    this, "image_diag/debug/" + params_.hardware_id + "/gray_image");
   diagnostics_interface_ =
     std::make_unique<autoware_utils::DiagnosticsInterface>(this, params_.hardware_id);
 
