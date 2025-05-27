@@ -31,6 +31,8 @@ ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
 : Node("image_diagnostics_node", node_options)
 {
   // Parameters
+  params_.hardware_id = declare_parameter<std::string>("hardware_id");
+
   params_.image_resize_height = declare_parameter<int>("image_resize_height");
   params_.num_blocks_horizontal = declare_parameter<int>("num_blocks_horizontal");
   params_.num_blocks_vertical = declare_parameter<int>("num_blocks_vertical");
@@ -73,7 +75,7 @@ ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
   dft_image_pub_ = image_transport::create_publisher(this, "image_diag/debug/dft_image");
   gray_image_pub_ = image_transport::create_publisher(this, "image_diag/debug/gray_image");
   diagnostics_interface_ =
-    std::make_unique<autoware_utils::DiagnosticsInterface>(this, this->get_fully_qualified_name());
+    std::make_unique<autoware_utils::DiagnosticsInterface>(this, params_.hardware_id);
 
   if (params_.use_twist) {
     // Twist queue size needs to be larger than 'twist frequency' / 'image frequency'.

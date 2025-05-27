@@ -66,6 +66,7 @@ private:
   struct Parameters
   {
     // General settings
+    std::string hardware_id;
     int image_resize_height;
     int num_blocks_horizontal;
     int num_blocks_vertical;
