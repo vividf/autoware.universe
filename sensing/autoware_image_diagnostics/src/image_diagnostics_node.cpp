@@ -20,7 +20,6 @@
 
 #include <algorithm>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -62,16 +61,16 @@ ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
   params_.low_visibility_frequency_threshold =
     declare_parameter<double>("low_visibility_frequency_threshold");
 
+  total_blocks_ = params_.num_blocks_horizontal * params_.num_blocks_vertical;
   check_parameters();
 
-  total_blocks_ = params_.num_blocks_horizontal * params_.num_blocks_vertical;
   state_infos_ = {
-    {"Blockage", "blockage", Image_State::BLOCKAGE, params_.blockage_region_error_threshold},
-    {"Highlight clipping", "highlight_clipping", Image_State::HIGHLIGHT_CLIPPING,
+    {"Blockage", "blockage", ImageState::BLOCKAGE, params_.blockage_region_error_threshold},
+    {"Highlight clipping", "highlight_clipping", ImageState::HIGHLIGHT_CLIPPING,
      params_.highlight_region_error_threshold},
-    {"Shadow clipping", "shadow_clipping", Image_State::SHADOW_CLIPPING,
+    {"Shadow clipping", "shadow_clipping", ImageState::SHADOW_CLIPPING,
      params_.shadow_region_error_threshold},
-    {"Low visibility", "low_visibility", Image_State::LOW_VISIBILITY,
+    {"Low visibility", "low_visibility", ImageState::LOW_VISIBILITY,
      params_.low_visibility_region_error_threshold}};
 
   // Publisher and Subscriber
@@ -109,7 +108,8 @@ void ImageDiagNode::onImageDiagChecker(DiagnosticStatusWrapper & stat)
 {
   const cv::Mat gray_img = preprocess_image(input_image_msg);
   const RegionFeatures features = compute_image_features(gray_img);
-  const std::vector<Image_State> region_states = classify_regions(features);
+  const std::vector<ImageState> region_states = classify_regions(features);
+
   const cv::Mat diagnostic_image = generate_diagnostic_image(region_states, gray_img.size());
   publish_debug_images(input_image_msg->header, gray_img, features.frequency_map, diagnostic_image);
   update_image_diagnostics(region_states, input_image_msg->header.stamp);
@@ -189,24 +189,24 @@ ImageDiagNode::RegionFeatures ImageDiagNode::compute_image_features(
   return features;
 }
 
-std::vector<ImageDiagNode::Image_State> ImageDiagNode::classify_regions(
+std::vector<ImageDiagNode::ImageState> ImageDiagNode::classify_regions(
   const RegionFeatures & features) const
 {
-  std::vector<Image_State> states;
+  std::vector<ImageState> states;
   for (size_t i = 0; i < features.avg_intensity.size(); ++i) {
-    Image_State state = Image_State::NORMAL;
+    ImageState state = ImageState::NORMAL;
     if (features.avg_intensity[i] < params_.shadow_intensity_threshold) {
-      state = Image_State::SHADOW_CLIPPING;
+      state = ImageState::SHADOW_CLIPPING;
     } else if (
       features.blockage_ratio[i] > params_.blockage_ratio_threshold &&
       features.frequency_mean[i] < params_.blockage_frequency_ratio_threshold) {
-      state = Image_State::BLOCKAGE;
+      state = ImageState::BLOCKAGE;
     } else if (
       features.frequency_mean[i] < params_.low_visibility_frequency_threshold &&
       features.avg_intensity[i] < params_.highlight_intensity_threshold) {
-      state = Image_State::LOW_VISIBILITY;
+      state = ImageState::LOW_VISIBILITY;
     } else if (features.avg_intensity[i] > params_.highlight_intensity_threshold) {
-      state = Image_State::HIGHLIGHT_CLIPPING;
+      state = ImageState::HIGHLIGHT_CLIPPING;
     }
     states.push_back(state);
   }
@@ -214,12 +214,12 @@ std::vector<ImageDiagNode::Image_State> ImageDiagNode::classify_regions(
 }
 
 void ImageDiagNode::update_image_diagnostics(
-  const std::vector<Image_State> & states, const rclcpp::Time & timestamp)
+  const std::vector<ImageState> & states, const rclcpp::Time & timestamp)
 {
   diagnostics_interface_->clear();
 
   const int num_normal =
-    static_cast<int>(std::count(states.begin(), states.end(), Image_State::NORMAL));
+    static_cast<int>(std::count(states.begin(), states.end(), ImageState::NORMAL));
   const float ratio_normal = static_cast<float>(num_normal) / static_cast<float>(total_blocks_);
 
   diagnostics_interface_->add_key_value("image header timestamp", timestamp.seconds());
@@ -269,7 +269,7 @@ void ImageDiagNode::update_image_diagnostics(
 }
 
 cv::Mat ImageDiagNode::generate_diagnostic_image(
-  const std::vector<Image_State> & states, const cv::Size & size)
+  const std::vector<ImageState> & states, const cv::Size & size)
 {
   cv::Mat diag_block_image(size, CV_8UC3);
   int block_w = std::floor(size.width / params_.num_blocks_horizontal);
