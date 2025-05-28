@@ -63,10 +63,12 @@ private:
 
   cv::Scalar border_color_ = cv::Scalar(255, 255, 255);
 
+  std::deque<bool> recent_error_flags_;
   struct Parameters
   {
     // General settings
     std::string hardware_id;
+    int consecutive_error_frame_threshold;
     int image_resize_height;
     int num_blocks_horizontal;
     int num_blocks_vertical;

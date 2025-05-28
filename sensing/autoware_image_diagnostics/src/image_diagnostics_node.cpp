@@ -30,6 +30,8 @@ namespace autoware::image_diagnostics
 ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
 : Node("image_diagnostics_node", node_options)
 {
+  params_.consecutive_error_frame_threshold =
+    declare_parameter<int>("consecutive_error_frame_threshold");
   // Parameters
   params_.hardware_id = declare_parameter<std::string>("hardware_id");
 
@@ -210,12 +212,6 @@ void ImageDiagNode::update_image_diagnostics(
 {
   diagnostics_interface_->clear();
 
-  // TODO(vividf):
-  // Only count the it as an error if velocity is less than the velocity_threshold and also num of
-  // shadow, blockage, low_vis, highlight exceeds the their theshold. Additionally, it need to have
-  // three consecutive frame that has error to finally trigger error. Otherwise, the level of frame
-  // should be warning.
-
   const auto total_blocks = params_.num_blocks_horizontal * params_.num_blocks_vertical;
   const auto num_normal = std::count(states.begin(), states.end(), Image_State::NORMAL);
   const auto num_shadow = std::count(states.begin(), states.end(), Image_State::SHADOW_CLIPPING);
@@ -230,7 +226,6 @@ void ImageDiagNode::update_image_diagnostics(
   const auto ratio_low_vis = static_cast<float>(num_low_vis) / static_cast<float>(total_blocks);
   const auto ratio_highlight = static_cast<float>(num_highlight) / static_cast<float>(total_blocks);
 
-  int8_t level = diagnostic_msgs::msg::DiagnosticStatus::OK;
   std::vector<std::string> status_details;
 
   auto check_status = [&](
@@ -239,7 +234,6 @@ void ImageDiagNode::update_image_diagnostics(
     std::string status = "OK";
     if (count > err_thresh) {
       status = "ERROR";
-      level = std::max(level, static_cast<int8_t>(diagnostic_msgs::msg::DiagnosticStatus::ERROR));
       status_details.emplace_back(
         label + ": ERROR (count = " + std::to_string(count) +
         ", error threshold = " + std::to_string(err_thresh) + ")");
@@ -267,11 +261,38 @@ void ImageDiagNode::update_image_diagnostics(
     "Low visibility", num_low_vis, params_.low_visibility_region_error_threshold, "low_visibility",
     ratio_low_vis);
 
+  // Determine if current frame is considered error
+  bool is_current_error = (num_blockage > params_.blockage_region_error_threshold) ||
+                          (num_highlight > params_.highlight_region_error_threshold) ||
+                          (num_shadow > params_.shadow_region_error_threshold) ||
+                          (num_low_vis > params_.low_visibility_region_error_threshold);
+
+  // Update recent error flags
+  recent_error_flags_.push_back(is_current_error);
+  if (recent_error_flags_.size() > static_cast<size_t>(params_.consecutive_error_frame_threshold)) {
+    recent_error_flags_.pop_front();
+  }
+
+  // Count recent error frames
+  int recent_error_count =
+    static_cast<int>(std::count(recent_error_flags_.begin(), recent_error_flags_.end(), true));
+
+  // Set level based on recent error count
+  int8_t level;
   std::ostringstream status_msg;
-  if (level != diagnostic_msgs::msg::DiagnosticStatus::OK) {
-    status_msg << "Image status: "
-               << (level == diagnostic_msgs::msg::DiagnosticStatus::ERROR ? "ERROR" : "WARNING");
-    status_msg << "\nDetails:\n";
+
+  if (recent_error_count >= params_.consecutive_error_frame_threshold) {
+    level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+    status_msg << "Image status: ERROR\n";
+  } else if (recent_error_count > 0) {
+    level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+    status_msg << "Image status: WARNING\n";
+  } else {
+    level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+  }
+
+  if (!status_details.empty()) {
+    status_msg << "Details:\n";
     for (const auto & msg : status_details) {
       status_msg << "- " << msg << "\n";
     }
