@@ -38,6 +38,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace autoware::image_diagnostics
@@ -53,6 +54,50 @@ private:
     LOW_VISIBILITY,
     HIGHLIGHT_CLIPPING
   };
+
+  struct StateInfo
+  {
+    std::string label;
+    std::string key_prefix;
+    Image_State state_enum;
+    int threshold;
+    int count = 0;
+    float ratio = 0.0f;
+
+    StateInfo(std::string label, std::string key_prefix, Image_State state_enum, int threshold)
+    : label(std::move(label)),
+      key_prefix(std::move(key_prefix)),
+      state_enum(state_enum),
+      threshold(threshold)
+    {
+    }
+
+    void update_count_and_ratio(const std::vector<Image_State> & states, int total_blocks)
+    {
+      count = static_cast<int>(std::count(states.begin(), states.end(), state_enum));
+      ratio = static_cast<float>(count) / static_cast<float>(total_blocks);
+    }
+
+    [[nodiscard]] bool is_error() const { return count > threshold; }
+
+    [[nodiscard]] std::string get_status_string() const { return is_error() ? "ERROR" : "OK"; }
+
+    [[nodiscard]] std::string get_status_message() const
+    {
+      return label + ": ERROR (count = " + std::to_string(count) +
+             ", error threshold = " + std::to_string(threshold) + ")";
+    }
+
+    void add_to_diagnostics(autoware_utils::DiagnosticsInterface & interface) const
+    {
+      interface.add_key_value(key_prefix + "_status", get_status_string());
+      interface.add_key_value(key_prefix + "_number", std::to_string(count));
+      interface.add_key_value(key_prefix + "_ratio", std::to_string(ratio));
+    }
+  };
+
+  std::vector<StateInfo> state_infos_;
+
   std::unordered_map<Image_State, cv::Scalar> state_color_map_ = {
     {Image_State::NORMAL, cv::Scalar(100, 100, 100)},
     {Image_State::SHADOW_CLIPPING, cv::Scalar(0, 0, 0)},
@@ -63,6 +108,7 @@ private:
 
   cv::Scalar border_color_ = cv::Scalar(255, 255, 255);
 
+  int total_blocks_{0};
   std::deque<bool> recent_error_flags_;
   struct Parameters
   {
@@ -104,7 +150,7 @@ private:
   void run_image_diagnostics(const sensor_msgs::msg::Image::ConstSharedPtr input_image_msg);
   cv::Mat preprocess_image(const sensor_msgs::msg::Image::ConstSharedPtr & msg) const;
   RegionFeatures compute_image_features(const cv::Mat & gray_image) const;
-  std::vector<ImageDiagNode::Image_State> classify_regions(const RegionFeatures & features) const;
+  std::vector<Image_State> classify_regions(const RegionFeatures & features) const;
   cv::Mat generate_diagnostic_image(const std::vector<Image_State> & states, const cv::Size & size);
   void publish_debug_images(
     const std_msgs::msg::Header & header, const cv::Mat & gray_image, const cv::Mat & dft_image,

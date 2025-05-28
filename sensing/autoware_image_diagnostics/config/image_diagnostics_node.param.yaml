@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     image_resize_height: 480
-    consecutive_error_frame_threshold: 1
+    consecutive_error_frame_threshold: 3
     num_blocks_horizontal: 5
     num_blocks_vertical: 5
 
