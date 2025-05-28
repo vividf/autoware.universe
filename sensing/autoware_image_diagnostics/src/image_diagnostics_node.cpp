@@ -64,6 +64,16 @@ ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
 
   check_parameters();
 
+  total_blocks_ = params_.num_blocks_horizontal * params_.num_blocks_vertical;
+  state_infos_ = {
+    {"Blockage", "blockage", Image_State::BLOCKAGE, params_.blockage_region_error_threshold},
+    {"Highlight clipping", "highlight_clipping", Image_State::HIGHLIGHT_CLIPPING,
+     params_.highlight_region_error_threshold},
+    {"Shadow clipping", "shadow_clipping", Image_State::SHADOW_CLIPPING,
+     params_.shadow_region_error_threshold},
+    {"Low visibility", "low_visibility", Image_State::LOW_VISIBILITY,
+     params_.low_visibility_region_error_threshold}};
+
   // Publisher and Subscriber
   image_sub_ = create_subscription<sensor_msgs::msg::Image>(
     "input/raw_image", rclcpp::SensorDataQoS(),
@@ -210,73 +220,36 @@ void ImageDiagNode::update_image_diagnostics(
 {
   diagnostics_interface_->clear();
 
-  const auto total_blocks = params_.num_blocks_horizontal * params_.num_blocks_vertical;
-  const auto num_normal = std::count(states.begin(), states.end(), Image_State::NORMAL);
-  const auto num_shadow = std::count(states.begin(), states.end(), Image_State::SHADOW_CLIPPING);
-  const auto num_blockage = std::count(states.begin(), states.end(), Image_State::BLOCKAGE);
-  const auto num_low_vis = std::count(states.begin(), states.end(), Image_State::LOW_VISIBILITY);
-  const auto num_highlight =
-    std::count(states.begin(), states.end(), Image_State::HIGHLIGHT_CLIPPING);
-
-  const auto ratio_normal = static_cast<float>(num_normal) / static_cast<float>(total_blocks);
-  const auto ratio_blockage = static_cast<float>(num_blockage) / static_cast<float>(total_blocks);
-  const auto ratio_shadow = static_cast<float>(num_shadow) / static_cast<float>(total_blocks);
-  const auto ratio_low_vis = static_cast<float>(num_low_vis) / static_cast<float>(total_blocks);
-  const auto ratio_highlight = static_cast<float>(num_highlight) / static_cast<float>(total_blocks);
-
-  std::vector<std::string> status_details;
-
-  auto check_status = [&](
-                        const std::string & label, int64_t count, int err_thresh,
-                        const std::string & key_prefix, float ratio) {
-    std::string status = "OK";
-    if (count > err_thresh) {
-      status = "ERROR";
-      status_details.emplace_back(
-        label + ": ERROR (count = " + std::to_string(count) +
-        ", error threshold = " + std::to_string(err_thresh) + ")");
-    }
-    diagnostics_interface_->add_key_value(key_prefix + "_status", status);
-    diagnostics_interface_->add_key_value(key_prefix + "_number", std::to_string(count));
-    diagnostics_interface_->add_key_value(key_prefix + "_ratio", std::to_string(ratio));
-  };
+  const int num_normal =
+    static_cast<int>(std::count(states.begin(), states.end(), Image_State::NORMAL));
+  const float ratio_normal = static_cast<float>(num_normal) / static_cast<float>(total_blocks_);
 
   diagnostics_interface_->add_key_value("image header timestamp", timestamp.seconds());
   diagnostics_interface_->add_key_value("normal_ratio", std::to_string(ratio_normal));
 
-  check_status(
-    "Blockage", num_blockage, params_.blockage_region_error_threshold, "blockage", ratio_blockage);
+  // Diagnostic for blockage, shadow, highlight, low visibility
+  std::vector<std::string> status_details;
+  bool is_current_error = false;
 
-  check_status(
-    "Highlight clipping", num_highlight, params_.highlight_region_error_threshold,
-    "highlight_clipping", ratio_highlight);
+  for (auto & info : state_infos_) {
+    info.update_count_and_ratio(states, total_blocks_);
+    if (info.is_error()) {
+      is_current_error = true;
+      status_details.emplace_back(info.get_status_message());
+    }
+    info.add_to_diagnostics(*diagnostics_interface_);
+  }
 
-  check_status(
-    "Shadow clipping", num_shadow, params_.shadow_region_error_threshold, "shadow_clipping",
-    ratio_shadow);
-
-  check_status(
-    "Low visibility", num_low_vis, params_.low_visibility_region_error_threshold, "low_visibility",
-    ratio_low_vis);
-
-  // Determine if current frame is considered error
-  bool is_current_error = (num_blockage > params_.blockage_region_error_threshold) ||
-                          (num_highlight > params_.highlight_region_error_threshold) ||
-                          (num_shadow > params_.shadow_region_error_threshold) ||
-                          (num_low_vis > params_.low_visibility_region_error_threshold);
-
-  // Update recent error flags
   recent_error_flags_.push_back(is_current_error);
   if (recent_error_flags_.size() > static_cast<size_t>(params_.consecutive_error_frame_threshold)) {
     recent_error_flags_.pop_front();
   }
 
-  // Count recent error frames
-  int recent_error_count =
+  const int recent_error_count =
     static_cast<int>(std::count(recent_error_flags_.begin(), recent_error_flags_.end(), true));
 
   // Set level based on recent error count
-  int8_t level;
+  int8_t level = diagnostic_msgs::msg::DiagnosticStatus::OK;
   std::ostringstream status_msg;
 
   if (recent_error_count >= params_.consecutive_error_frame_threshold) {
@@ -285,8 +258,6 @@ void ImageDiagNode::update_image_diagnostics(
   } else if (recent_error_count > 0) {
     level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
     status_msg << "Image status: WARNING\n";
-  } else {
-    level = diagnostic_msgs::msg::DiagnosticStatus::OK;
   }
 
   if (!status_details.empty()) {
