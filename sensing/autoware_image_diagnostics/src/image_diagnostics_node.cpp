@@ -90,12 +90,10 @@ ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
 
 void ImageDiagNode::check_parameters() const
 {
-  const int total_blocks = params_.num_blocks_horizontal * params_.num_blocks_vertical;
-
   auto validate_threshold = [&](const std::string & name, int err_thresh) {
-    if (err_thresh > total_blocks) {
+    if (err_thresh > total_blocks_) {
       throw std::runtime_error(
-        name + ": thresholds exceed total number of blocks (" + std::to_string(total_blocks) +
+        name + ": thresholds exceed total number of blocks (" + std::to_string(total_blocks_) +
         ").");
     }
   };
