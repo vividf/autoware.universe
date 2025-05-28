@@ -11,6 +11,12 @@
           "minimum": 0,
           "description": "Target height to resize the input image before block analysis. Width is scaled proportionally."
         },
+        "consecutive_error_frame_threshold": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3,
+          "description": "Number of consecutive frames with errors before triggering an error status."
+        },
         "num_blocks_horizontal": {
           "type": "integer",
           "minimum": 0,
@@ -78,6 +84,7 @@
       },
       "required": [
         "image_resize_height",
+        "consecutive_error_frame_threshold",
         "num_blocks_horizontal",
         "num_blocks_vertical",
         "blockage_region_error_threshold",
