@@ -48,7 +48,7 @@
           "default": 10,
           "minimum": 0,
           "maximum": 255,
-          "description": "Pixel intensity threshold for binarizing the image when detecting blockage."
+          "description": "Pixel intensity threshold for binary image conversion during blockage detection."
         },
         "blockage_frequency_ratio_threshold": {
           "type": "number",
