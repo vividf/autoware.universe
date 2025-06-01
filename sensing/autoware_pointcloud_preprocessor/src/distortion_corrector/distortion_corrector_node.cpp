@@ -45,7 +45,8 @@ DistortionCorrectorComponent::DistortionCorrectorComponent(const rclcpp::NodeOpt
   use_3d_distortion_correction_ = declare_parameter<bool>("use_3d_distortion_correction");
   update_azimuth_and_distance_ = declare_parameter<bool>("update_azimuth_and_distance");
   processing_time_threshold_sec_ = declare_parameter<float>("processing_time_threshold_sec");
-  mismatch_fraction_threshold_ = declare_parameter<float>("mismatch_fraction_threshold");
+  timestamp_mismatch_fraction_threshold_ =
+    declare_parameter<float>("timestamp_mismatch_fraction_threshold");
 
   // Publisher
   {
@@ -150,8 +151,9 @@ void DistortionCorrectorComponent::pointcloud_callback(PointCloud2::UniquePtr po
   auto latency_diagnostics = std::make_shared<LatencyDiagnostics>(
     stamp, processing_time_ms, pipeline_latency_ms, processing_time_threshold_sec_ * 1000.0);
   auto distortion_corrector_diagnostics = std::make_shared<DistortionCorrectorDiagnostics>(
-    distortion_corrector_->get_mismatch_count(), distortion_corrector_->get_mismatch_fraction(),
-    use_3d_distortion_correction_, update_azimuth_and_distance_, mismatch_fraction_threshold_);
+    distortion_corrector_->get_timestamp_mismatch_count(),
+    distortion_corrector_->get_timestamp_mismatch_fraction(), use_3d_distortion_correction_,
+    update_azimuth_and_distance_, timestamp_mismatch_fraction_threshold_);
 
   publish_diagnostics({latency_diagnostics, distortion_corrector_diagnostics});
 }

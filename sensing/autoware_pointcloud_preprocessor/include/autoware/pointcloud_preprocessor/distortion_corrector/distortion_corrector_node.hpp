@@ -63,7 +63,7 @@ private:
   bool use_3d_distortion_correction_;
   bool update_azimuth_and_distance_;
   double processing_time_threshold_sec_;
-  double mismatch_fraction_threshold_;
+  double timestamp_mismatch_fraction_threshold_;
 
   std::optional<AngleConversion> angle_conversion_opt_;
 
