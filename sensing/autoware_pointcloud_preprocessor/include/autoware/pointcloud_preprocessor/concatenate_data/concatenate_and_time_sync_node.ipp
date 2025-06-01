@@ -490,8 +490,8 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::check_c
   if (diagnostic_info.drop_previous_but_late_pointcloud) {
     level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
     message = topic_miss
-      ? "Concatenated pointcloud misses some topics and is not published because it arrived too late"
-      : "Concatenated pointcloud is not published as it is too late";
+      ? "Concatenated pointcloud was dropped due to missing topics and its timestamp is earlier than the latest published one"
+      : "Concatenated pointcloud was dropped due to its timestamp is earlier than the latest published one";
   } else if (diagnostic_info.is_concatenated_cloud_empty) {
     level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
     message = "Concatenated pointcloud is empty";
