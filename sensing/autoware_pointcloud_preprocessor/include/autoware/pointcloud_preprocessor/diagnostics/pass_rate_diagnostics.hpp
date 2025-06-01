@@ -16,6 +16,8 @@
 
 #include <autoware/pointcloud_preprocessor/diagnostics/diagnostics_base.hpp>
 #include <autoware_utils/ros/diagnostics_interface.hpp>
+
+#include <string>
 namespace autoware::pointcloud_preprocessor
 {
 
@@ -23,23 +25,33 @@ class PassRateDiagnostics : public DiagnosticsBase
 {
 public:
   PassRateDiagnostics(int input_point_count, int output_point_count)
-  : input_point_count(input_point_count),
-    output_point_count(output_point_count),
-    pass_rate(
+  : input_point_count_(input_point_count),
+    output_point_count_(output_point_count),
+    pass_rate_(
       input_point_count > 0 ? static_cast<double>(output_point_count) / input_point_count : 0.0)
   {
   }
 
   void add_to_interface(autoware_utils::DiagnosticsInterface & interface) const override
   {
-    interface.add_key_value("input_point_count", input_point_count);
-    interface.add_key_value("output_point_count", output_point_count);
-    interface.add_key_value("pass_rate", pass_rate);
+    interface.add_key_value("input_point_count", input_point_count_);
+    interface.add_key_value("output_point_count", output_point_count_);
+    interface.add_key_value("pass_rate", pass_rate_);
   }
 
-  int input_point_count;
-  int output_point_count;
-  double pass_rate;
+  [[nodiscard]] std::optional<std::pair<int, std::string>> evaluate_status() const override
+  {
+    if (output_point_count_ == 0) {
+      return std::make_pair(
+        diagnostic_msgs::msg::DiagnosticStatus::ERROR, "[ERROR]: No valid output points");
+    }
+    return std::nullopt;
+  }
+
+private:
+  int input_point_count_;
+  int output_point_count_;
+  double pass_rate_;
 };
 
 }  // namespace autoware::pointcloud_preprocessor

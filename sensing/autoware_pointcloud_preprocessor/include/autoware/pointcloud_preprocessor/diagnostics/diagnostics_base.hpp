@@ -16,6 +16,8 @@
 
 #include <autoware_utils/ros/diagnostics_interface.hpp>
 
+#include <string>
+
 namespace autoware::pointcloud_preprocessor
 {
 class DiagnosticsBase
@@ -24,5 +26,10 @@ public:
   virtual ~DiagnosticsBase() = default;
 
   virtual void add_to_interface(autoware_utils::DiagnosticsInterface & interface) const = 0;
+
+  [[nodiscard]] virtual std::optional<std::pair<int, std::string>> evaluate_status() const
+  {
+    return std::nullopt;
+  }
 };
 }  // namespace autoware::pointcloud_preprocessor

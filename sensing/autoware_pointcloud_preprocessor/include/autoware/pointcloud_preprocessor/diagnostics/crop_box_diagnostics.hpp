@@ -23,14 +23,15 @@ namespace autoware::pointcloud_preprocessor
 class CropBoxDiagnostics : public DiagnosticsBase
 {
 public:
-  explicit CropBoxDiagnostics(int skipped_count) : skipped_count(skipped_count) {}
+  explicit CropBoxDiagnostics(int skipped_count) : skipped_count_(skipped_count) {}
 
   void add_to_interface(autoware_utils::DiagnosticsInterface & interface) const override
   {
-    interface.add_key_value("skipped_nan_point_count", skipped_count);
+    interface.add_key_value("skipped_nan_point_count", skipped_count_);
   }
 
-  int skipped_count;
+private:
+  int skipped_count_;
 };
 
 }  // namespace autoware::pointcloud_preprocessor

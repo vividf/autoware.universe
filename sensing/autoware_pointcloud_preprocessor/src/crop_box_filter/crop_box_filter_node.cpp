@@ -51,8 +51,13 @@
 
 #include "autoware/pointcloud_preprocessor/crop_box_filter/crop_box_filter_node.hpp"
 
+#include "autoware/pointcloud_preprocessor/diagnostics/crop_box_diagnostics.hpp"
+#include "autoware/pointcloud_preprocessor/diagnostics/latency_diagnostics.hpp"
+#include "autoware/pointcloud_preprocessor/diagnostics/pass_rate_diagnostics.hpp"
+
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -214,47 +219,39 @@ void CropBoxFilterComponent::faster_filter(
   }
 
   auto latency_diagnostics = std::make_shared<LatencyDiagnostics>(
-    input->header.stamp, processing_time_ms, pipeline_latency_ms);
+    input->header.stamp, processing_time_ms, pipeline_latency_ms,
+    param_.processing_time_threshold_sec * 1000.0);
   auto pass_rate_diagnostics = std::make_shared<PassRateDiagnostics>(
     static_cast<int>(input->width * input->height), static_cast<int>(output.width * output.height));
   auto crop_box_diagnostics = std::make_shared<CropBoxDiagnostics>(skipped_count);
 
-  auto level_and_msg = evaluate_diagnostic_status(*latency_diagnostics, *pass_rate_diagnostics);
-  publish_diagnostics(
-    {latency_diagnostics, pass_rate_diagnostics, crop_box_diagnostics}, level_and_msg);
-}
-
-std::pair<int, std::string> CropBoxFilterComponent::evaluate_diagnostic_status(
-  const LatencyDiagnostics & latency_diagnostics,
-  const PassRateDiagnostics & pass_rate_diagnostics) const
-{
-  if (pass_rate_diagnostics.output_point_count == 0) {
-    return {diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No valid output points"};
-  }
-
-  if (latency_diagnostics.processing_time_ms > param_.processing_time_threshold_sec * 1000.0) {
-    return {
-      diagnostic_msgs::msg::DiagnosticStatus::WARN,
-      "Processing time " + std::to_string(latency_diagnostics.processing_time_ms) +
-        " ms exceeded threshold of " +
-        std::to_string(param_.processing_time_threshold_sec * 1000.0) + " ms"};
-  }
-
-  return {diagnostic_msgs::msg::DiagnosticStatus::OK, "CropBoxFilter operating normally"};
+  publish_diagnostics({latency_diagnostics, pass_rate_diagnostics, crop_box_diagnostics});
 }
 
 void CropBoxFilterComponent::publish_diagnostics(
-  const std::vector<std::shared_ptr<const DiagnosticsBase>> & diagnostics,
-  const std::pair<int, std::string> & level_and_message)
+  const std::vector<std::shared_ptr<const DiagnosticsBase>> & diagnostics)
 {
   diagnostics_interface_->clear();
-  diagnostics_interface_->update_level_and_message(
-    level_and_message.first, level_and_message.second);
+
+  std::string message;
+  int worst_level = diagnostic_msgs::msg::DiagnosticStatus::OK;
 
   for (const auto & diag : diagnostics) {
     diag->add_to_interface(*diagnostics_interface_);
+    if (const auto status = diag->evaluate_status(); status.has_value()) {
+      worst_level = std::max(worst_level, status->first);
+      if (!message.empty()) {
+        message += " / ";
+      }
+      message += status->second;
+    }
   }
 
+  if (message.empty()) {
+    message = "CropBoxFilter operating normally";
+  }
+
+  diagnostics_interface_->update_level_and_message(static_cast<int8_t>(worst_level), message);
   diagnostics_interface_->publish(this->get_clock()->now());
 }
 

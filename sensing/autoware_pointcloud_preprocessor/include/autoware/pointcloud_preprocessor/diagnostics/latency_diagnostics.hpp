@@ -19,6 +19,8 @@
 #include <autoware_utils/ros/diagnostics_interface.hpp>
 #include <rclcpp/time.hpp>
 
+#include <string>
+
 namespace autoware::pointcloud_preprocessor
 {
 
@@ -27,24 +29,38 @@ class LatencyDiagnostics : public DiagnosticsBase
 public:
   LatencyDiagnostics(
     const rclcpp::Time & cloud_header_timestamp, double processing_time_ms,
-    double pipeline_latency_ms)
-  : cloud_header_timestamp(cloud_header_timestamp),
-    processing_time_ms(processing_time_ms),
-    pipeline_latency_ms(pipeline_latency_ms)
+    double pipeline_latency_ms, double processing_time_threshold_ms)
+  : cloud_header_timestamp_(cloud_header_timestamp),
+    processing_time_ms_(processing_time_ms),
+    pipeline_latency_ms_(pipeline_latency_ms),
+    processing_time_threshold_ms_(processing_time_threshold_ms)
   {
   }
 
   void add_to_interface(autoware_utils::DiagnosticsInterface & interface) const override
   {
     interface.add_key_value(
-      "cloud_header_timestamp", format_timestamp(cloud_header_timestamp.seconds()));
-    interface.add_key_value("processing_time_ms", processing_time_ms);
-    interface.add_key_value("pipeline_latency_ms", pipeline_latency_ms);
+      "cloud_header_timestamp", format_timestamp(cloud_header_timestamp_.seconds()));
+    interface.add_key_value("processing_time_ms", processing_time_ms_);
+    interface.add_key_value("pipeline_latency_ms", pipeline_latency_ms_);
   }
 
-  rclcpp::Time cloud_header_timestamp;
-  double processing_time_ms;
-  double pipeline_latency_ms;
+  [[nodiscard]] std::optional<std::pair<int, std::string>> evaluate_status() const override
+  {
+    if (processing_time_ms_ > processing_time_threshold_ms_) {
+      return std::make_pair(
+        diagnostic_msgs::msg::DiagnosticStatus::WARN,
+        "[WARN]: Processing time " + std::to_string(processing_time_ms_) +
+          " ms exceeded threshold of " + std::to_string(processing_time_threshold_ms_) + " ms");
+    }
+    return std::nullopt;
+  }
+
+private:
+  rclcpp::Time cloud_header_timestamp_;
+  double processing_time_ms_;
+  double pipeline_latency_ms_;
+  double processing_time_threshold_ms_;
 };
 
 }  // namespace autoware::pointcloud_preprocessor

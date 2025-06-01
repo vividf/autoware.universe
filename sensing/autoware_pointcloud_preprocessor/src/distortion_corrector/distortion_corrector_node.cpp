@@ -14,8 +14,11 @@
 
 #include "autoware/pointcloud_preprocessor/distortion_corrector/distortion_corrector_node.hpp"
 
+#include "autoware/pointcloud_preprocessor/diagnostics/distortion_corrector_diagnostics.hpp"
+#include "autoware/pointcloud_preprocessor/diagnostics/latency_diagnostics.hpp"
 #include "autoware/pointcloud_preprocessor/distortion_corrector/distortion_corrector.hpp"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -144,48 +147,39 @@ void DistortionCorrectorComponent::pointcloud_callback(PointCloud2::UniquePtr po
       "debug/pipeline_latency_ms", pipeline_latency_ms);
   }
 
-  auto latency_diagnostics =
-    std::make_shared<LatencyDiagnostics>(stamp, processing_time_ms, pipeline_latency_ms);
+  auto latency_diagnostics = std::make_shared<LatencyDiagnostics>(
+    stamp, processing_time_ms, pipeline_latency_ms, processing_time_threshold_sec_ * 1000.0);
   auto distortion_corrector_diagnostics = std::make_shared<DistortionCorrectorDiagnostics>(
     distortion_corrector_->get_mismatch_count(), distortion_corrector_->get_mismatch_fraction(),
-    use_3d_distortion_correction_, update_azimuth_and_distance_);
-  auto level_and_msg =
-    evaluate_diagnostic_status(*latency_diagnostics, *distortion_corrector_diagnostics);
-  publish_diagnostics({latency_diagnostics, distortion_corrector_diagnostics}, level_and_msg);
-}
+    use_3d_distortion_correction_, update_azimuth_and_distance_, mismatch_fraction_threshold_);
 
-std::pair<int, std::string> DistortionCorrectorComponent::evaluate_diagnostic_status(
-  const LatencyDiagnostics & latency_diagnostics,
-  const DistortionCorrectorDiagnostics & distortion_corrector_diagnostics) const
-{
-  if (distortion_corrector_diagnostics.mismatch_fraction > mismatch_fraction_threshold_) {
-    return {
-      diagnostic_msgs::msg::DiagnosticStatus::ERROR,
-      "Mismatch fraction " + std::to_string(distortion_corrector_diagnostics.mismatch_fraction) +
-        " exceeded threshold of " + std::to_string(mismatch_fraction_threshold_)};
-  }
-  if (latency_diagnostics.processing_time_ms > processing_time_threshold_sec_ * 1000.0) {
-    return {
-      diagnostic_msgs::msg::DiagnosticStatus::WARN,
-      "Processing time " + std::to_string(latency_diagnostics.processing_time_ms) +
-        " ms exceeded threshold of " + std::to_string(processing_time_threshold_sec_ * 1000.0) +
-        " ms"};
-  }
-  return {diagnostic_msgs::msg::DiagnosticStatus::OK, "Distortion correction successful"};
+  publish_diagnostics({latency_diagnostics, distortion_corrector_diagnostics});
 }
 
 void DistortionCorrectorComponent::publish_diagnostics(
-  const std::vector<std::shared_ptr<const DiagnosticsBase>> & diagnostics_vec,
-  const std::pair<int, std::string> & level_and_message)
+  const std::vector<std::shared_ptr<const DiagnosticsBase>> & diagnostics)
 {
-  // diagnostic
   diagnostics_interface_->clear();
-  diagnostics_interface_->update_level_and_message(
-    level_and_message.first, level_and_message.second);
-  for (const auto & diag : diagnostics_vec) {
+
+  std::string message;
+  int worst_level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+
+  for (const auto & diag : diagnostics) {
     diag->add_to_interface(*diagnostics_interface_);
+    if (const auto status = diag->evaluate_status(); status.has_value()) {
+      worst_level = std::max(worst_level, status->first);
+      if (!message.empty()) {
+        message += " / ";
+      }
+      message += status->second;
+    }
   }
 
+  if (message.empty()) {
+    message = "Distortion correction successful";
+  }
+
+  diagnostics_interface_->update_level_and_message(static_cast<int8_t>(worst_level), message);
   diagnostics_interface_->publish(this->get_clock()->now());
 }
 
