@@ -39,11 +39,11 @@ public:
 
   void add_to_interface(autoware_utils::DiagnosticsInterface & interface) const override
   {
-    interface.add_key_value("timestamp_mismatch_count", timestamp_mismatch_count_);
+    interface.add_key_value("Timestamp mismatch count", timestamp_mismatch_count_);
     interface.add_key_value(
-      "timestamp_mismatch_fraction", std::round(timestamp_mismatch_fraction_ * 100.0) / 100.0);
-    interface.add_key_value("use_3d_distortion_correction", use_3d_distortion_correction_);
-    interface.add_key_value("update_azimuth_and_distance", update_azimuth_and_distance_);
+      "Timestamp mismatch fraction", std::round(timestamp_mismatch_fraction_ * 100.0) / 100.0);
+    interface.add_key_value("Use 3D distortion correction", use_3d_distortion_correction_);
+    interface.add_key_value("Update azimuth and distance", update_azimuth_and_distance_);
   }
 
   [[nodiscard]] std::optional<std::pair<int, std::string>> evaluate_status() const override

@@ -40,9 +40,9 @@ public:
   void add_to_interface(autoware_utils::DiagnosticsInterface & interface) const override
   {
     interface.add_key_value(
-      "cloud_header_timestamp", format_timestamp(cloud_header_timestamp_.seconds()));
-    interface.add_key_value("processing_time_ms", processing_time_ms_);
-    interface.add_key_value("pipeline_latency_ms", pipeline_latency_ms_);
+      "Pointcloud header timestamp", format_timestamp(cloud_header_timestamp_.seconds()));
+    interface.add_key_value("Processing time (ms)", processing_time_ms_);
+    interface.add_key_value("Pipeline latency (ms)", pipeline_latency_ms_);
   }
 
   [[nodiscard]] std::optional<std::pair<int, std::string>> evaluate_status() const override

@@ -34,9 +34,9 @@ public:
 
   void add_to_interface(autoware_utils::DiagnosticsInterface & interface) const override
   {
-    interface.add_key_value("input_point_count", input_point_count_);
-    interface.add_key_value("output_point_count", output_point_count_);
-    interface.add_key_value("pass_rate", pass_rate_);
+    interface.add_key_value("Input point count", input_point_count_);
+    interface.add_key_value("Output point count", output_point_count_);
+    interface.add_key_value("Pass rate", pass_rate_);
   }
 
   [[nodiscard]] std::optional<std::pair<int, std::string>> evaluate_status() const override

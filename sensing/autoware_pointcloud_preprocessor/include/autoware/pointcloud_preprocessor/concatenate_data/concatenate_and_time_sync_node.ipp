@@ -447,41 +447,41 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::check_c
   }
 
   diagnostics_interface_->add_key_value(
-    "concatenated_cloud_timestamp", format_timestamp(current_concatenate_cloud_timestamp_));
+    "Concatenated pointcloud timestamp", format_timestamp(current_concatenate_cloud_timestamp_));
 
   if (const auto naive_info = std::dynamic_pointer_cast<NaiveCollectorInfo>(diagnostic_info.collector_info)) {
-    diagnostics_interface_->add_key_value("first_cloud_arrival_timestamp", format_timestamp(naive_info->timestamp));
+    diagnostics_interface_->add_key_value("First pointcloud arrival timestamp", format_timestamp(naive_info->timestamp));
   } else if (const auto advanced_info = std::dynamic_pointer_cast<AdvancedCollectorInfo>(diagnostic_info.collector_info)) {
     diagnostics_interface_->add_key_value(
-      "reference_timestamp_min", format_timestamp(advanced_info->timestamp - advanced_info->noise_window));
+      "Minimum reference timestamp", format_timestamp(advanced_info->timestamp - advanced_info->noise_window));
     diagnostics_interface_->add_key_value(
-      "reference_timestamp_max", format_timestamp(advanced_info->timestamp + advanced_info->noise_window));
+      "Maximum reference timestamp", format_timestamp(advanced_info->timestamp + advanced_info->noise_window));
   }
 
-  diagnostics_interface_->add_key_value("processing_time_ms", diagnostic_info.processing_time);
-  diagnostics_interface_->add_key_value("pipeline_latency_ms", diagnostic_info.pipeline_latency);
+  diagnostics_interface_->add_key_value("Processing time (ms)", diagnostic_info.processing_time);
+  diagnostics_interface_->add_key_value("Pipeline latency (ms)", diagnostic_info.pipeline_latency);
 
   bool topic_miss = false;
   bool concatenation_success = true;
 
   for (const auto & topic : params_.input_topics) {
     const bool found = diagnostic_info.topic_to_original_stamp_map.count(topic);
-    diagnostics_interface_->add_key_value(topic + "/is_concatenated", found);
+    diagnostics_interface_->add_key_value("Concatenated: " + topic, found);
 
     if (found) {
       diagnostics_interface_->add_key_value(
-        topic + "/timestamp", format_timestamp(diagnostic_info.topic_to_original_stamp_map.at(topic)));
+       "Timestamp: " + topic, format_timestamp(diagnostic_info.topic_to_original_stamp_map.at(topic)));
     } else {
       topic_miss = true;
       concatenation_success = false;
     }
     const auto latency_it = diagnostic_info.topic_to_pipeline_latency_map.find(topic);
     if (latency_it != diagnostic_info.topic_to_pipeline_latency_map.end()) {
-      diagnostics_interface_->add_key_value(topic + "/latency", latency_it->second);
+      diagnostics_interface_->add_key_value("Latency (s): " + topic, latency_it->second);
     }
   }
 
-  diagnostics_interface_->add_key_value("cloud_concatenation_success", concatenation_success);
+  diagnostics_interface_->add_key_value("Pointcloud concatenation succeeded", concatenation_success);
 
   // Determine diagnostic level and message
   int8_t level = diagnostic_msgs::msg::DiagnosticStatus::OK;

@@ -27,7 +27,7 @@ public:
 
   void add_to_interface(autoware_utils::DiagnosticsInterface & interface) const override
   {
-    interface.add_key_value("skipped_nan_point_count", skipped_count_);
+    interface.add_key_value("Skipped NaN point count", skipped_count_);
   }
 
 private:
