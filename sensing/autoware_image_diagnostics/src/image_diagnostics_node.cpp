@@ -175,12 +175,12 @@ ImageDiagNode::RegionFeatures ImageDiagNode::compute_image_features(
       cv::split(complex_img, dft_channel_img);
 
       // Crop back to original block size and compute log frequency spectrum
-      cv::Mat frequency_roi = dft_channel_img[0](cv::Rect(0, 0, block_w, block_h));
+      cv::Mat frequency_roi = dft_channel_img[0](cv::Rect(0, 0, block_w, block_h)).clone();
       cv::log(frequency_roi, frequency_roi);
       float freq_mean = static_cast<float>(cv::mean(frequency_roi)[0]);
 
       // Store features
-      frequency_roi.copyTo(features.frequency_map(roi));
+      dft_channel_img[0](cv::Rect(0, 0, block_w, block_h)).copyTo(features.frequency_map(roi));
       features.avg_intensity.push_back(avg_intensity);
       features.blockage_ratio.push_back(ratio);
       features.frequency_mean.push_back(freq_mean);
@@ -300,7 +300,9 @@ void ImageDiagNode::publish_debug_images(
   const cv::Mat & diagnostic_image)
 {
   auto gray_image_msg = cv_bridge::CvImage(header, "mono8", gray_image).toImageMsg();
-  auto dft_image_msg = cv_bridge::CvImage(header, "mono8", dft_image).toImageMsg();
+  cv::Mat dft_image_8uc1;
+  dft_image.convertTo(dft_image_8uc1, CV_8UC1);
+  auto dft_image_msg = cv_bridge::CvImage(header, "mono8", dft_image_8uc1).toImageMsg();
   auto diagnostic_image_msg = cv_bridge::CvImage(header, "bgr8", diagnostic_image).toImageMsg();
   gray_image_pub_.publish(gray_image_msg);
   dft_image_pub_.publish(dft_image_msg);
