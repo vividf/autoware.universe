@@ -29,10 +29,11 @@ using image_diagnostics::Image_State;
 ImageDiagNode::ImageDiagNode(const rclcpp::NodeOptions & node_options)
 : Node("image_diagnostics_node", node_options)
 {
+  // Parameters
+  params_.debug = declare_parameter<bool>("debug");
+  params_.hardware_id = declare_parameter<std::string>("hardware_id");
   params_.consecutive_error_frame_threshold =
     declare_parameter<int>("consecutive_error_frame_threshold");
-  // Parameters
-  params_.hardware_id = declare_parameter<std::string>("hardware_id");
 
   params_.image_resize_height = declare_parameter<int>("image_resize_height");
   params_.num_blocks_horizontal = declare_parameter<int>("num_blocks_horizontal");
@@ -110,8 +111,11 @@ void ImageDiagNode::onImageDiagChecker(DiagnosticStatusWrapper & stat)
   const RegionFeatures features = compute_image_features(gray_img);
   const std::vector<ImageState> region_states = classify_regions(features);
 
-  const cv::Mat diagnostic_image = generate_diagnostic_image(region_states, gray_img.size());
-  publish_debug_images(input_image_msg->header, gray_img, features.frequency_map, diagnostic_image);
+  if (params_.debug) {
+    const cv::Mat diagnostic_image = generate_diagnostic_image(region_states, gray_img.size());
+    publish_debug_images(
+      input_image_msg->header, gray_img, features.frequency_map, diagnostic_image);
+  }
   update_image_diagnostics(region_states, input_image_msg->header.stamp);
 }
 

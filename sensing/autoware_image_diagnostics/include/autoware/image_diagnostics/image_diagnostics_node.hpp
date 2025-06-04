@@ -107,6 +107,7 @@ private:
   struct Parameters
   {
     // General settings
+    bool debug;
     std::string hardware_id;
     int consecutive_error_frame_threshold;
     int image_resize_height;

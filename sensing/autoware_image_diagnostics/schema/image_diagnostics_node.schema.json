@@ -6,6 +6,11 @@
     "image_diagnostics_node": {
       "type": "object",
       "properties": {
+        "debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to enable debug mode. If true, the node will publish debug images for visualization and analysis."
+        },
         "image_resize_height": {
           "type": "integer",
           "default": 480,
@@ -96,8 +101,9 @@
         }
       },
       "required": [
-        "image_resize_height",
+        "debug",
         "consecutive_error_frame_threshold",
+        "image_resize_height",
         "num_blocks_horizontal",
         "num_blocks_vertical",
         "blockage_region_error_threshold",
