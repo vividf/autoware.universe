@@ -16,6 +16,11 @@
 
 #include "autoware/cuda_pointcloud_preprocessor/memory.hpp"
 #include "autoware/cuda_pointcloud_preprocessor/point_types.hpp"
+#include "autoware/pointcloud_preprocessor/diagnostics/crop_box_diagnostics.hpp"
+#include "autoware/pointcloud_preprocessor/diagnostics/distortion_corrector_diagnostics.hpp"
+#include "autoware/pointcloud_preprocessor/diagnostics/latency_diagnostics.hpp"
+#include "autoware/pointcloud_preprocessor/diagnostics/pass_rate_diagnostics.hpp"
+#include "autoware/pointcloud_preprocessor/distortion_corrector/distortion_corrector.hpp"
 
 #include <autoware/point_types/types.hpp>
 
@@ -101,6 +106,9 @@ CudaPointcloudPreprocessorNode::CudaPointcloudPreprocessorNode(
   pub_ =
     std::make_unique<cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
       *this, "~/output/pointcloud");
+  diagnostics_interface_ =
+    std::make_unique<autoware_utils::DiagnosticsInterface>(this, this->get_fully_qualified_name());
+
   /* *INDENT-ON* */
 
   // Subscriber
@@ -296,6 +304,58 @@ void CudaPointcloudPreprocessorNode::pointcloudCallback(
     input_pointcloud_msg_ptr, transform_msg, twist_queue_, angular_velocity_queue_,
     first_point_rel_stamp);
   output_pointcloud_ptr->header.frame_id = base_frame_;
+
+  const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
+
+  const double pipeline_latency_ms =
+    std::chrono::duration<double, std::milli>(
+      std::chrono::nanoseconds(
+        (this->get_clock()->now() - input_pointcloud_msg_ptr->header.stamp).nanoseconds()))
+      .count();
+
+  const int input_point_count =
+    static_cast<int>(input_pointcloud_msg_ptr->width * input_pointcloud_msg_ptr->height);
+  // const int output_point_count =
+  //   static_cast<int>(output_pointcloud_ptr->width * output_pointcloud_ptr->height);
+  const int output_point_count = static_cast<int>(50000);
+
+  const int skipped_nan_count = 0;
+
+  auto processing_time_threshold_ms_ = 0.05;
+
+  auto latency_diag = std::make_shared<autoware::pointcloud_preprocessor::LatencyDiagnostics>(
+    input_pointcloud_msg_ptr->header.stamp, processing_time_ms, pipeline_latency_ms,
+    processing_time_threshold_ms_);
+
+  auto pass_rate_diag = std::make_shared<autoware::pointcloud_preprocessor::PassRateDiagnostics>(
+    input_point_count, output_point_count);
+
+  auto crop_box_diag =
+    std::make_shared<autoware::pointcloud_preprocessor::CropBoxDiagnostics>(skipped_nan_count);
+
+  diagnostics_interface_->clear();
+
+  std::vector<std::shared_ptr<const autoware::pointcloud_preprocessor::DiagnosticsBase>>
+    diagnostics = {latency_diag, pass_rate_diag, crop_box_diag};
+
+  int worst_level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+  std::string message;
+
+  for (const auto & diag : diagnostics) {
+    diag->add_to_interface(*diagnostics_interface_);
+    if (const auto status = diag->evaluate_status()) {
+      worst_level = std::max(worst_level, status->first);
+      if (!message.empty()) {
+        message += " / ";
+      }
+      message += status->second;
+    }
+  }
+  if (message.empty()) {
+    message = "CudaPointcloudPreprocessor operating normally";
+  }
+  diagnostics_interface_->update_level_and_message(static_cast<int8_t>(worst_level), message);
+  diagnostics_interface_->publish(this->get_clock()->now());
 
   // Publish
   pub_->publish(std::move(output_pointcloud_ptr));
