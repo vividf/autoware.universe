@@ -22,6 +22,7 @@
 #include <autoware/universe_utils/ros/debug_publisher.hpp>
 #include <autoware/universe_utils/ros/polling_subscriber.hpp>
 #include <autoware/universe_utils/system/stop_watch.hpp>
+#include <autoware_utils/ros/diagnostics_interface.hpp>
 #include <cuda_blackboard/cuda_adaptation.hpp>
 #include <cuda_blackboard/cuda_blackboard_publisher.hpp>
 #include <cuda_blackboard/cuda_blackboard_subscriber.hpp>
@@ -93,6 +94,9 @@ private:
 
   tf2_ros::Buffer tf2_buffer_;
   tf2_ros::TransformListener tf2_listener_;
+
+  // Diagnostic
+  std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface> diagnostics_interface_;
 
   std::string base_frame_;
   std::deque<geometry_msgs::msg::TwistWithCovarianceStamped> twist_queue_;
