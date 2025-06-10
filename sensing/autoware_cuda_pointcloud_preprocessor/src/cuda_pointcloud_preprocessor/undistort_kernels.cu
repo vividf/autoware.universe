@@ -23,6 +23,8 @@
 namespace autoware::cuda_pointcloud_preprocessor
 {
 
+__device__ __constant__ double time_diff_threshold = 0.1;
+
 __host__ __device__ Eigen::Matrix3f skewSymmetric(const Eigen::Vector3f & v)
 {
   Eigen::Matrix3f m;
@@ -65,7 +67,8 @@ __host__ __device__ Eigen::Matrix4f transformationMatrixFromVelocity(
 }
 
 __global__ void undistort2DKernel(
-  InputPointType * input_points, int num_points, TwistStruct2D * twist_structs, int num_twists)
+  InputPointType * input_points, int num_points, TwistStruct2D * twist_structs, int num_twists,
+  int * mismatch_count)
 {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < num_points) {
@@ -88,6 +91,10 @@ __global__ void undistort2DKernel(
       point.time_stamp > twist.last_stamp_nsec ? point.time_stamp - twist.last_stamp_nsec : 0;
     double dt = 1e-9 * (dt_nsec);
 
+    if (dt > time_diff_threshold) {
+      atomicAdd(mismatch_count, 1);
+    }
+
     theta += twist.v_theta * dt;
     float d = twist.v_x * dt;
     x += d * cos(theta);
@@ -102,7 +109,8 @@ __global__ void undistort2DKernel(
 }
 
 __global__ void undistort3DKernel(
-  InputPointType * input_points, int num_points, TwistStruct3D * twist_structs, int num_twists)
+  InputPointType * input_points, int num_points, TwistStruct3D * twist_structs, int num_twists,
+  int * mismatch_count)
 {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < num_points) {
@@ -125,6 +133,10 @@ __global__ void undistort3DKernel(
       point.time_stamp > twist.last_stamp_nsec ? point.time_stamp - twist.last_stamp_nsec : 0;
     double dt = 1e-9 * (dt_nsec);
 
+    if (dt > time_diff_threshold) {
+      atomicAdd(mismatch_count, 1);
+    }
+
     Eigen::Matrix4f transform =
       cum_transform_buffer_map * transformationMatrixFromVelocity(v_map, w_map, dt);
     Eigen::Vector3f p(point.x, point.y, point.z);
@@ -138,18 +150,18 @@ __global__ void undistort3DKernel(
 
 void undistort2DLaunch(
   InputPointType * input_points, int num_points, TwistStruct2D * twist_structs, int num_twists,
-  int threads_per_block, int blocks_per_grid, cudaStream_t & stream)
+  int * mismatch_count, int threads_per_block, int blocks_per_grid, cudaStream_t & stream)
 {
   undistort2DKernel<<<blocks_per_grid, threads_per_block, 0, stream>>>(
-    input_points, num_points, twist_structs, num_twists);
+    input_points, num_points, twist_structs, num_twists, mismatch_count);
 }
 
 void undistort3DLaunch(
   InputPointType * input_points, int num_points, TwistStruct3D * twist_structs, int num_twists,
-  int threads_per_block, int blocks_per_grid, cudaStream_t & stream)
+  int * mismatch_count, int threads_per_block, int blocks_per_grid, cudaStream_t & stream)
 {
   undistort3DKernel<<<blocks_per_grid, threads_per_block, 0, stream>>>(
-    input_points, num_points, twist_structs, num_twists);
+    input_points, num_points, twist_structs, num_twists, mismatch_count);
 }
 
 void setupTwist2DStructs(
