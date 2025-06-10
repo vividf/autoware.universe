@@ -92,6 +92,25 @@ private:
     const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr pointcloud_msg);
   void imuCallback(const sensor_msgs::msg::Imu::ConstSharedPtr imu_msg);
 
+  // Helper Functions
+
+  void validatePointcloudLayout(
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_pointcloud_msg_ptr);
+  double getFirstPointTimestamp(
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_pointcloud_msg_ptr);
+
+  void updateTwistQueue(double first_point_stamp);
+  void updateImuQueue(double first_point_stamp);
+  std::optional<geometry_msgs::msg::TransformStamped> lookupTransformToBase(
+    const std::string & source_frame);
+  std::unique_ptr<cuda_blackboard::CudaPointCloud2> processPointcloud(
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_pointcloud_msg_ptr,
+    const geometry_msgs::msg::TransformStamped & transform_msg);
+
+  void publishDiagnostics(
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_pointcloud_msg_ptr,
+    const std::unique_ptr<cuda_blackboard::CudaPointCloud2> & output_pointcloud_ptr);
+
   tf2_ros::Buffer tf2_buffer_;
   tf2_ros::TransformListener tf2_listener_;
 
