@@ -373,17 +373,11 @@ void CudaPointcloudPreprocessorNode::pointcloudCallback(
   // Publish
   pub_->publish(std::move(output_pointcloud_ptr));
 
-  if (debug_publisher_) {
-    const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
-    debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
-      "debug/processing_time_ms", processing_time_ms);
-
-    double now_stamp_seconds = rclcpp::Time(this->get_clock()->now()).seconds();
-    double cloud_stamp_seconds = rclcpp::Time(input_pointcloud_msg_ptr->header.stamp).seconds();
-
-    debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
-      "debug/latency_ms", 1000.f * (now_stamp_seconds - cloud_stamp_seconds));
-  }
+  // Debug publisher
+  debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
+    "debug/processing_time_ms", processing_time_ms);
+  debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
+    "debug/latency_ms", pipeline_latency_ms);
 
   // Preallocate for next iteration
   cuda_pointcloud_preprocessor_->preallocateOutput();
