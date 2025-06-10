@@ -334,12 +334,12 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessorNode
 {
   sensor_msgs::PointCloud2ConstIterator<std::uint32_t> iter_stamp(
     *input_pointcloud_msg_ptr, "time_stamp");
-  std::uint32_t first_rel_stamp =
+  std::uint32_t first_point_rel_stamp =
     input_pointcloud_msg_ptr->width * input_pointcloud_msg_ptr->height > 0 ? *iter_stamp : 0;
 
   return cuda_pointcloud_preprocessor_->process(
     input_pointcloud_msg_ptr, transform_msg, twist_queue_, angular_velocity_queue_,
-    first_rel_stamp);
+    first_point_rel_stamp);
 }
 
 void CudaPointcloudPreprocessorNode::publishDiagnostics(
@@ -390,7 +390,7 @@ void CudaPointcloudPreprocessorNode::publishDiagnostics(
 
   for (const auto & diag : diagnostics) {
     diag->add_to_interface(*diagnostics_interface_);
-    if (const auto status = diag->evaluate_status()) {
+    if (const auto status = diag->evaluate_status(); status.has_value()) {
       worst_level = std::max(worst_level, status->first);
       if (!message.empty()) {
         message += " / ";
