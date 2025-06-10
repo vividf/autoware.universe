@@ -17,7 +17,6 @@
   <depend>autoware_internal_debug_msgs</depend>
   <depend>autoware_utils</depend>
   <depend>cv_bridge</depend>
-  <depend>diagnostic_updater</depend>
   <depend>image_transport</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
