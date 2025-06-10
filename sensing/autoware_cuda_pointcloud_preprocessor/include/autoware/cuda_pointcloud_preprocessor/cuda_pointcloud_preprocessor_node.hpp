@@ -115,7 +115,7 @@ private:
   tf2_ros::TransformListener tf2_listener_;
 
   // Diagnostic
-  std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface> diagnostics_interface_;
+  std::unique_ptr<autoware_utils::DiagnosticsInterface> diagnostics_interface_;
 
   std::string base_frame_;
   double processing_time_threshold_sec_;
