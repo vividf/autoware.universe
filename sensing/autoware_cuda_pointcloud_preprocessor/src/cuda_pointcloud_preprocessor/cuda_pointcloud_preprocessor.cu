@@ -426,6 +426,7 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessor::pr
     thrust::raw_pointer_cast(device_organized_points_.data()), device_transformed_points,
     num_organized_points_, transform_struct, threads_per_block_, blocks_per_grid, stream_);
 
+  // Crop box filter
   int crop_box_blocks_per_grid = std::min(blocks_per_grid, max_blocks_per_grid_);
   if (host_crop_box_structs_.size() > 0) {
     cropBoxLaunch(
@@ -436,18 +437,25 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessor::pr
     thrust::fill(thrust::device, device_crop_mask, device_crop_mask + num_organized_points_, 1);
   }
 
+  // Undistortion
+  int * d_mismatch_count;
+  cudaMalloc(&d_mismatch_count, sizeof(int));
+  cudaMemsetAsync(d_mismatch_count, 0, sizeof(int), stream_);
   if (
     undistortion_type_ == UndistortionType::Undistortion3D && device_twist_3d_structs_.size() > 0) {
     undistort3DLaunch(
       device_transformed_points, num_organized_points_, device_twist_3d_structs,
-      device_twist_3d_structs_.size(), threads_per_block_, blocks_per_grid, stream_);
+      device_twist_3d_structs_.size(), d_mismatch_count, threads_per_block_, blocks_per_grid,
+      stream_);
   } else if (
     undistortion_type_ == UndistortionType::Undistortion2D && device_twist_2d_structs_.size() > 0) {
     undistort2DLaunch(
       device_transformed_points, num_organized_points_, device_twist_2d_structs,
-      device_twist_2d_structs_.size(), threads_per_block_, blocks_per_grid, stream_);
+      device_twist_2d_structs_.size(), d_mismatch_count, threads_per_block_, blocks_per_grid,
+      stream_);
   }
 
+  // Ring outlier
   ringOutlierFilterLaunch(
     device_transformed_points, device_ring_outlier_mask, num_rings_, max_points_per_ring_,
     ring_outlier_parameters_.distance_ratio,
@@ -482,6 +490,12 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessor::pr
   }
 
   cudaStreamSynchronize(stream_);
+
+  int mismatch_count_host = 0;
+  cudaMemcpy(&mismatch_count_host, d_mismatch_count, sizeof(int), cudaMemcpyDeviceToHost);
+  cudaFree(d_mismatch_count);
+
+  this->latest_mismatch_count_ = mismatch_count_host;
 
   // Copy the transformed points back
   output_pointcloud_ptr_->row_step = num_output_points * sizeof(OutputPointType);

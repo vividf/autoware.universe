@@ -50,6 +50,7 @@ public:
   void setUndistortionType(const UndistortionType & undistortion_type);
 
   void preallocateOutput();
+  [[nodiscard]] int getLatestMismatchCount() const { return latest_mismatch_count_; }
 
   std::unique_ptr<cuda_blackboard::CudaPointCloud2> process(
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr input_pointcloud_msg_ptr,
@@ -78,6 +79,8 @@ private:
   int max_blocks_per_grid_{};
   const int threads_per_block_{256};
   cudaMemPool_t device_memory_pool_;
+
+  int latest_mismatch_count_{0};
 
   // Organizing buffers
   thrust::device_vector<InputPointType> device_input_points_;

@@ -20,7 +20,6 @@
 #include "autoware/pointcloud_preprocessor/diagnostics/distortion_corrector_diagnostics.hpp"
 #include "autoware/pointcloud_preprocessor/diagnostics/latency_diagnostics.hpp"
 #include "autoware/pointcloud_preprocessor/diagnostics/pass_rate_diagnostics.hpp"
-#include "autoware/pointcloud_preprocessor/distortion_corrector/distortion_corrector.hpp"
 
 #include <autoware/point_types/types.hpp>
 
@@ -64,6 +63,10 @@ CudaPointcloudPreprocessorNode::CudaPointcloudPreprocessorNode(
   ring_outlier_filter_parameters.object_length_threshold =
     declare_parameter<float>("object_length_threshold");
 
+  processing_time_threshold_sec_ = declare_parameter<double>("processing_time_threshold_sec");
+  timestamp_mismatch_fraction_threshold_ =
+    declare_parameter<double>("timestamp_mismatch_fraction_threshold");
+
   const auto crop_box_min_x_vector = declare_parameter<std::vector<double>>("crop_box.min_x");
   const auto crop_box_min_y_vector = declare_parameter<std::vector<double>>("crop_box.min_y");
   const auto crop_box_min_z_vector = declare_parameter<std::vector<double>>("crop_box.min_z");
@@ -96,7 +99,7 @@ CudaPointcloudPreprocessorNode::CudaPointcloudPreprocessorNode(
     crop_box_parameters.push_back(parameters);
   }
 
-  bool use_3d_undistortion = declare_parameter<bool>("use_3d_distortion_correction");
+  use_3d_undistortion_ = declare_parameter<bool>("use_3d_distortion_correction");
   bool use_imu = declare_parameter<bool>("use_imu");
 
   // Publisher
@@ -134,8 +137,8 @@ CudaPointcloudPreprocessorNode::CudaPointcloudPreprocessorNode(
 
   /* *INDENT-OFF* */
   CudaPointcloudPreprocessor::UndistortionType undistortion_type =
-    use_3d_undistortion ? CudaPointcloudPreprocessor::UndistortionType::Undistortion3D
-                        : CudaPointcloudPreprocessor::UndistortionType::Undistortion2D;
+    use_3d_undistortion_ ? CudaPointcloudPreprocessor::UndistortionType::Undistortion3D
+                         : CudaPointcloudPreprocessor::UndistortionType::Undistortion2D;
   /* *INDENT-ON* */
 
   cuda_pointcloud_preprocessor_ = std::make_unique<CudaPointcloudPreprocessor>();
@@ -315,6 +318,7 @@ void CudaPointcloudPreprocessorNode::pointcloudCallback(
     first_point_rel_stamp);
   output_pointcloud_ptr->header.frame_id = base_frame_;
 
+  // diagnostic
   const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
 
   const double pipeline_latency_ms =
@@ -325,17 +329,26 @@ void CudaPointcloudPreprocessorNode::pointcloudCallback(
 
   const int input_point_count =
     static_cast<int>(input_pointcloud_msg_ptr->width * input_pointcloud_msg_ptr->height);
-  // const int output_point_count =
-  //   static_cast<int>(output_pointcloud_ptr->width * output_pointcloud_ptr->height);
-  const int output_point_count = static_cast<int>(50000);
+  const int output_point_count =
+    static_cast<int>(output_pointcloud_ptr->width * output_pointcloud_ptr->height);
 
+  // TODO(vividf): count nan point
   const int skipped_nan_count = 0;
 
-  auto processing_time_threshold_ms_ = 0.05;
+  const int mismatch_count = cuda_pointcloud_preprocessor_->getLatestMismatchCount();
+  // TODO(vividf): use the number of points after cropbox instead of ring
+  const float mismatch_fraction = output_point_count > 0 ? static_cast<float>(mismatch_count) /
+                                                             static_cast<float>(output_point_count)
+                                                         : 0.0f;
+
+  auto distortion_corrector_diag =
+    std::make_shared<autoware::pointcloud_preprocessor::DistortionCorrectorDiagnostics>(
+      mismatch_count, mismatch_fraction, use_3d_undistortion_, false,
+      timestamp_mismatch_fraction_threshold_);
 
   auto latency_diag = std::make_shared<autoware::pointcloud_preprocessor::LatencyDiagnostics>(
     input_pointcloud_msg_ptr->header.stamp, processing_time_ms, pipeline_latency_ms,
-    processing_time_threshold_ms_);
+    processing_time_threshold_sec_ * 1000.0);
 
   auto pass_rate_diag = std::make_shared<autoware::pointcloud_preprocessor::PassRateDiagnostics>(
     input_point_count, output_point_count);
@@ -346,7 +359,7 @@ void CudaPointcloudPreprocessorNode::pointcloudCallback(
   diagnostics_interface_->clear();
 
   std::vector<std::shared_ptr<const autoware::pointcloud_preprocessor::DiagnosticsBase>>
-    diagnostics = {latency_diag, pass_rate_diag, crop_box_diag};
+    diagnostics = {latency_diag, pass_rate_diag, crop_box_diag, distortion_corrector_diag};
 
   int worst_level = diagnostic_msgs::msg::DiagnosticStatus::OK;
   std::string message;

@@ -99,6 +99,9 @@ private:
   std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface> diagnostics_interface_;
 
   std::string base_frame_;
+  double processing_time_threshold_sec_;
+  double timestamp_mismatch_fraction_threshold_;
+  bool use_3d_undistortion_;
   std::deque<geometry_msgs::msg::TwistWithCovarianceStamped> twist_queue_;
   std::deque<geometry_msgs::msg::Vector3Stamped> angular_velocity_queue_;
 
