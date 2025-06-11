@@ -50,10 +50,12 @@ public:
   void setUndistortionType(const UndistortionType & undistortion_type);
 
   void preallocateOutput();
-  [[nodiscard]] int getLatestMismatchCount() const
+  [[nodiscard]] int getMismatchCount() const { return static_cast<int>(mismatch_count_); }
+  [[nodiscard]] int getCropBoxPassedPoints() const
   {
-    return static_cast<int>(latest_mismatch_count_);
+    return static_cast<int>(num_crop_box_passed_points_);
   }
+  [[nodiscard]] int getNumNanPoints() const { return static_cast<int>(num_nan_points_); }
 
   std::unique_ptr<cuda_blackboard::CudaPointCloud2> process(
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr input_pointcloud_msg_ptr,
@@ -83,7 +85,9 @@ private:
   const int threads_per_block_{256};
   cudaMemPool_t device_memory_pool_;
 
-  std::uint32_t latest_mismatch_count_{0};
+  std::uint32_t mismatch_count_{0};
+  std::uint32_t num_crop_box_passed_points_{0};
+  std::uint32_t num_nan_points_{0};
 
   // Organizing buffers
   thrust::device_vector<InputPointType> device_input_points_;
@@ -102,6 +106,7 @@ private:
   thrust::device_vector<InputPointType> device_transformed_points_{};
   thrust::device_vector<OutputPointType> device_output_points_{};
   thrust::device_vector<std::uint32_t> device_crop_mask_{};
+  thrust::device_vector<std::uint8_t> device_nan_mask_{};
   thrust::device_vector<std::uint8_t> device_mismatch_mask_{};
   thrust::device_vector<std::uint32_t> device_ring_outlier_mask_{};
   thrust::device_vector<std::uint32_t> device_indices_{};

@@ -257,6 +257,8 @@ void CudaPointcloudPreprocessor::organizePointcloud()
       device_transformed_points_.begin(), device_transformed_points_.end(), InputPointType{});
     device_crop_mask_.resize(num_organized_points_);
     thrust::fill(device_crop_mask_.begin(), device_crop_mask_.end(), 0);
+    device_nan_mask_.resize(num_organized_points_);
+    thrust::fill(device_nan_mask_.begin(), device_nan_mask_.end(), 0);
     device_mismatch_mask_.resize(num_organized_points_);
     thrust::fill(device_mismatch_mask_.begin(), device_mismatch_mask_.end(), 0);
     device_ring_outlier_mask_.resize(num_organized_points_);
@@ -373,6 +375,7 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessor::pr
     device_transformed_points_.begin(), device_transformed_points_.end(), InputPointType{});
   thrust::fill(device_ring_outlier_mask_.begin(), device_ring_outlier_mask_.end(), 0);
   thrust::fill(device_mismatch_mask_.begin(), device_mismatch_mask_.end(), 0);
+  thrust::fill(device_nan_mask_.begin(), device_nan_mask_.end(), 0);
   thrust::fill(device_crop_mask_.begin(), device_crop_mask_.end(), 0);
 
   tf2::Quaternion rotation_quaternion(
@@ -419,6 +422,7 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessor::pr
   InputPointType * device_transformed_points =
     thrust::raw_pointer_cast(device_transformed_points_.data());
   std::uint32_t * device_crop_mask = thrust::raw_pointer_cast(device_crop_mask_.data());
+  std::uint8_t * device_nan_mask = thrust::raw_pointer_cast(device_nan_mask_.data());
   std::uint8_t * device_mismatch_mask = thrust::raw_pointer_cast(device_mismatch_mask_.data());
   std::uint32_t * device_ring_outlier_mask =
     thrust::raw_pointer_cast(device_ring_outlier_mask_.data());
@@ -435,7 +439,7 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessor::pr
   int crop_box_blocks_per_grid = std::min(blocks_per_grid, max_blocks_per_grid_);
   if (host_crop_box_structs_.size() > 0) {
     cropBoxLaunch(
-      device_transformed_points, device_crop_mask, num_organized_points_,
+      device_transformed_points, device_crop_mask, device_nan_mask, num_organized_points_,
       thrust::raw_pointer_cast(device_crop_box_structs_.data()), host_crop_box_structs_.size(),
       crop_box_blocks_per_grid, threads_per_block_, stream_);
   } else {
@@ -485,10 +489,19 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessor::pr
 
   cudaStreamSynchronize(stream_);
 
-  std::uint32_t mismatch_count_host = thrust::count(
+  // Get information and extract points after filters
+  std::uint32_t num_crop_box_passed_points =
+    thrust::count(thrust::device, device_crop_mask, device_crop_mask + num_organized_points_, 1);
+
+  std::uint32_t num_nan_points =
+    thrust::count(thrust::device, device_nan_mask, device_nan_mask + num_organized_points_, 1);
+
+  std::uint32_t mismatch_count = thrust::count(
     thrust::device, device_mismatch_mask, device_mismatch_mask + num_organized_points_, 1);
 
-  this->latest_mismatch_count_ = mismatch_count_host;
+  this->num_nan_points_ = num_nan_points;
+  this->num_crop_box_passed_points_ = num_crop_box_passed_points;
+  this->mismatch_count_ = mismatch_count;
 
   if (num_output_points > 0) {
     extractPointsLaunch(
