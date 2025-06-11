@@ -357,14 +357,15 @@ void CudaPointcloudPreprocessorNode::publishDiagnostics(
     static_cast<int>(input_pointcloud_msg_ptr->width * input_pointcloud_msg_ptr->height);
   const int output_point_count =
     static_cast<int>(output_pointcloud_ptr->width * output_pointcloud_ptr->height);
-  // TODO(vividf): fix this
-  const int skipped_nan_count = 0;
+  const int skipped_nan_count = cuda_pointcloud_preprocessor_->getNumNanPoints();
 
-  const int mismatch_count = cuda_pointcloud_preprocessor_->getLatestMismatchCount();
-  // TODO(vividf): use the number of points after cropbox instead of ring
-  const float mismatch_fraction = output_point_count > 0 ? static_cast<float>(mismatch_count) /
-                                                             static_cast<float>(output_point_count)
-                                                         : 0.0f;
+  const int mismatch_count = cuda_pointcloud_preprocessor_->getMismatchCount();
+  const int num_undistorted_points = cuda_pointcloud_preprocessor_->getCropBoxPassedPoints();
+
+  const float mismatch_fraction =
+    output_point_count > 0
+      ? static_cast<float>(mismatch_count) / static_cast<float>(num_undistorted_points)
+      : 0.0f;
 
   auto latency_diag = std::make_shared<autoware::pointcloud_preprocessor::LatencyDiagnostics>(
     input_pointcloud_msg_ptr->header.stamp, processing_time_ms, pipeline_latency_ms,
