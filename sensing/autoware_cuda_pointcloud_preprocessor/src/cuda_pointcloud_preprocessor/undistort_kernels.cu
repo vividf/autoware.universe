@@ -68,7 +68,7 @@ __host__ __device__ Eigen::Matrix4f transformationMatrixFromVelocity(
 
 __global__ void undistort2DKernel(
   InputPointType * input_points, int num_points, TwistStruct2D * twist_structs, int num_twists,
-  int * mismatch_count)
+  std::uint8_t * __restrict__ mismatch_mask)
 {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < num_points) {
@@ -91,9 +91,7 @@ __global__ void undistort2DKernel(
       point.time_stamp > twist.last_stamp_nsec ? point.time_stamp - twist.last_stamp_nsec : 0;
     double dt = 1e-9 * (dt_nsec);
 
-    if (dt > time_diff_threshold) {
-      atomicAdd(mismatch_count, 1);
-    }
+    mismatch_mask[idx] = static_cast<std::uint8_t>(dt > time_diff_threshold);
 
     theta += twist.v_theta * dt;
     float d = twist.v_x * dt;
@@ -110,7 +108,7 @@ __global__ void undistort2DKernel(
 
 __global__ void undistort3DKernel(
   InputPointType * input_points, int num_points, TwistStruct3D * twist_structs, int num_twists,
-  int * mismatch_count)
+  std::uint8_t * __restrict__ mismatch_mask)
 {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < num_points) {
@@ -133,9 +131,7 @@ __global__ void undistort3DKernel(
       point.time_stamp > twist.last_stamp_nsec ? point.time_stamp - twist.last_stamp_nsec : 0;
     double dt = 1e-9 * (dt_nsec);
 
-    if (dt > time_diff_threshold) {
-      atomicAdd(mismatch_count, 1);
-    }
+    mismatch_mask[idx] = static_cast<std::uint8_t>(dt > time_diff_threshold);
 
     Eigen::Matrix4f transform =
       cum_transform_buffer_map * transformationMatrixFromVelocity(v_map, w_map, dt);
@@ -150,18 +146,18 @@ __global__ void undistort3DKernel(
 
 void undistort2DLaunch(
   InputPointType * input_points, int num_points, TwistStruct2D * twist_structs, int num_twists,
-  int * mismatch_count, int threads_per_block, int blocks_per_grid, cudaStream_t & stream)
+  std::uint8_t * mismatch_mask, int threads_per_block, int blocks_per_grid, cudaStream_t & stream)
 {
   undistort2DKernel<<<blocks_per_grid, threads_per_block, 0, stream>>>(
-    input_points, num_points, twist_structs, num_twists, mismatch_count);
+    input_points, num_points, twist_structs, num_twists, mismatch_mask);
 }
 
 void undistort3DLaunch(
   InputPointType * input_points, int num_points, TwistStruct3D * twist_structs, int num_twists,
-  int * mismatch_count, int threads_per_block, int blocks_per_grid, cudaStream_t & stream)
+  std::uint8_t * mismatch_mask, int threads_per_block, int blocks_per_grid, cudaStream_t & stream)
 {
   undistort3DKernel<<<blocks_per_grid, threads_per_block, 0, stream>>>(
-    input_points, num_points, twist_structs, num_twists, mismatch_count);
+    input_points, num_points, twist_structs, num_twists, mismatch_mask);
 }
 
 void setupTwist2DStructs(

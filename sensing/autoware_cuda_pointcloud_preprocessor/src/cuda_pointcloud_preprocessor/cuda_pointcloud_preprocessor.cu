@@ -27,6 +27,7 @@
 
 #include <cuda_runtime.h>
 #include <tf2/utils.h>
+#include <thrust/count.h>
 #include <thrust/execution_policy.h>
 #include <thrust/reduce.h>
 #include <thrust/scan.h>
@@ -246,6 +247,9 @@ void CudaPointcloudPreprocessor::organizePointcloud()
 
     device_transformed_points_.resize(num_organized_points_);
     device_crop_mask_.resize(num_organized_points_);
+    thrust::fill(device_crop_mask_.begin(), device_crop_mask_.end(), 0);
+    device_mismatch_mask_.resize(num_organized_points_);
+    thrust::fill(device_mismatch_mask_.begin(), device_mismatch_mask_.end(), 0);
     device_ring_outlier_mask_.resize(num_organized_points_);
     device_indices_.resize(num_organized_points_);
 
@@ -331,6 +335,13 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessor::pr
 
   organizePointcloud();
 
+  // Reset all contents in the device vector
+  thrust::fill(
+    device_transformed_points_.begin(), device_transformed_points_.end(), InputPointType{});
+  thrust::fill(device_ring_outlier_mask_.begin(), device_ring_outlier_mask_.end(), 0);
+  thrust::fill(device_mismatch_mask_.begin(), device_mismatch_mask_.end(), 0);
+  thrust::fill(device_crop_mask_.begin(), device_crop_mask_.end(), 0);
+
   tf2::Quaternion rotation_quaternion(
     transform_msg.transform.rotation.x, transform_msg.transform.rotation.y,
     transform_msg.transform.rotation.z, transform_msg.transform.rotation.w);
@@ -375,6 +386,7 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessor::pr
   InputPointType * device_transformed_points =
     thrust::raw_pointer_cast(device_transformed_points_.data());
   std::uint32_t * device_crop_mask = thrust::raw_pointer_cast(device_crop_mask_.data());
+  std::uint8_t * device_mismatch_mask = thrust::raw_pointer_cast(device_mismatch_mask_.data());
   std::uint32_t * device_ring_outlier_mask =
     thrust::raw_pointer_cast(device_ring_outlier_mask_.data());
   std::uint32_t * device_indices = thrust::raw_pointer_cast(device_indices_.data());
@@ -397,20 +409,17 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessor::pr
   }
 
   // Undistortion
-  int * d_mismatch_count;
-  cudaMalloc(&d_mismatch_count, sizeof(int));
-  cudaMemsetAsync(d_mismatch_count, 0, sizeof(int), stream_);
   if (
     undistortion_type_ == UndistortionType::Undistortion3D && device_twist_3d_structs_.size() > 0) {
     undistort3DLaunch(
       device_transformed_points, num_organized_points_, device_twist_3d_structs,
-      device_twist_3d_structs_.size(), d_mismatch_count, threads_per_block_, blocks_per_grid,
+      device_twist_3d_structs_.size(), device_mismatch_mask, threads_per_block_, blocks_per_grid,
       stream_);
   } else if (
     undistortion_type_ == UndistortionType::Undistortion2D && device_twist_2d_structs_.size() > 0) {
     undistort2DLaunch(
       device_transformed_points, num_organized_points_, device_twist_2d_structs,
-      device_twist_2d_structs_.size(), d_mismatch_count, threads_per_block_, blocks_per_grid,
+      device_twist_2d_structs_.size(), device_mismatch_mask, threads_per_block_, blocks_per_grid,
       stream_);
   }
 
@@ -434,7 +443,13 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessor::pr
   cudaMemcpyAsync(
     &num_output_points, device_indices + num_organized_points_ - 1, sizeof(std::uint32_t),
     cudaMemcpyDeviceToHost, stream_);
+
   cudaStreamSynchronize(stream_);
+
+  std::uint32_t mismatch_count_host = thrust::count(
+    thrust::device, device_mismatch_mask, device_mismatch_mask + num_organized_points_, 1);
+
+  this->latest_mismatch_count_ = mismatch_count_host;
 
   if (num_output_points > 0) {
     extractPointsLaunch(
@@ -444,12 +459,6 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessor::pr
   }
 
   cudaStreamSynchronize(stream_);
-
-  int mismatch_count_host = 0;
-  cudaMemcpy(&mismatch_count_host, d_mismatch_count, sizeof(int), cudaMemcpyDeviceToHost);
-  cudaFree(d_mismatch_count);
-
-  this->latest_mismatch_count_ = mismatch_count_host;
 
   // Copy the transformed points back
   output_pointcloud_ptr_->row_step = num_output_points * sizeof(OutputPointType);
