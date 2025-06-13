@@ -499,9 +499,9 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessor::pr
   std::uint32_t mismatch_count = thrust::count(
     thrust::device, device_mismatch_mask, device_mismatch_mask + num_organized_points_, 1);
 
-  this->num_nan_points_ = num_nan_points;
-  this->num_crop_box_passed_points_ = num_crop_box_passed_points;
-  this->mismatch_count_ = mismatch_count;
+  stats_.num_nan_points = static_cast<int>(num_nan_points);
+  stats_.num_crop_box_passed_points = static_cast<int>(num_crop_box_passed_points);
+  stats_.mismatch_count = static_cast<int>(mismatch_count);
 
   if (num_output_points > 0) {
     extractPointsLaunch(
