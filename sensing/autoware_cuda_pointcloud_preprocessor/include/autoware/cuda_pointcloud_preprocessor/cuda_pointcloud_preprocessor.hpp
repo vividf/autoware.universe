@@ -37,6 +37,13 @@
 namespace autoware::cuda_pointcloud_preprocessor
 {
 
+struct ProcessingStats
+{
+  int mismatch_count{0};
+  int num_crop_box_passed_points{0};
+  int num_nan_points{0};
+};
+
 class CudaPointcloudPreprocessor
 {
 public:
@@ -50,12 +57,7 @@ public:
   void setUndistortionType(const UndistortionType & undistortion_type);
 
   void preallocateOutput();
-  [[nodiscard]] int getMismatchCount() const { return static_cast<int>(mismatch_count_); }
-  [[nodiscard]] int getCropBoxPassedPoints() const
-  {
-    return static_cast<int>(num_crop_box_passed_points_);
-  }
-  [[nodiscard]] int getNumNanPoints() const { return static_cast<int>(num_nan_points_); }
+  [[nodiscard]] ProcessingStats getProcessingStats() const { return stats_; }
 
   std::unique_ptr<cuda_blackboard::CudaPointCloud2> process(
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr input_pointcloud_msg_ptr,
@@ -85,9 +87,7 @@ private:
   const int threads_per_block_{256};
   cudaMemPool_t device_memory_pool_;
 
-  std::uint32_t mismatch_count_{0};
-  std::uint32_t num_crop_box_passed_points_{0};
-  std::uint32_t num_nan_points_{0};
+  ProcessingStats stats_;
 
   // Organizing buffers
   thrust::device_vector<InputPointType> device_input_points_;
