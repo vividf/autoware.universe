@@ -57,6 +57,8 @@ CudaPointcloudPreprocessorNode::CudaPointcloudPreprocessorNode(
 
   // Parameters
   base_frame_ = declare_parameter<std::string>("base_frame");
+  use_3d_undistortion_ = declare_parameter<bool>("use_3d_distortion_correction");
+  use_imu_ = declare_parameter<bool>("use_imu");
 
   RingOutlierFilterParameters ring_outlier_filter_parameters;
   ring_outlier_filter_parameters.distance_ratio = declare_parameter<float>("distance_ratio");
@@ -99,9 +101,6 @@ CudaPointcloudPreprocessorNode::CudaPointcloudPreprocessorNode(
     crop_box_parameters.push_back(parameters);
   }
 
-  use_3d_undistortion_ = declare_parameter<bool>("use_3d_distortion_correction");
-  bool use_imu = declare_parameter<bool>("use_imu");
-
   // Publisher
   /* *INDENT-OFF* */
   pub_ =
@@ -125,13 +124,13 @@ CudaPointcloudPreprocessorNode::CudaPointcloudPreprocessorNode(
   // To avoid individual tuning, a sufficiently large value is hard-coded.
   // With 100, it can handle twist updates up to 1000Hz if the pointcloud is 10Hz.
   const uint16_t TWIST_QUEUE_SIZE = 100;
-  twist_sub_ = universe_utils::InterProcessPollingSubscriber<
-    geometry_msgs::msg::TwistWithCovarianceStamped, universe_utils::polling_policy::All>::
+  twist_sub_ = autoware_utils::InterProcessPollingSubscriber<
+    geometry_msgs::msg::TwistWithCovarianceStamped, autoware_utils::polling_policy::All>::
     create_subscription(this, "~/input/twist", rclcpp::QoS(TWIST_QUEUE_SIZE));
 
-  if (use_imu) {
-    imu_sub_ = universe_utils::InterProcessPollingSubscriber<
-      sensor_msgs::msg::Imu, universe_utils::polling_policy::All>::
+  if (use_imu_) {
+    imu_sub_ = autoware_utils::InterProcessPollingSubscriber<
+      sensor_msgs::msg::Imu, autoware_utils::polling_policy::All>::
       create_subscription(this, "~/input/imu", rclcpp::QoS(TWIST_QUEUE_SIZE));
   }
 
@@ -148,8 +147,8 @@ CudaPointcloudPreprocessorNode::CudaPointcloudPreprocessorNode(
 
   // initialize debug tool
   {
-    using autoware::universe_utils::DebugPublisher;
-    using autoware::universe_utils::StopWatch;
+    using autoware_utils::DebugPublisher;
+    using autoware_utils::StopWatch;
 
     stop_watch_ptr_ = std::make_unique<StopWatch<std::chrono::milliseconds>>();
     debug_publisher_ = std::make_unique<DebugPublisher>(this, "cuda_pointcloud_preprocessor");
@@ -303,7 +302,7 @@ double CudaPointcloudPreprocessorNode::getFirstPointTimestamp(
 void CudaPointcloudPreprocessorNode::updateTwistQueue(double first_point_stamp)
 {
   std::vector<geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr> twist_msgs =
-    twist_sub_->takeData();
+    twist_sub_->take_data();
   for (const auto & msg : twist_msgs) {
     twistCallback(msg);
   }
@@ -317,7 +316,7 @@ void CudaPointcloudPreprocessorNode::updateImuQueue(double first_point_stamp)
 {
   if (!imu_sub_) return;
 
-  std::vector<sensor_msgs::msg::Imu::ConstSharedPtr> imu_msgs = imu_sub_->takeData();
+  std::vector<sensor_msgs::msg::Imu::ConstSharedPtr> imu_msgs = imu_sub_->take_data();
   for (const auto & msg : imu_msgs) {
     imuCallback(msg);
   }
@@ -416,9 +415,9 @@ void CudaPointcloudPreprocessorNode::publishDiagnostics(
   diagnostics_interface_->update_level_and_message(static_cast<int8_t>(worst_level), message);
   diagnostics_interface_->publish(this->get_clock()->now());
 
-  debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "debug/processing_time_ms", processing_time_ms);
-  debug_publisher_->publish<tier4_debug_msgs::msg::Float64Stamped>(
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "debug/latency_ms", pipeline_latency_ms);
 }
 
