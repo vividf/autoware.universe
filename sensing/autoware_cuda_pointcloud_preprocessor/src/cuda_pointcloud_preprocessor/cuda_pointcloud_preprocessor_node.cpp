@@ -356,25 +356,26 @@ void CudaPointcloudPreprocessorNode::publishDiagnostics(
   const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_pointcloud_msg_ptr,
   const std::unique_ptr<cuda_blackboard::CudaPointCloud2> & output_pointcloud_ptr)
 {
-  const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
-  const double pipeline_latency_ms =
+  const auto processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
+  const auto pipeline_latency_ms =
     std::chrono::duration<double, std::milli>(
       std::chrono::nanoseconds(
         (this->get_clock()->now() - input_pointcloud_msg_ptr->header.stamp).nanoseconds()))
       .count();
 
-  const int input_point_count =
+  const auto input_point_count =
     static_cast<int>(input_pointcloud_msg_ptr->width * input_pointcloud_msg_ptr->height);
-  const int output_point_count =
+  const auto output_point_count =
     static_cast<int>(output_pointcloud_ptr->width * output_pointcloud_ptr->height);
-  const int skipped_nan_count = cuda_pointcloud_preprocessor_->getNumNanPoints();
+  const auto stats = cuda_pointcloud_preprocessor_->getProcessingStats();
 
-  const int mismatch_count = cuda_pointcloud_preprocessor_->getMismatchCount();
-  const int num_undistorted_points = cuda_pointcloud_preprocessor_->getCropBoxPassedPoints();
+  const auto skipped_nan_count = stats.num_nan_points;
+  const auto mismatch_count = stats.mismatch_count;
+  const auto num_undistorted_points = stats.num_crop_box_passed_points;
 
-  const float mismatch_fraction =
-    output_point_count > 0
-      ? static_cast<float>(mismatch_count) / static_cast<float>(num_undistorted_points)
+  const auto mismatch_fraction =
+    num_undistorted_points > 0
+      ? static_cast<float>(stats.mismatch_count) / static_cast<float>(num_undistorted_points)
       : 0.0f;
 
   auto latency_diag = std::make_shared<autoware::pointcloud_preprocessor::LatencyDiagnostics>(
