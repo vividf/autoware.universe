@@ -19,10 +19,10 @@
 #include "autoware/cuda_pointcloud_preprocessor/point_types.hpp"
 
 #include <autoware/point_types/types.hpp>
-#include <autoware/universe_utils/ros/debug_publisher.hpp>
-#include <autoware/universe_utils/ros/polling_subscriber.hpp>
-#include <autoware/universe_utils/system/stop_watch.hpp>
+#include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/ros/diagnostics_interface.hpp>
+#include <autoware_utils/ros/polling_subscriber.hpp>
+#include <autoware_utils/system/stop_watch.hpp>
 #include <cuda_blackboard/cuda_adaptation.hpp>
 #include <cuda_blackboard/cuda_blackboard_publisher.hpp>
 #include <cuda_blackboard/cuda_blackboard_subscriber.hpp>
@@ -118,18 +118,20 @@ private:
   std::unique_ptr<autoware_utils::DiagnosticsInterface> diagnostics_interface_;
 
   std::string base_frame_;
+  bool use_3d_undistortion_;
+  bool use_imu_;
   double processing_time_threshold_sec_;
   double timestamp_mismatch_fraction_threshold_;
-  bool use_3d_undistortion_;
+
   std::deque<geometry_msgs::msg::TwistWithCovarianceStamped> twist_queue_;
   std::deque<geometry_msgs::msg::Vector3Stamped> angular_velocity_queue_;
 
   // Subscribers
-  autoware::universe_utils::InterProcessPollingSubscriber<
-    sensor_msgs::msg::Imu, autoware::universe_utils::polling_policy::All>::SharedPtr imu_sub_;
-  autoware::universe_utils::InterProcessPollingSubscriber<
-    geometry_msgs::msg::TwistWithCovarianceStamped,
-    autoware::universe_utils::polling_policy::All>::SharedPtr twist_sub_;
+  autoware_utils::InterProcessPollingSubscriber<
+    sensor_msgs::msg::Imu, autoware_utils::polling_policy::All>::SharedPtr imu_sub_;
+  autoware_utils::InterProcessPollingSubscriber<
+    geometry_msgs::msg::TwistWithCovarianceStamped, autoware_utils::polling_policy::All>::SharedPtr
+    twist_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_sub_{};
 
   // CUDA pub
@@ -137,8 +139,8 @@ private:
 
   std::unique_ptr<CudaPointcloudPreprocessor> cuda_pointcloud_preprocessor_;
 
-  std::unique_ptr<autoware::universe_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
-  std::unique_ptr<autoware::universe_utils::DebugPublisher> debug_publisher_;
+  std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
+  std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_;
 };
 
 }  // namespace autoware::cuda_pointcloud_preprocessor
