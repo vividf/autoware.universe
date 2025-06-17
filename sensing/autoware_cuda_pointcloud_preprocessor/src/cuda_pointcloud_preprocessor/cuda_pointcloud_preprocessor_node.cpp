@@ -267,11 +267,11 @@ void CudaPointcloudPreprocessorNode::pointcloudCallback(
   const auto transform_msg_opt = lookupTransformToBase(input_pointcloud_msg.header.frame_id);
   if (!transform_msg_opt.has_value()) return;
 
-  auto output_pointcloud = processPointcloud(input_pointcloud_msg, *transform_msg_opt);
-  output_pointcloud->header.frame_id = base_frame_;
+  auto output_pointcloud_ptr = processPointcloud(input_pointcloud_msg, *transform_msg_opt);
+  output_pointcloud_ptr->header.frame_id = base_frame_;
 
-  publishDiagnostics(input_pointcloud_msg, output_pointcloud);
-  pub_->publish(std::move(output_pointcloud));
+  publishDiagnostics(input_pointcloud_msg, output_pointcloud_ptr);
+  pub_->publish(std::move(output_pointcloud_ptr));
 
   cuda_pointcloud_preprocessor_->preallocateOutput();
 }
