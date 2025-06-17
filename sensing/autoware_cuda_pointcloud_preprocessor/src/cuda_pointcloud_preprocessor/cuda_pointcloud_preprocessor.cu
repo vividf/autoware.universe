@@ -491,13 +491,13 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessor::pr
 
   // Get information and extract points after filters
   std::uint32_t num_crop_box_passed_points =
-    thrust::count(thrust::device, device_crop_mask, device_crop_mask + num_organized_points_, 1);
+    thrust::count(thrust::device, device_crop_mask_.begin(), device_crop_mask_.end(), 1);
 
   std::uint32_t num_nan_points =
-    thrust::count(thrust::device, device_nan_mask, device_nan_mask + num_organized_points_, 1);
+    thrust::count(thrust::device, device_nan_mask_.begin(), device_nan_mask_.end(), 1);
 
-  std::uint32_t mismatch_count = thrust::count(
-    thrust::device, device_mismatch_mask, device_mismatch_mask + num_organized_points_, 1);
+  std::uint32_t mismatch_count =
+    thrust::count(thrust::device, device_mismatch_mask_.begin(), device_mismatch_mask_.end(), 1);
 
   stats_.num_nan_points = static_cast<int>(num_nan_points);
   stats_.num_crop_box_passed_points = static_cast<int>(num_crop_box_passed_points);
