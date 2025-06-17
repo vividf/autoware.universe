@@ -146,18 +146,20 @@ __global__ void undistort3DKernel(
 
 void undistort2DLaunch(
   InputPointType * input_points, int num_points, TwistStruct2D * twist_structs, int num_twists,
-  std::uint8_t * mismatch_mask, int threads_per_block, int blocks_per_grid, cudaStream_t & stream)
+  std::uint8_t * output_mismatch_mask, int threads_per_block, int blocks_per_grid,
+  cudaStream_t & stream)
 {
   undistort2DKernel<<<blocks_per_grid, threads_per_block, 0, stream>>>(
-    input_points, num_points, twist_structs, num_twists, mismatch_mask);
+    input_points, num_points, twist_structs, num_twists, output_mismatch_mask);
 }
 
 void undistort3DLaunch(
   InputPointType * input_points, int num_points, TwistStruct3D * twist_structs, int num_twists,
-  std::uint8_t * mismatch_mask, int threads_per_block, int blocks_per_grid, cudaStream_t & stream)
+  std::uint8_t * output_mismatch_mask, int threads_per_block, int blocks_per_grid,
+  cudaStream_t & stream)
 {
   undistort3DKernel<<<blocks_per_grid, threads_per_block, 0, stream>>>(
-    input_points, num_points, twist_structs, num_twists, mismatch_mask);
+    input_points, num_points, twist_structs, num_twists, output_mismatch_mask);
 }
 
 void setupTwist2DStructs(

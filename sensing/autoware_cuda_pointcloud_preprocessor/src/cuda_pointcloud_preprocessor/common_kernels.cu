@@ -110,12 +110,13 @@ void transformPointsLaunch(
 }
 
 void cropBoxLaunch(
-  InputPointType * d_points, std::uint32_t * output_mask, std::uint8_t * nan_mask, int num_points,
-  const CropBoxParameters * crop_box_parameters_ptr, int num_crop_boxes, int threads_per_block,
-  int blocks_per_grid, cudaStream_t & stream)
+  InputPointType * d_points, std::uint32_t * output_crop_mask, std::uint8_t * output_nan_mask,
+  int num_points, const CropBoxParameters * crop_box_parameters_ptr, int num_crop_boxes,
+  int threads_per_block, int blocks_per_grid, cudaStream_t & stream)
 {
   cropBoxKernel<<<blocks_per_grid, threads_per_block, 0, stream>>>(
-    d_points, output_mask, nan_mask, num_points, crop_box_parameters_ptr, num_crop_boxes);
+    d_points, output_crop_mask, output_nan_mask, num_points, crop_box_parameters_ptr,
+    num_crop_boxes);
 }
 
 void combineMasksLaunch(
