@@ -260,14 +260,16 @@ void CudaPointcloudPreprocessorNode::pointcloudCallback(
   const auto & input_pointcloud_msg = *input_pointcloud_msg_ptr;
 
   validatePointcloudLayout(input_pointcloud_msg);
-  const double first_point_stamp = getFirstPointTimestamp(input_pointcloud_msg);
+  const auto [first_point_stamp, first_point_rel_stamp] =
+    getFirstPointTimeInfo(input_pointcloud_msg);
   updateTwistQueue(first_point_stamp);
   updateImuQueue(first_point_stamp);
 
   const auto transform_msg_opt = lookupTransformToBase(input_pointcloud_msg.header.frame_id);
   if (!transform_msg_opt.has_value()) return;
 
-  auto output_pointcloud_ptr = processPointcloud(input_pointcloud_msg, *transform_msg_opt);
+  auto output_pointcloud_ptr =
+    processPointcloud(input_pointcloud_msg, *transform_msg_opt, first_point_rel_stamp);
   output_pointcloud_ptr->header.frame_id = base_frame_;
 
   publishDiagnostics(input_pointcloud_msg, output_pointcloud_ptr);
@@ -290,15 +292,17 @@ void CudaPointcloudPreprocessorNode::validatePointcloudLayout(
     "PointStruct and PointXYZIRCAEDT must have the same size");
 }
 
-double CudaPointcloudPreprocessorNode::getFirstPointTimestamp(
+std::pair<double, std::uint32_t> CudaPointcloudPreprocessorNode::getFirstPointTimeInfo(
   const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg)
 {
   sensor_msgs::PointCloud2ConstIterator<std::uint32_t> iter_stamp(
     input_pointcloud_msg, "time_stamp");
   auto num_points = input_pointcloud_msg.width * input_pointcloud_msg.height;
   std::uint32_t first_point_rel_stamp = num_points > 0 ? *iter_stamp : 0;
-  return input_pointcloud_msg.header.stamp.sec + input_pointcloud_msg.header.stamp.nanosec * 1e-9 +
-         first_point_rel_stamp * 1e-9;
+  double first_point_stamp = input_pointcloud_msg.header.stamp.sec +
+                             input_pointcloud_msg.header.stamp.nanosec * 1e-9 +
+                             first_point_rel_stamp * 1e-9;
+  return {first_point_stamp, first_point_rel_stamp};
 }
 
 void CudaPointcloudPreprocessorNode::updateTwistQueue(double first_point_stamp)
@@ -341,13 +345,9 @@ CudaPointcloudPreprocessorNode::lookupTransformToBase(const std::string & source
 
 std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessorNode::processPointcloud(
   const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg,
-  const geometry_msgs::msg::TransformStamped & transform_msg)
+  const geometry_msgs::msg::TransformStamped & transform_msg,
+  const std::uint32_t first_point_rel_stamp)
 {
-  sensor_msgs::PointCloud2ConstIterator<std::uint32_t> iter_stamp(
-    input_pointcloud_msg, "time_stamp");
-  std::uint32_t first_point_rel_stamp =
-    input_pointcloud_msg.width * input_pointcloud_msg.height > 0 ? *iter_stamp : 0;
-
   return cuda_pointcloud_preprocessor_->process(
     input_pointcloud_msg, transform_msg, twist_queue_, angular_velocity_queue_,
     first_point_rel_stamp);

@@ -95,7 +95,8 @@ private:
   // Helper Functions
 
   void validatePointcloudLayout(const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg);
-  double getFirstPointTimestamp(const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg);
+  std::pair<double, std::uint32_t> getFirstPointTimeInfo(
+    const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg);
 
   void updateTwistQueue(double first_point_stamp);
   void updateImuQueue(double first_point_stamp);
@@ -103,7 +104,8 @@ private:
     const std::string & source_frame);
   std::unique_ptr<cuda_blackboard::CudaPointCloud2> processPointcloud(
     const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg,
-    const geometry_msgs::msg::TransformStamped & transform_msg);
+    const geometry_msgs::msg::TransformStamped & transform_msg,
+    const std::uint32_t first_point_rel_stamp);
 
   void publishDiagnostics(
     const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg,
