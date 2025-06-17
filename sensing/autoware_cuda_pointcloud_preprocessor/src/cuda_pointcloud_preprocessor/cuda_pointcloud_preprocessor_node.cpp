@@ -273,6 +273,8 @@ void CudaPointcloudPreprocessorNode::pointcloudCallback(
   publishDiagnostics(input_pointcloud_msg, output_pointcloud_ptr);
   pub_->publish(std::move(output_pointcloud_ptr));
 
+  // Preallocate buffer for the next run.
+  // This is intentionally done after publish() to avoid adding latency to the current cycle.
   cuda_pointcloud_preprocessor_->preallocateOutput();
 }
 
