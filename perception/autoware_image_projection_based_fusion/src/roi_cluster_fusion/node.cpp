@@ -88,7 +88,7 @@ void RoiClusterFusionNode::fuse_on_single_image(
   {
     const auto transform_stamped_optional = getTransformStamped(
       tf_buffer_, /*target*/ input_rois_msg.header.frame_id,
-      /*source*/ input_cluster_msg.header.frame_id, camera_info.header.stamp);
+      /*source*/ input_cluster_msg.header.frame_id, input_rois_msg.header.stamp);
     if (!transform_stamped_optional) {
       RCLCPP_WARN_STREAM(
         get_logger(), "Failed to get transform from " << input_cluster_msg.header.frame_id << " to "
