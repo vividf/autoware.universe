@@ -94,21 +94,19 @@ private:
 
   // Helper Functions
 
-  void validatePointcloudLayout(
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_pointcloud_msg_ptr);
-  double getFirstPointTimestamp(
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_pointcloud_msg_ptr);
+  void validatePointcloudLayout(const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg);
+  double getFirstPointTimestamp(const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg);
 
   void updateTwistQueue(double first_point_stamp);
   void updateImuQueue(double first_point_stamp);
   std::optional<geometry_msgs::msg::TransformStamped> lookupTransformToBase(
     const std::string & source_frame);
   std::unique_ptr<cuda_blackboard::CudaPointCloud2> processPointcloud(
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_pointcloud_msg_ptr,
+    const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg,
     const geometry_msgs::msg::TransformStamped & transform_msg);
 
   void publishDiagnostics(
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_pointcloud_msg_ptr,
+    const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg,
     const std::unique_ptr<cuda_blackboard::CudaPointCloud2> & output_pointcloud_ptr);
 
   tf2_ros::Buffer tf2_buffer_;

@@ -257,29 +257,29 @@ void CudaPointcloudPreprocessorNode::pointcloudCallback(
   const sensor_msgs::msg::PointCloud2::ConstSharedPtr input_pointcloud_msg_ptr)
 {
   stop_watch_ptr_->toc("processing_time", true);
-  validatePointcloudLayout(input_pointcloud_msg_ptr);
+  const auto & input_pointcloud_msg = *input_pointcloud_msg_ptr;
 
-  const double first_point_stamp = getFirstPointTimestamp(input_pointcloud_msg_ptr);
-
+  validatePointcloudLayout(input_pointcloud_msg);
+  const double first_point_stamp = getFirstPointTimestamp(input_pointcloud_msg);
   updateTwistQueue(first_point_stamp);
   updateImuQueue(first_point_stamp);
 
-  const auto transform_msg_opt = lookupTransformToBase(input_pointcloud_msg_ptr->header.frame_id);
+  const auto transform_msg_opt = lookupTransformToBase(input_pointcloud_msg.header.frame_id);
   if (!transform_msg_opt.has_value()) return;
 
-  auto output_pointcloud_ptr = processPointcloud(input_pointcloud_msg_ptr, *transform_msg_opt);
-  output_pointcloud_ptr->header.frame_id = base_frame_;
+  auto output_pointcloud = processPointcloud(input_pointcloud_msg, *transform_msg_opt);
+  output_pointcloud->header.frame_id = base_frame_;
 
-  publishDiagnostics(input_pointcloud_msg_ptr, output_pointcloud_ptr);
-  pub_->publish(std::move(output_pointcloud_ptr));
+  publishDiagnostics(input_pointcloud_msg, output_pointcloud);
+  pub_->publish(std::move(output_pointcloud));
 
   cuda_pointcloud_preprocessor_->preallocateOutput();
 }
 
 void CudaPointcloudPreprocessorNode::validatePointcloudLayout(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_pointcloud_msg_ptr)
+  const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg)
 {
-  if (!is_data_layout_compatible_with_point_xyzircaedt(input_pointcloud_msg_ptr->fields)) {
+  if (!is_data_layout_compatible_with_point_xyzircaedt(input_pointcloud_msg.fields)) {
     RCLCPP_ERROR(
       get_logger(), "Input pointcloud data layout is not compatible with PointXYZIRCAEDT");
   }
@@ -289,14 +289,14 @@ void CudaPointcloudPreprocessorNode::validatePointcloudLayout(
 }
 
 double CudaPointcloudPreprocessorNode::getFirstPointTimestamp(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_pointcloud_msg_ptr)
+  const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg)
 {
   sensor_msgs::PointCloud2ConstIterator<std::uint32_t> iter_stamp(
-    *input_pointcloud_msg_ptr, "time_stamp");
-  auto num_points = input_pointcloud_msg_ptr->width * input_pointcloud_msg_ptr->height;
+    input_pointcloud_msg, "time_stamp");
+  auto num_points = input_pointcloud_msg.width * input_pointcloud_msg.height;
   std::uint32_t first_point_rel_stamp = num_points > 0 ? *iter_stamp : 0;
-  return input_pointcloud_msg_ptr->header.stamp.sec +
-         input_pointcloud_msg_ptr->header.stamp.nanosec * 1e-9 + first_point_rel_stamp * 1e-9;
+  return input_pointcloud_msg.header.stamp.sec + input_pointcloud_msg.header.stamp.nanosec * 1e-9 +
+         first_point_rel_stamp * 1e-9;
 }
 
 void CudaPointcloudPreprocessorNode::updateTwistQueue(double first_point_stamp)
@@ -338,28 +338,28 @@ CudaPointcloudPreprocessorNode::lookupTransformToBase(const std::string & source
 }
 
 std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessorNode::processPointcloud(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_pointcloud_msg_ptr,
+  const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg,
   const geometry_msgs::msg::TransformStamped & transform_msg)
 {
   sensor_msgs::PointCloud2ConstIterator<std::uint32_t> iter_stamp(
-    *input_pointcloud_msg_ptr, "time_stamp");
+    input_pointcloud_msg, "time_stamp");
   std::uint32_t first_point_rel_stamp =
-    input_pointcloud_msg_ptr->width * input_pointcloud_msg_ptr->height > 0 ? *iter_stamp : 0;
+    input_pointcloud_msg.width * input_pointcloud_msg.height > 0 ? *iter_stamp : 0;
 
   return cuda_pointcloud_preprocessor_->process(
-    input_pointcloud_msg_ptr, transform_msg, twist_queue_, angular_velocity_queue_,
+    input_pointcloud_msg, transform_msg, twist_queue_, angular_velocity_queue_,
     first_point_rel_stamp);
 }
 
 void CudaPointcloudPreprocessorNode::publishDiagnostics(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_pointcloud_msg_ptr,
+  const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg,
   const std::unique_ptr<cuda_blackboard::CudaPointCloud2> & output_pointcloud_ptr)
 {
   const auto processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
   const auto pipeline_latency_ms =
     std::chrono::duration<double, std::milli>(
       std::chrono::nanoseconds(
-        (this->get_clock()->now() - input_pointcloud_msg_ptr->header.stamp).nanoseconds()))
+        (this->get_clock()->now() - input_pointcloud_msg.header.stamp).nanoseconds()))
       .count();
 
   const auto input_point_count =
@@ -378,7 +378,7 @@ void CudaPointcloudPreprocessorNode::publishDiagnostics(
       : 0.0f;
 
   auto latency_diag = std::make_shared<autoware::pointcloud_preprocessor::LatencyDiagnostics>(
-    input_pointcloud_msg_ptr->header.stamp, processing_time_ms, pipeline_latency_ms,
+    input_pointcloud_msg.header.stamp, processing_time_ms, pipeline_latency_ms,
     processing_time_threshold_sec_ * 1000.0);
   auto pass_rate_diag = std::make_shared<autoware::pointcloud_preprocessor::PassRateDiagnostics>(
     input_point_count, output_point_count);
