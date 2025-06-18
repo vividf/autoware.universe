@@ -201,7 +201,7 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::initialize_strategy()
   } else if (matching_strategy_ == "advanced") {
     fusion_matching_strategy_ = std::make_unique<AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>>(
       std::dynamic_pointer_cast<FusionNode>(shared_from_this()), id_to_offset_map_);
-    // subscribe concatentate status
+    // subscribe concatenate status
     sub_concatenate_status_ = this->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
       "/concatenate_status", 10,
       std::bind(&FusionNode::concatenate_status_callback, this, std::placeholders::_1));
