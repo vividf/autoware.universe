@@ -292,6 +292,18 @@ void CudaPointcloudPreprocessorNode::validatePointcloudLayout(
     "PointStruct and PointXYZIRCAEDT must have the same size");
 }
 
+/**
+ * @brief Get the first point's timestamp information from a PointCloud2 message.
+ *
+ * This function extracts the relative timestamp (`time_stamp` field) of the first point in the
+ * point cloud and calculates its absolute timestamp by adding it to the message's header timestamp.
+ *
+ * @param input_pointcloud_msg The input PointCloud2 message, which must include a "time_stamp"
+ * field.
+ * @return std::pair<double, std::uint32_t>
+ *   - first: The absolute timestamp of the first point (in seconds).
+ *   - second: The relative timestamp of the first point (in nanoseconds).
+ */
 std::pair<double, std::uint32_t> CudaPointcloudPreprocessorNode::getFirstPointTimeInfo(
   const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg)
 {
