@@ -505,27 +505,31 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::concatenate_status_callback(
   if (!diagnostic_msg) return;
 
   for (const auto & status : diagnostic_msg->status) {
-    std::optional<double> concatenate_timestamp_opt;
+    // Filter for the concatenate_and_time_sync_node diagnostic message
+    if (status.name == std::string_view("concatenate_data: /sensing/lidar/concatenate_data")) {
+      std::optional<double> concatenate_timestamp_opt;
 
-    // First pass: Locate concatenated_cloud_timestamp
-    for (const auto & value : status.values) {
-      if (value.key == "Concatenated pointcloud timestamp") {
-        try {
-          concatenate_timestamp_opt = std::stod(value.value);
-        } catch (const std::exception & e) {
-          RCLCPP_ERROR(get_logger(), "Error parsing concatenated cloud timestamp: %s", e.what());
+      // First pass: Locate concatenated_cloud_timestamp
+      for (const auto & value : status.values) {
+        if (value.key == "Concatenated pointcloud timestamp") {
+          try {
+            concatenate_timestamp_opt = std::stod(value.value);
+          } catch (const std::exception & e) {
+            RCLCPP_ERROR(get_logger(), "Error parsing concatenated cloud timestamp: %s", e.what());
+          }
         }
       }
-    }
 
-    // Second pass: Fill key-value map only if timestamp was valid
-    if (concatenate_timestamp_opt.has_value()) {
-      std::unordered_map<std::string, std::string> key_value_map;
-      for (const auto & value : status.values) {
-        key_value_map.emplace(value.key, value.value);
+      // Second pass: Fill key-value map only if timestamp was valid
+      if (concatenate_timestamp_opt.has_value()) {
+        std::unordered_map<std::string, std::string> key_value_map;
+        for (const auto & value : status.values) {
+          key_value_map.emplace(value.key, value.value);
+        }
+
+        concatenated_status_map_.emplace(
+          concatenate_timestamp_opt.value(), std::move(key_value_map));
       }
-
-      concatenated_status_map_.emplace(concatenate_timestamp_opt.value(), std::move(key_value_map));
     }
   }
 }
