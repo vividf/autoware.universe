@@ -77,7 +77,6 @@ CudaPointcloudPreprocessorNode::CudaPointcloudPreprocessorNode(
   const auto crop_box_max_y_vector = declare_parameter<std::vector<double>>("crop_box.max_y");
   const auto crop_box_max_z_vector = declare_parameter<std::vector<double>>("crop_box.max_z");
 
-  /* *INDENT-OFF* */
   if (
     crop_box_min_x_vector.size() != crop_box_min_y_vector.size() ||
     crop_box_min_x_vector.size() != crop_box_min_z_vector.size() ||
@@ -86,7 +85,6 @@ CudaPointcloudPreprocessorNode::CudaPointcloudPreprocessorNode(
     crop_box_min_x_vector.size() != crop_box_max_z_vector.size()) {
     throw std::runtime_error("Crop box parameters must have the same size");
   }
-  /* *INDENT-ON* */
 
   std::vector<CropBoxParameters> crop_box_parameters;
 
@@ -102,14 +100,11 @@ CudaPointcloudPreprocessorNode::CudaPointcloudPreprocessorNode(
   }
 
   // Publisher
-  /* *INDENT-OFF* */
   pub_ =
     std::make_unique<cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
       *this, "~/output/pointcloud");
   diagnostics_interface_ =
     std::make_unique<autoware_utils::DiagnosticsInterface>(this, this->get_fully_qualified_name());
-
-  /* *INDENT-ON* */
 
   // Subscriber
   rclcpp::SubscriptionOptions sub_options;
@@ -134,11 +129,9 @@ CudaPointcloudPreprocessorNode::CudaPointcloudPreprocessorNode(
       create_subscription(this, "~/input/imu", rclcpp::QoS(TWIST_QUEUE_SIZE));
   }
 
-  /* *INDENT-OFF* */
   CudaPointcloudPreprocessor::UndistortionType undistortion_type =
     use_3d_undistortion_ ? CudaPointcloudPreprocessor::UndistortionType::Undistortion3D
                          : CudaPointcloudPreprocessor::UndistortionType::Undistortion2D;
-  /* *INDENT-ON* */
 
   cuda_pointcloud_preprocessor_ = std::make_unique<CudaPointcloudPreprocessor>();
   cuda_pointcloud_preprocessor_->setRingOutlierFilterParameters(ring_outlier_filter_parameters);
@@ -214,11 +207,9 @@ void CudaPointcloudPreprocessorNode::imuCallback(
   const sensor_msgs::msg::Imu::ConstSharedPtr imu_msg)
 {
   while (!angular_velocity_queue_.empty()) {
-    /* *INDENT-OFF* */
     // for rosbag replay
     bool backwards_time_jump_detected = rclcpp::Time(angular_velocity_queue_.front().header.stamp) >
                                         rclcpp::Time(imu_msg->header.stamp);
-    /* *INDENT-ON* */
 
     bool is_queue_longer_than_1s =
       rclcpp::Time(angular_velocity_queue_.front().header.stamp) <

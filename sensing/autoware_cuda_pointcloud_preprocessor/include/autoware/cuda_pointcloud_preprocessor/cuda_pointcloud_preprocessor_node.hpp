@@ -41,13 +41,12 @@
 #include <deque>
 #include <memory>
 #include <string>
+#include <utility>
 
-/* *INDENT-OFF* */
 #define CHECK_OFFSET(structure1, structure2, field)             \
   static_assert(                                                \
     offsetof(structure1, field) == offsetof(structure2, field), \
     "Offset of " #field " in " #structure1 " does not match expected offset.")
-/* *INDENT-ON* */
 
 namespace autoware::cuda_pointcloud_preprocessor
 {
