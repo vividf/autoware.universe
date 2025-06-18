@@ -365,7 +365,7 @@ void CudaPointcloudPreprocessorNode::publishDiagnostics(
       .count();
 
   const auto input_point_count =
-    static_cast<int>(input_pointcloud_msg_ptr->width * input_pointcloud_msg_ptr->height);
+    static_cast<int>(input_pointcloud_msg.width * input_pointcloud_msg.height);
   const auto output_point_count =
     static_cast<int>(output_pointcloud_ptr->width * output_pointcloud_ptr->height);
   const auto stats = cuda_pointcloud_preprocessor_->getProcessingStats();
