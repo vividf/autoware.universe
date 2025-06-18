@@ -201,9 +201,10 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::initialize_strategy()
   } else if (matching_strategy_ == "advanced") {
     fusion_matching_strategy_ = std::make_unique<AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>>(
       std::dynamic_pointer_cast<FusionNode>(shared_from_this()), id_to_offset_map_);
-    // subscribe diagnostics
-    sub_diag_ = this->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
-      "/diagnostics", 10, std::bind(&FusionNode::diagnostic_callback, this, std::placeholders::_1));
+    // subscribe concatentate status
+    sub_concatenate_status_ = this->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
+      "/concatenate_status", 10,
+      std::bind(&FusionNode::concatenate_status_callback, this, std::placeholders::_1));
   } else {
     throw std::runtime_error("Matching strategy must be 'advanced' or 'naive'");
   }
@@ -498,36 +499,30 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::rois_callback(
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
-void FusionNode<Msg3D, Msg2D, ExportObj>::diagnostic_callback(
+void FusionNode<Msg3D, Msg2D, ExportObj>::concatenate_status_callback(
   const diagnostic_msgs::msg::DiagnosticArray::SharedPtr diagnostic_msg)
 {
-  for (const auto & status : diagnostic_msg->status) {
-    // Filter for the concatenate_and_time_sync_node diagnostic message
-    if (status.name == std::string_view("concatenate_data: /sensing/lidar/concatenate_data")) {
-      std::optional<double> concatenate_timestamp_opt;
+  std::optional<double> concatenate_timestamp_opt;
 
-      // First pass: Locate concatenated_cloud_timestamp
-      for (const auto & value : status.values) {
-        if (value.key == std::string_view("Concatenated pointcloud timestamp")) {
-          try {
-            concatenate_timestamp_opt = std::stod(value.value);
-          } catch (const std::exception & e) {
-            RCLCPP_ERROR(get_logger(), "Error parsing concatenated cloud timestamp: %s", e.what());
-          }
-        }
-      }
-
-      // Second pass: Fill key-value map only if timestamp was valid
-      if (concatenate_timestamp_opt.has_value()) {
-        std::unordered_map<std::string, std::string> key_value_map;
-        for (const auto & value : status.values) {
-          key_value_map.emplace(value.key, value.value);
-        }
-
-        concatenated_status_map_.emplace(
-          concatenate_timestamp_opt.value(), std::move(key_value_map));
+  // First pass: Locate concatenated_cloud_timestamp
+  for (const auto & value : status.values) {
+    if (value.key == std::string_view("Concatenated pointcloud timestamp")) {
+      try {
+        concatenate_timestamp_opt = std::stod(value.value);
+      } catch (const std::exception & e) {
+        RCLCPP_ERROR(get_logger(), "Error parsing concatenated cloud timestamp: %s", e.what());
       }
     }
+  }
+
+  // Second pass: Fill key-value map only if timestamp was valid
+  if (concatenate_timestamp_opt.has_value()) {
+    std::unordered_map<std::string, std::string> key_value_map;
+    for (const auto & value : status.values) {
+      key_value_map.emplace(value.key, value.value);
+    }
+
+    concatenated_status_map_.emplace(concatenate_timestamp_opt.value(), std::move(key_value_map));
   }
 }
 

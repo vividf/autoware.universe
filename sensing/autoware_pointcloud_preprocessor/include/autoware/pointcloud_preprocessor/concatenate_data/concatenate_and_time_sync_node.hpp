@@ -130,10 +130,13 @@ private:
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
 
   std::unique_ptr<autoware_utils::DiagnosticsInterface> diagnostics_interface_;
+  std::unique_ptr<autoware_utils::DiagnosticsInterface> concatenate_status_interface_;
+
   void publish_debug_message(
     const double processing_time, const double cyclic_time,
     const std::unordered_map<std::string, double> & topic_to_pipeline_latency_map);
-  void check_concat_status(const DiagnosticInfo & diagnostic_info);
+  void check_concat_status(
+    const DiagnosticInfo & diagnostic_info, autoware_utils::DiagnosticsInterface * interface);
 
   void initialize_pub_sub();
 

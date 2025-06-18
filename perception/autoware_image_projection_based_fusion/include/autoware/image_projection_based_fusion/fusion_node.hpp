@@ -141,7 +141,8 @@ protected:
   // callback for rois subscription
   void rois_callback(const typename Msg2D::ConstSharedPtr rois_msg, const std::size_t rois_id);
 
-  void diagnostic_callback(const diagnostic_msgs::msg::DiagnosticArray::SharedPtr diagnostic_msg);
+  void concatenate_status_callback(
+    const diagnostic_msgs::msg::DiagnosticArray::SharedPtr diagnostic_msg);
 
   // Custom process methods
   virtual void postprocess(const Msg3D & processing_msg, ExportObj & output_msg);
@@ -156,7 +157,7 @@ protected:
 
   // 3d detection subscription
   typename rclcpp::Subscription<Msg3D>::SharedPtr msg3d_sub_;
-  rclcpp::Subscription<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr sub_diag_;
+  rclcpp::Subscription<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr sub_concatenate_status_;
 
   // parameters for out_of_scope filter
   float filter_scope_min_x_;
