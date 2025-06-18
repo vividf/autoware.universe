@@ -440,6 +440,12 @@ template <typename MsgTraits>
 void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::check_concat_status(
   const DiagnosticInfo & diagnostic_info, autoware_utils::DiagnosticsInterface * interface)
 {
+  if (!interface) {
+    RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+    "Interface is nullptr. Skipping diagnostics update.");
+    return;
+  }
+
   interface->clear();
 
   const bool should_publish_diag = diagnostic_info.publish_pointcloud || diagnostic_info.drop_previous_but_late_pointcloud;
