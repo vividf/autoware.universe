@@ -37,8 +37,8 @@ __global__ void transformPointsKernel(
 }
 
 __global__ void cropBoxKernel(
-  InputPointType * __restrict__ d_points, std::uint32_t * __restrict__ output_mask,
-  std::uint8_t * __restrict__ nan_mask, int num_points,
+  InputPointType * __restrict__ d_points, std::uint32_t * __restrict__ output_crop_mask,
+  std::uint8_t * __restrict__ output_nan_mask, int num_points,
   const CropBoxParameters * __restrict__ crop_box_parameters_ptr, int num_crop_boxes)
 {
   for (int idx = blockIdx.x * blockDim.x + threadIdx.x; idx < num_points;
@@ -51,7 +51,7 @@ __global__ void cropBoxKernel(
     const float z = d_points[idx].z;
 
     if (!isfinite(x) || !isfinite(y) || !isfinite(z)) {
-      nan_mask[idx] = 1;
+      output_nan_mask[idx] = 1;
       continue;
     }
 
@@ -69,7 +69,7 @@ __global__ void cropBoxKernel(
         (x <= min_x || x >= max_x) || (y <= min_y || y >= max_y) || (z <= min_z || z >= max_z);
     }
 
-    output_mask[idx] = passed_crop_box_mask;
+    output_crop_mask[idx] = passed_crop_box_mask;
   }
 }
 

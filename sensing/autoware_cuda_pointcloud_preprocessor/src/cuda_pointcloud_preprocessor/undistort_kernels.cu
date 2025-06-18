@@ -68,7 +68,7 @@ __host__ __device__ Eigen::Matrix4f transformationMatrixFromVelocity(
 
 __global__ void undistort2DKernel(
   InputPointType * input_points, int num_points, TwistStruct2D * twist_structs, int num_twists,
-  std::uint8_t * __restrict__ mismatch_mask)
+  std::uint8_t * __restrict__ output_mismatch_mask)
 {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < num_points) {
@@ -91,7 +91,7 @@ __global__ void undistort2DKernel(
       point.time_stamp > twist.last_stamp_nsec ? point.time_stamp - twist.last_stamp_nsec : 0;
     double dt = 1e-9 * (dt_nsec);
 
-    mismatch_mask[idx] = static_cast<std::uint8_t>(dt > time_diff_threshold);
+    output_mismatch_mask[idx] = static_cast<std::uint8_t>(dt > time_diff_threshold);
 
     theta += twist.v_theta * dt;
     float d = twist.v_x * dt;
@@ -108,7 +108,7 @@ __global__ void undistort2DKernel(
 
 __global__ void undistort3DKernel(
   InputPointType * input_points, int num_points, TwistStruct3D * twist_structs, int num_twists,
-  std::uint8_t * __restrict__ mismatch_mask)
+  std::uint8_t * __restrict__ output_mismatch_mask)
 {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < num_points) {
@@ -131,7 +131,7 @@ __global__ void undistort3DKernel(
       point.time_stamp > twist.last_stamp_nsec ? point.time_stamp - twist.last_stamp_nsec : 0;
     double dt = 1e-9 * (dt_nsec);
 
-    mismatch_mask[idx] = static_cast<std::uint8_t>(dt > time_diff_threshold);
+    output_mismatch_mask[idx] = static_cast<std::uint8_t>(dt > time_diff_threshold);
 
     Eigen::Matrix4f transform =
       cum_transform_buffer_map * transformationMatrixFromVelocity(v_map, w_map, dt);
