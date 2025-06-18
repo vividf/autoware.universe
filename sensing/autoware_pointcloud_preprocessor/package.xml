@@ -32,7 +32,6 @@
   <depend>autoware_pcl_extensions</depend>
   <depend>autoware_point_types</depend>
   <depend>autoware_utils</depend>
-  <depend>autoware_utils_diagnostics</depend>
   <depend>autoware_vehicle_msgs</depend>
   <depend>cgal</depend>
   <depend>cv_bridge</depend>
