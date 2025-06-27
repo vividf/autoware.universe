@@ -51,6 +51,10 @@ public:
   void pushLaneletPolygonsMarker(
     const lanelet::BasicPolygons2d & polygon, const std::string & ns, int id = 0);
 
+  void pushMarker(const visualization_msgs::msg::Marker & marker);
+
+  void pushMarkers(const visualization_msgs::msg::MarkerArray & marker);
+
   std::string getStatusDebugString(const PlanningValidatorStatus & status) const
   {
     std::stringstream ss;
@@ -81,7 +85,7 @@ public:
     if (!status.is_valid_steering_rate) append_string("steering_rate");
     if (!status.is_valid_forward_trajectory_length) append_string("forward_traj_length");
     if (!status.is_valid_trajectory_shift) append_string("traj_shift");
-    if (!status.is_valid_collision_check) append_string("collision");
+    if (!status.is_valid_intersection_collision_check) append_string("collision");
 
     if (ss.str().empty()) {
       return "";
