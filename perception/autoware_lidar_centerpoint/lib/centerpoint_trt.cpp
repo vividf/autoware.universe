@@ -24,6 +24,7 @@
 #include <autoware_utils/ros/diagnostics_interface.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <ctime>
 #include <iostream>
@@ -51,6 +52,12 @@ CenterPointTRT::CenterPointTRT(
   // Initialize TTA processor with configuration from parameters
   if (tta_config.enabled) {
     tta_processor_ = std::make_unique<TTAProcessor>(tta_config, config_);
+    // Create TTA streams for parallel processing
+    int num_augmentations = tta_processor_->getNumAugmentations();
+    tta_streams_.resize(num_augmentations);
+    for (int i = 0; i < num_augmentations; ++i) {
+      cudaStreamCreate(&tta_streams_[i]);
+    }
   } else {
     tta_processor_ = nullptr;
   }
@@ -65,6 +72,14 @@ CenterPointTRT::~CenterPointTRT()
   if (stream_) {
     cudaStreamSynchronize(stream_);
     cudaStreamDestroy(stream_);
+  }
+
+  // Clean up TTA streams
+  for (auto & tta_stream : tta_streams_) {
+    if (tta_stream) {
+      cudaStreamSynchronize(tta_stream);
+      cudaStreamDestroy(tta_stream);
+    }
   }
 }
 
@@ -145,6 +160,15 @@ void CenterPointTRT::initTTAMemory()
   tta_coordinates_d_ = cuda::make_unique<int[]>(coordinates_size_ * num_augmentations);
   tta_num_points_per_voxel_d_ =
     cuda::make_unique<float[]>(config_.max_voxel_size_ * num_augmentations);
+
+  // Allocate separate buffers for each stream to avoid race conditions
+  tta_mask_buffers_.resize(num_augmentations);
+  tta_voxels_buffers_.resize(num_augmentations);
+
+  for (int i = 0; i < num_augmentations; ++i) {
+    tta_mask_buffers_[i] = cuda::make_unique<unsigned int[]>(mask_size_);
+    tta_voxels_buffers_[i] = cuda::make_unique<float[]>(voxels_buffer_size_);
+  }
 }
 
 void CenterPointTRT::initTrt(
@@ -335,13 +359,10 @@ bool CenterPointTRT::detectWithTTA(
 
   is_num_pillars_within_range = true;
 
-  // Clear GPU memory
-  CHECK_CUDA_ERROR(cudaMemsetAsync(
-    encoder_in_features_d_.get(), 0, encoder_in_feature_size_ * sizeof(float), stream_));
-  CHECK_CUDA_ERROR(
-    cudaMemsetAsync(spatial_features_d_.get(), 0, spatial_features_size_ * sizeof(float), stream_));
+  // Start timing
+  auto start_time = std::chrono::high_resolution_clock::now();
 
-  // Preprocess to get point cloud data
+  // Preprocess to get point cloud data (only once)
   if (!preprocess(input_pointcloud_msg_ptr, tf_buffer)) {
     RCLCPP_WARN(
       rclcpp::get_logger(config_.logger_name_.c_str()), "Fail to preprocess and skip to detect.");
@@ -374,6 +395,14 @@ bool CenterPointTRT::detectWithTTA(
 
   // Merge results
   det_boxes3d = mergeTTADetections(num_augmentations, rotation_angles_rad, all_detections);
+
+  // End timing and log performance
+  auto end_time = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "TTA Processing time: %.2f ms", duration.count() / 1000.0f);
+
   return true;
 }
 
@@ -383,18 +412,31 @@ void CenterPointTRT::inferenceTTA(
   all_detections.clear();
   all_detections.resize(num_augmentations);
 
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "Starting TTA inference with %d augmentations", num_augmentations);
+
+  // Phase 1: Parallel voxel generation and feature extraction
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "Phase 1: Starting voxel generation for %d augmentations", num_augmentations);
+
   for (int i = 0; i < num_augmentations; ++i) {
+    cudaStream_t & tta_stream = tta_streams_[i];
+
+    // Use separate buffers for each stream to avoid race conditions
+
     // Clear GPU memory for this augmentation
     CHECK_CUDA_ERROR(cudaMemsetAsync(
       tta_encoder_features_d_.get() + i * encoder_in_feature_size_, 0,
-      encoder_in_feature_size_ * sizeof(float), stream_));
+      encoder_in_feature_size_ * sizeof(float), tta_stream));
     CHECK_CUDA_ERROR(cudaMemsetAsync(
       tta_spatial_features_d_.get() + i * spatial_features_size_, 0,
-      spatial_features_size_ * sizeof(float), stream_));
+      spatial_features_size_ * sizeof(float), tta_stream));
 
     // Generate voxels for this augmentation
     CHECK_CUDA_ERROR(
-      cudaMemsetAsync(tta_num_voxels_d_.get() + i, 0, sizeof(unsigned int), stream_));
+      cudaMemsetAsync(tta_num_voxels_d_.get() + i, 0, sizeof(unsigned int), tta_stream));
 
     // Use the same voxel generation as original but with augmented points
     CHECK_CUDA_ERROR(generateVoxels_random_launch(
@@ -402,13 +444,14 @@ void CenterPointTRT::inferenceTTA(
       config_.cloud_capacity_, config_.range_min_x_, config_.range_max_x_, config_.range_min_y_,
       config_.range_max_y_, config_.range_min_z_, config_.range_max_z_, config_.voxel_size_x_,
       config_.voxel_size_y_, config_.voxel_size_z_, config_.grid_size_y_, config_.grid_size_x_,
-      mask_d_.get(), voxels_buffer_d_.get(), stream_));
+      tta_mask_buffers_[i].get(), tta_voxels_buffers_[i].get(), tta_stream));
 
     CHECK_CUDA_ERROR(generateBaseFeatures_launch(
-      mask_d_.get(), voxels_buffer_d_.get(), config_.grid_size_y_, config_.grid_size_x_,
-      config_.max_voxel_size_, tta_num_voxels_d_.get() + i, tta_voxels_d_.get() + i * voxels_size_,
+      tta_mask_buffers_[i].get(), tta_voxels_buffers_[i].get(), config_.grid_size_y_,
+      config_.grid_size_x_, config_.max_voxel_size_, tta_num_voxels_d_.get() + i,
+      tta_voxels_d_.get() + i * voxels_size_,
       tta_num_points_per_voxel_d_.get() + i * config_.max_voxel_size_,
-      tta_coordinates_d_.get() + i * coordinates_size_, stream_));
+      tta_coordinates_d_.get() + i * coordinates_size_, tta_stream));
 
     CHECK_CUDA_ERROR(generateFeatures_launch(
       tta_voxels_d_.get() + i * voxels_size_,
@@ -417,20 +460,38 @@ void CenterPointTRT::inferenceTTA(
       config_.max_voxel_size_, config_.voxel_size_x_, config_.voxel_size_y_, config_.voxel_size_z_,
       config_.range_min_x_, config_.range_min_y_, config_.range_min_z_,
       tta_encoder_features_d_.get() + i * encoder_in_feature_size_,
-      config_.encoder_in_feature_size_, stream_));
+      config_.encoder_in_feature_size_, tta_stream));
+  }
+
+  // Phase 2: Parallel encoder inference
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "Phase 2: Starting encoder inference for %d augmentations", num_augmentations);
+
+  for (int i = 0; i < num_augmentations; ++i) {
+    cudaStream_t & tta_stream = tta_streams_[i];
 
     // Run encoder inference
     std::vector<void *> encoder_tensors = {
       tta_encoder_features_d_.get() + i * encoder_in_feature_size_, pillar_features_d_.get()};
     encoder_trt_ptr_->setTensorsAddresses(encoder_tensors);
-    encoder_trt_ptr_->enqueueV3(stream_);
+    encoder_trt_ptr_->enqueueV3(tta_stream);
 
     // Scatter features
     CHECK_CUDA_ERROR(scatterFeatures_launch(
       pillar_features_d_.get(), tta_coordinates_d_.get() + i * coordinates_size_,
       tta_num_voxels_d_.get() + i, config_.max_voxel_size_, config_.encoder_out_feature_size_,
       config_.grid_size_x_, config_.grid_size_y_,
-      tta_spatial_features_d_.get() + i * spatial_features_size_, stream_));
+      tta_spatial_features_d_.get() + i * spatial_features_size_, tta_stream));
+  }
+
+  // Phase 3: Parallel head inference and post-processing
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "Phase 3: Starting head inference for %d augmentations", num_augmentations);
+
+  for (int i = 0; i < num_augmentations; ++i) {
+    cudaStream_t & tta_stream = tta_streams_[i];
 
     // Run head inference
     std::vector<void *> head_tensors = {
@@ -442,14 +503,27 @@ void CenterPointTRT::inferenceTTA(
       head_out_rot_d_.get(),
       head_out_vel_d_.get()};
     head_trt_ptr_->setTensorsAddresses(head_tensors);
-    head_trt_ptr_->enqueueV3(stream_);
+    head_trt_ptr_->enqueueV3(tta_stream);
 
     // Post-process to get detections
     CHECK_CUDA_ERROR(post_proc_ptr_->generateDetectedBoxes3D_launch(
       head_out_heatmap_d_.get(), head_out_offset_d_.get(), head_out_z_d_.get(),
       head_out_dim_d_.get(), head_out_rot_d_.get(), head_out_vel_d_.get(), all_detections[i],
-      stream_));
+      tta_stream));
   }
+
+  // Synchronize all streams
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "Synchronizing all TTA streams");
+
+  for (auto & tta_stream : tta_streams_) {
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(tta_stream));
+  }
+
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "TTA inference completed successfully");
 }
 
 std::vector<Box3D> CenterPointTRT::mergeTTADetections(
@@ -460,24 +534,15 @@ std::vector<Box3D> CenterPointTRT::mergeTTADetections(
   std::vector<std::vector<Box3D>> transformed_detections;
   transformed_detections.resize(num_augmentations);
 
-  // Debug: Log original detections for each augmentation
+  // Debug: Log summary of original detections
+  size_t total_detections = 0;
   for (int i = 0; i < num_augmentations; ++i) {
-    float angle_deg =
-      -rotation_angles_rad[i] * 180.0f / M_PI;  // Convert back to degrees for display
-    RCLCPP_INFO(
-      rclcpp::get_logger(config_.logger_name_.c_str()),
-      "TTA Augmentation %d (%.1f° rotation): %zu detections", i, angle_deg,
-      all_detections[i].size());
-
-    // Log first few detections for comparison
-    for (size_t j = 0; j < std::min(all_detections[i].size(), size_t(3)); ++j) {
-      const auto & box = all_detections[i][j];
-      RCLCPP_INFO(
-        rclcpp::get_logger(config_.logger_name_.c_str()),
-        "  Before transform - Box %zu: pos(%.2f, %.2f, %.2f) size(%.2f, %.2f, %.2f) score: %.3f", j,
-        box.x, box.y, box.z, box.length, box.width, box.height, box.score);
-    }
+    total_detections += all_detections[i].size();
   }
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "TTA Original detections: %zu total across %d augmentations", total_detections,
+  //   num_augmentations);
 
   for (int i = 0; i < num_augmentations; ++i) {
     // Create inverse transformation matrix for this rotation
@@ -496,23 +561,15 @@ std::vector<Box3D> CenterPointTRT::mergeTTADetections(
       tta_processor_->transformBoxes(all_detections[i], inverse_transform);
   }
 
-  // Debug: Log transformed detections for comparison
+  // Debug: Log summary of transformed detections
+  size_t total_transformed = 0;
   for (int i = 0; i < num_augmentations; ++i) {
-    float angle_deg = -rotation_angles_rad[i] * 180.0f / M_PI;
-    RCLCPP_INFO(
-      rclcpp::get_logger(config_.logger_name_.c_str()),
-      "TTA Augmentation %d (%.1f° rotation): %zu detections after transform", i, angle_deg,
-      transformed_detections[i].size());
-
-    // Log first few detections after transformation
-    for (size_t j = 0; j < std::min(transformed_detections[i].size(), size_t(3)); ++j) {
-      const auto & box = transformed_detections[i][j];
-      RCLCPP_INFO(
-        rclcpp::get_logger(config_.logger_name_.c_str()),
-        "  After transform - Box %zu: pos(%.2f, %.2f, %.2f) size(%.2f, %.2f, %.2f) score: %.3f", j,
-        box.x, box.y, box.z, box.length, box.width, box.height, box.score);
-    }
+    total_transformed += transformed_detections[i].size();
   }
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "TTA Transformed detections: %zu total across %d augmentations", total_transformed,
+  //   num_augmentations);
 
   // Merge all detections using TTA processor
   std::vector<TTAResult> tta_results;
@@ -524,17 +581,9 @@ std::vector<Box3D> CenterPointTRT::mergeTTADetections(
   std::vector<Box3D> merged_results = tta_processor_->mergeTTAResults(tta_results);
 
   // Debug: Log final merged results
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()), "TTA Final merged results: %zu detections",
-    merged_results.size());
-
-  for (size_t i = 0; i < std::min(merged_results.size(), size_t(5)); ++i) {
-    const auto & box = merged_results[i];
-    RCLCPP_INFO(
-      rclcpp::get_logger(config_.logger_name_.c_str()),
-      "  Final Box %zu: pos(%.2f, %.2f, %.2f) size(%.2f, %.2f, %.2f) score: %.3f", i, box.x, box.y,
-      box.z, box.length, box.width, box.height, box.score);
-  }
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()), "TTA Final merged results: %zu detections",
+  //   merged_results.size());
 
   return merged_results;
 }
