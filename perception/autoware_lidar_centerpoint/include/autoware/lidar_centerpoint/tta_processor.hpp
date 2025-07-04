@@ -138,6 +138,12 @@ public:
    */
   int getNumAugmentations() const { return config_.num_augmentations; }
 
+  /**
+   * @brief Get rotation angles
+   * @return Vector of rotation angles in degrees
+   */
+  const std::vector<float> & getRotationAngles() const { return config_.rotation_angles; }
+
 private:
   TTAConfig config_;
   CenterPointConfig centerpoint_config_;

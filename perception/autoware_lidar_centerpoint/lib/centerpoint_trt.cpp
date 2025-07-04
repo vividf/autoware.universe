@@ -17,6 +17,7 @@
 #include "autoware/lidar_centerpoint/centerpoint_config.hpp"
 #include "autoware/lidar_centerpoint/network/scatter_kernel.hpp"
 #include "autoware/lidar_centerpoint/preprocess/preprocess_kernel.hpp"
+#include "autoware/lidar_centerpoint/preprocess/tta_kernel.hpp"
 #include "autoware/lidar_centerpoint/tta_processor.hpp"
 
 #include <autoware_utils/math/constants.hpp>
@@ -441,37 +442,43 @@ bool CenterPointTRT::detectWithTTA(
   }
   RCLCPP_INFO(rclcpp::get_logger(config_.logger_name_.c_str()), "Preprocess completed for TTA");
 
-  // Generate TTA augmentations
+  // Generate TTA augmentations using GPU kernels
   RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()), "About to generate TTA augmentations");
+    rclcpp::get_logger(config_.logger_name_.c_str()), "About to generate TTA augmentations on GPU");
 
-  // Copy GPU points to CPU memory for TTA processing
-  std::vector<float> cpu_points(config_.cloud_capacity_ * config_.point_feature_size_);
-  RCLCPP_INFO(rclcpp::get_logger(config_.logger_name_.c_str()), "About to copy GPU points to CPU");
+  // Get rotation angles from TTA processor
+  std::vector<float> rotation_angles_rad;
+  for (const auto & angle_deg : tta_processor_->getRotationAngles()) {
+    rotation_angles_rad.push_back(angle_deg * M_PI / 180.0f);
+  }
+
+  int num_augmentations = tta_processor_->getNumAugmentations();
+  RCLCPP_INFO(
+    rclcpp::get_logger(config_.logger_name_.c_str()), "Number of augmentations: %d",
+    num_augmentations);
+
+  // Copy rotation angles to GPU
+  auto rotation_angles_d = cuda::make_unique<float[]>(num_augmentations);
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
-    cpu_points.data(), points_d_.get(),
-    config_.cloud_capacity_ * config_.point_feature_size_ * sizeof(float), cudaMemcpyDeviceToHost,
-    stream_));
+    rotation_angles_d.get(), rotation_angles_rad.data(), num_augmentations * sizeof(float),
+    cudaMemcpyHostToDevice, stream_));
 
-  // Synchronize to ensure the copy is complete
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
-  RCLCPP_INFO(rclcpp::get_logger(config_.logger_name_.c_str()), "GPU to CPU copy completed");
+  // Generate augmented point clouds using GPU kernel
+  rotatePointsParallel_launch(
+    points_d_.get(), config_.cloud_capacity_, config_.point_feature_size_, rotation_angles_d.get(),
+    num_augmentations, tta_points_d_.get(), stream_);
 
-  std::vector<TTAResult> tta_results =
-    tta_processor_->augmentPointCloud(cpu_points.data(), config_.cloud_capacity_);
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()), "TTA augmentations generated, count: %zu",
-    tta_results.size());
+  RCLCPP_INFO(rclcpp::get_logger(config_.logger_name_.c_str()), "GPU TTA augmentations generated");
 
   // Process each augmentation
   RCLCPP_INFO(rclcpp::get_logger(config_.logger_name_.c_str()), "About to run TTA inference");
   std::vector<std::vector<Box3D>> all_detections;
-  inferenceTTA(tta_results, all_detections);
+  inferenceTTA(num_augmentations, all_detections);
   RCLCPP_INFO(rclcpp::get_logger(config_.logger_name_.c_str()), "TTA inference completed");
 
   // Merge results
   RCLCPP_INFO(rclcpp::get_logger(config_.logger_name_.c_str()), "About to merge TTA detections");
-  det_boxes3d = mergeTTADetections(tta_results, all_detections);
+  det_boxes3d = mergeTTADetections(num_augmentations, rotation_angles_rad, all_detections);
   RCLCPP_INFO(
     rclcpp::get_logger(config_.logger_name_.c_str()), "TTA detections merged, count: %zu",
     det_boxes3d.size());
@@ -483,20 +490,12 @@ bool CenterPointTRT::detectWithTTA(
 }
 
 void CenterPointTRT::inferenceTTA(
-  const std::vector<TTAResult> & tta_results, std::vector<std::vector<Box3D>> & all_detections)
+  const int num_augmentations, std::vector<std::vector<Box3D>> & all_detections)
 {
   all_detections.clear();
-  all_detections.resize(tta_results.size());
+  all_detections.resize(num_augmentations);
 
-  for (std::size_t i = 0; i < tta_results.size(); ++i) {
-    const auto & tta_result = tta_results[i];
-
-    // Copy augmented points to GPU
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(
-      tta_points_d_.get() + i * config_.cloud_capacity_ * config_.point_feature_size_,
-      tta_result.augmented_points.data(), tta_result.augmented_points.size() * sizeof(float),
-      cudaMemcpyHostToDevice, stream_));
-
+  for (int i = 0; i < num_augmentations; ++i) {
     // Clear GPU memory for this augmentation
     CHECK_CUDA_ERROR(cudaMemsetAsync(
       tta_encoder_features_d_.get() + i * encoder_in_feature_size_, 0,
@@ -566,18 +565,38 @@ void CenterPointTRT::inferenceTTA(
 }
 
 std::vector<Box3D> CenterPointTRT::mergeTTADetections(
-  const std::vector<TTAResult> & tta_results,
+  const int num_augmentations, const std::vector<float> & rotation_angles_rad,
   const std::vector<std::vector<Box3D>> & all_detections)
 {
   // Transform detections back to original coordinate system
-  std::vector<TTAResult> transformed_results = tta_results;
-  for (std::size_t i = 0; i < tta_results.size(); ++i) {
-    transformed_results[i].detected_boxes =
-      tta_processor_->transformBoxes(all_detections[i], tta_results[i].inverse_transform_matrix);
+  std::vector<std::vector<Box3D>> transformed_detections;
+  transformed_detections.resize(num_augmentations);
+
+  for (int i = 0; i < num_augmentations; ++i) {
+    // Create inverse transformation matrix for this rotation
+    Eigen::Matrix4f inverse_transform = Eigen::Matrix4f::Identity();
+    float angle = -rotation_angles_rad[i];  // Inverse rotation
+    float cos_angle = cosf(angle);
+    float sin_angle = sinf(angle);
+
+    inverse_transform(0, 0) = cos_angle;
+    inverse_transform(0, 1) = -sin_angle;
+    inverse_transform(1, 0) = sin_angle;
+    inverse_transform(1, 1) = cos_angle;
+
+    // Transform detections back to original coordinate system
+    transformed_detections[i] =
+      tta_processor_->transformBoxes(all_detections[i], inverse_transform);
   }
 
   // Merge all detections using TTA processor
-  return tta_processor_->mergeTTAResults(transformed_results);
+  std::vector<TTAResult> tta_results;
+  tta_results.resize(num_augmentations);
+  for (int i = 0; i < num_augmentations; ++i) {
+    tta_results[i].detected_boxes = transformed_detections[i];
+  }
+
+  return tta_processor_->mergeTTAResults(tta_results);
 }
 
 }  // namespace autoware::lidar_centerpoint

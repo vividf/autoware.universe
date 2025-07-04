@@ -70,12 +70,9 @@ protected:
 
   // TTA-related methods
   void initTTAMemory();
-  bool preprocessTTA(
-    const float * input_points, std::size_t num_points, std::vector<TTAResult> & tta_results);
-  void inferenceTTA(
-    const std::vector<TTAResult> & tta_results, std::vector<std::vector<Box3D>> & all_detections);
+  void inferenceTTA(const int num_augmentations, std::vector<std::vector<Box3D>> & all_detections);
   std::vector<Box3D> mergeTTADetections(
-    const std::vector<TTAResult> & tta_results,
+    const int num_augmentations, const std::vector<float> & rotation_angles_rad,
     const std::vector<std::vector<Box3D>> & all_detections);
 
   std::unique_ptr<VoxelGeneratorTemplate> vg_ptr_{nullptr};
