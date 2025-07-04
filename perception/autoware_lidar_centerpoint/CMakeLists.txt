@@ -87,6 +87,7 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     lib/postprocess/non_maximum_suppression.cpp
     lib/preprocess/pointcloud_densification.cpp
     lib/preprocess/voxel_generator.cpp
+    lib/tta_processor.cpp
   )
 
   # cSpell:ignore gencode
@@ -104,6 +105,7 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     lib/postprocess/postprocess_kernel.cu
     lib/network/scatter_kernel.cu
     lib/preprocess/preprocess_kernel.cu
+    lib/preprocess/tta_kernel.cu
   )
 
   target_link_libraries(${PROJECT_NAME}_lib
@@ -166,6 +168,10 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     )
     ament_auto_add_gtest(test_nms
       test/test_nms.cpp
+    )
+
+    ament_auto_add_gtest(test_tta
+      test/test_tta.cpp
     )
 
     # Temporary disabled, tracked by:

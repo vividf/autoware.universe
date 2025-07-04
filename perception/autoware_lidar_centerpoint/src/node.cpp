@@ -74,6 +74,9 @@ LidarCenterPointNode::LidarCenterPointNode(const rclcpp::NodeOptions & node_opti
   const auto min_area_matrix = this->declare_parameter<std::vector<double>>("min_area_matrix");
   const auto max_area_matrix = this->declare_parameter<std::vector<double>>("max_area_matrix");
 
+  // TTA parameters
+  [[maybe_unused]] const bool enable_tta_ = this->declare_parameter<bool>("tta.enabled", true);
+
   // Set up logger name
   this->logger_name_ = this->declare_parameter<std::string>("logger_name", "lidar_centerpoint");
 
@@ -170,8 +173,14 @@ void LidarCenterPointNode::pointCloudCallback(
 
   std::vector<Box3D> det_boxes3d;
   bool is_num_pillars_within_range = true;
-  bool is_success = detector_ptr_->detect(
-    input_pointcloud_msg, tf_buffer_, det_boxes3d, is_num_pillars_within_range);
+  bool is_success = false;
+  if (enable_tta_) {
+    is_success = detector_ptr_->detectWithTTA(
+      input_pointcloud_msg, tf_buffer_, det_boxes3d, is_num_pillars_within_range);
+  } else {
+    is_success = detector_ptr_->detect(
+      input_pointcloud_msg, tf_buffer_, det_boxes3d, is_num_pillars_within_range);
+  }
   if (!is_success) {
     return;
   }

@@ -85,6 +85,8 @@ private:
 
   std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
   std::string logger_name_{"lidar_centerpoint"};
+
+  bool enable_tta_{true};
 };
 
 }  // namespace autoware::lidar_centerpoint

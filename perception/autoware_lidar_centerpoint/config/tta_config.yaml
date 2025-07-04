@@ -1,0 +1,16 @@
+/**:
+  ros__parameters:
+    # TTA (Test Time Augmentation) Configuration
+    tta:
+      # Enable TTA processing
+      enabled: true
+
+      # Rotation angles in degrees for TTA augmentations
+      # 0° (original), 90°, 180°
+      rotation_angles: [0.0, 90.0, 180.0]
+
+      # IoU threshold for NMS merging of TTA results
+      iou_threshold: 0.5
+
+      # Enable parallel processing (uses more GPU memory but faster)
+      enable_parallel: true
