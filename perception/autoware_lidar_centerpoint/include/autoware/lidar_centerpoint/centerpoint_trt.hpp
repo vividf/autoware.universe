@@ -41,7 +41,8 @@ class CenterPointTRT
 public:
   explicit CenterPointTRT(
     const TrtCommonConfig & encoder_param, const TrtCommonConfig & head_param,
-    const DensificationParam & densification_param, const CenterPointConfig & config);
+    const DensificationParam & densification_param, const CenterPointConfig & config,
+    const TTAConfig & tta_config = TTAConfig());
 
   virtual ~CenterPointTRT();
 

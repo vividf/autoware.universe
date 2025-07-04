@@ -11,6 +11,3 @@
 
       # IoU threshold for NMS merging of TTA results
       iou_threshold: 0.5
-
-      # Enable parallel processing (uses more GPU memory but faster)
-      enable_parallel: true

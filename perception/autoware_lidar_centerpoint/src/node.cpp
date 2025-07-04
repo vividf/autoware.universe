@@ -17,6 +17,7 @@
 #include "autoware/lidar_centerpoint/centerpoint_config.hpp"
 #include "autoware/lidar_centerpoint/preprocess/pointcloud_densification.hpp"
 #include "autoware/lidar_centerpoint/ros_utils.hpp"
+#include "autoware/lidar_centerpoint/tta_config.hpp"
 #include "autoware/lidar_centerpoint/utils.hpp"
 
 #include <Eigen/Dense>
@@ -75,7 +76,10 @@ LidarCenterPointNode::LidarCenterPointNode(const rclcpp::NodeOptions & node_opti
   const auto max_area_matrix = this->declare_parameter<std::vector<double>>("max_area_matrix");
 
   // TTA parameters
-  [[maybe_unused]] const bool enable_tta_ = this->declare_parameter<bool>("tta.enabled", true);
+  enable_tta_ = this->declare_parameter<bool>("tta.enabled", false);
+  const auto tta_rotation_angles = this->declare_parameter<std::vector<double>>(
+    "tta.rotation_angles", std::vector<double>{0.0, 90.0, 180.0});
+  const float tta_iou_threshold = this->declare_parameter<double>("tta.iou_threshold", 0.5);
 
   // Set up logger name
   this->logger_name_ = this->declare_parameter<std::string>("logger_name", "lidar_centerpoint");
@@ -110,8 +114,14 @@ LidarCenterPointNode::LidarCenterPointNode(const rclcpp::NodeOptions & node_opti
     class_names_.size(), point_feature_size, cloud_capacity, max_voxel_size, point_cloud_range,
     voxel_size, downsample_factor, encoder_in_feature_size, score_threshold,
     circle_nms_dist_threshold, yaw_norm_thresholds, has_variance_, this->logger_name_);
-  detector_ptr_ =
-    std::make_unique<CenterPointTRT>(encoder_param, head_param, densification_param, config);
+
+  // Create TTA configuration from parameters
+  std::vector<float> tta_rotation_angles_float(
+    tta_rotation_angles.begin(), tta_rotation_angles.end());
+  TTAConfig tta_config(enable_tta_, tta_rotation_angles_float, tta_iou_threshold);
+
+  detector_ptr_ = std::make_unique<CenterPointTRT>(
+    encoder_param, head_param, densification_param, config, tta_config);
   diagnostics_centerpoint_trt_ =
     std::make_unique<autoware_utils::DiagnosticsInterface>(this, "centerpoint_trt");
 
@@ -160,28 +170,47 @@ LidarCenterPointNode::LidarCenterPointNode(const rclcpp::NodeOptions & node_opti
 void LidarCenterPointNode::pointCloudCallback(
   const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg)
 {
+  RCLCPP_INFO(rclcpp::get_logger(logger_name_.c_str()), "pointCloudCallback started");
+
   const auto objects_sub_count =
     objects_pub_->get_subscription_count() + objects_pub_->get_intra_process_subscription_count();
   if (objects_sub_count < 1) {
+    RCLCPP_INFO(rclcpp::get_logger(logger_name_.c_str()), "No subscribers, returning");
     return;
   }
 
+  RCLCPP_INFO(rclcpp::get_logger(logger_name_.c_str()), "About to check stop_watch_ptr_");
   if (stop_watch_ptr_) {
     stop_watch_ptr_->toc("processing_time", true);
   }
+
+  RCLCPP_INFO(rclcpp::get_logger(logger_name_.c_str()), "About to clear diagnostics");
   diagnostics_centerpoint_trt_->clear();
 
+  RCLCPP_INFO(rclcpp::get_logger(logger_name_.c_str()), "About to declare variables");
   std::vector<Box3D> det_boxes3d;
   bool is_num_pillars_within_range = true;
   bool is_success = false;
+
+  RCLCPP_INFO(
+    rclcpp::get_logger(logger_name_.c_str()), "TTA enabled: %s", enable_tta_ ? "true" : "false");
   if (enable_tta_) {
+    RCLCPP_INFO(rclcpp::get_logger(logger_name_.c_str()), "About to call detectWithTTA");
     is_success = detector_ptr_->detectWithTTA(
       input_pointcloud_msg, tf_buffer_, det_boxes3d, is_num_pillars_within_range);
+    RCLCPP_INFO(
+      rclcpp::get_logger(logger_name_.c_str()), "detectWithTTA returned: %s",
+      is_success ? "true" : "false");
   } else {
+    RCLCPP_INFO(rclcpp::get_logger(logger_name_.c_str()), "About to call detect");
     is_success = detector_ptr_->detect(
       input_pointcloud_msg, tf_buffer_, det_boxes3d, is_num_pillars_within_range);
+    RCLCPP_INFO(
+      rclcpp::get_logger(logger_name_.c_str()), "detect returned: %s",
+      is_success ? "true" : "false");
   }
   if (!is_success) {
+    RCLCPP_INFO(rclcpp::get_logger(logger_name_.c_str()), "Detection failed, returning");
     return;
   }
   diagnostics_centerpoint_trt_->add_key_value(

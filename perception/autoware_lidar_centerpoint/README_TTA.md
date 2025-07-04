@@ -66,7 +66,6 @@ tta:
   enabled: true
   rotation_angles: [0.0, 10.0, 120.0, 240.0]
   iou_threshold: 0.5
-  enable_parallel: true
 ```
 
 ### 2. Runtime Usage
