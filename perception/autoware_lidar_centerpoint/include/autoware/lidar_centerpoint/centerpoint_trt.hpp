@@ -82,6 +82,13 @@ protected:
   std::unique_ptr<TTAProcessor> tta_processor_{nullptr};
   cudaStream_t stream_{nullptr};
 
+  // TTA-specific streams for parallel processing
+  std::vector<cudaStream_t> tta_streams_;
+
+  // TTA-specific buffers to avoid race conditions
+  std::vector<cuda::unique_ptr<unsigned int[]>> tta_mask_buffers_;
+  std::vector<cuda::unique_ptr<float[]>> tta_voxels_buffers_;
+
   std::size_t class_size_{0};
   CenterPointConfig config_;
   std::size_t encoder_in_feature_size_{0};

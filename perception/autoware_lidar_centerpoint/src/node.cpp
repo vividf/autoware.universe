@@ -170,8 +170,6 @@ LidarCenterPointNode::LidarCenterPointNode(const rclcpp::NodeOptions & node_opti
 void LidarCenterPointNode::pointCloudCallback(
   const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg)
 {
-  RCLCPP_INFO(rclcpp::get_logger(logger_name_.c_str()), "pointCloudCallback started");
-
   const auto objects_sub_count =
     objects_pub_->get_subscription_count() + objects_pub_->get_intra_process_subscription_count();
   if (objects_sub_count < 1) {
@@ -179,38 +177,35 @@ void LidarCenterPointNode::pointCloudCallback(
     return;
   }
 
-  RCLCPP_INFO(rclcpp::get_logger(logger_name_.c_str()), "About to check stop_watch_ptr_");
   if (stop_watch_ptr_) {
     stop_watch_ptr_->toc("processing_time", true);
   }
 
-  RCLCPP_INFO(rclcpp::get_logger(logger_name_.c_str()), "About to clear diagnostics");
   diagnostics_centerpoint_trt_->clear();
 
-  RCLCPP_INFO(rclcpp::get_logger(logger_name_.c_str()), "About to declare variables");
   std::vector<Box3D> det_boxes3d;
   bool is_num_pillars_within_range = true;
   bool is_success = false;
 
-  RCLCPP_INFO(
-    rclcpp::get_logger(logger_name_.c_str()), "TTA enabled: %s", enable_tta_ ? "true" : "false");
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(logger_name_.c_str()), "TTA enabled: %s", enable_tta_ ? "true" : "false");
   if (enable_tta_) {
-    RCLCPP_INFO(rclcpp::get_logger(logger_name_.c_str()), "About to call detectWithTTA");
+    // RCLCPP_INFO(rclcpp::get_logger(logger_name_.c_str()), "About to call detectWithTTA");
     is_success = detector_ptr_->detectWithTTA(
       input_pointcloud_msg, tf_buffer_, det_boxes3d, is_num_pillars_within_range);
-    RCLCPP_INFO(
-      rclcpp::get_logger(logger_name_.c_str()), "detectWithTTA returned: %s",
-      is_success ? "true" : "false");
+    // RCLCPP_INFO(
+    //   rclcpp::get_logger(logger_name_.c_str()), "detectWithTTA returned: %s",
+    //   is_success ? "true" : "false");
   } else {
-    RCLCPP_INFO(rclcpp::get_logger(logger_name_.c_str()), "About to call detect");
+    // RCLCPP_INFO(rclcpp::get_logger(logger_name_.c_str()), "About to call detect");
     is_success = detector_ptr_->detect(
       input_pointcloud_msg, tf_buffer_, det_boxes3d, is_num_pillars_within_range);
-    RCLCPP_INFO(
-      rclcpp::get_logger(logger_name_.c_str()), "detect returned: %s",
-      is_success ? "true" : "false");
+    // RCLCPP_INFO(
+    //   rclcpp::get_logger(logger_name_.c_str()), "detect returned: %s",
+    //   is_success ? "true" : "false");
   }
   if (!is_success) {
-    RCLCPP_INFO(rclcpp::get_logger(logger_name_.c_str()), "Detection failed, returning");
+    // RCLCPP_INFO(rclcpp::get_logger(logger_name_.c_str()), "Detection failed, returning");
     return;
   }
   diagnostics_centerpoint_trt_->add_key_value(
