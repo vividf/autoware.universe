@@ -36,13 +36,10 @@ struct TTAConfig
   // IoU threshold for NMS merging
   float iou_threshold = 0.5f;
 
-  // Enable parallel processing
-  bool enable_parallel = true;
-
   TTAConfig() = default;
 
   TTAConfig(bool enabled, const std::vector<float> & rotation_angles, float iou_threshold = 0.5f)
-  : enabled(enabled),
+  : enabled(enabled && !rotation_angles.empty()),
     rotation_angles(rotation_angles),
     num_augmentations(rotation_angles.size()),
     iou_threshold(iou_threshold)
