@@ -17,6 +17,7 @@
 #include "autoware/lidar_centerpoint/centerpoint_config.hpp"
 #include "autoware/lidar_centerpoint/network/scatter_kernel.hpp"
 #include "autoware/lidar_centerpoint/preprocess/preprocess_kernel.hpp"
+#include "autoware/lidar_centerpoint/tta_processor.hpp"
 
 #include <autoware_utils/math/constants.hpp>
 #include <autoware_utils/ros/diagnostics_interface.hpp>
@@ -42,8 +43,14 @@ CenterPointTRT::CenterPointTRT(
   vg_ptr_ = std::make_unique<VoxelGenerator>(densification_param, config_);
   post_proc_ptr_ = std::make_unique<PostProcessCUDA>(config_);
 
+  // Initialize TTA processor with 0°, 90°, 180° rotations
+  std::vector<float> rotation_angles = {0.0f, 90.0f, 180.0f};
+  TTAConfig tta_config(true, rotation_angles, 0.5f);
+  tta_processor_ = std::make_unique<TTAProcessor>(tta_config, config_);
+
   initPtr();
   initTrt(encoder_param, head_param);
+  initTTAMemory();
 
   cudaStreamCreate(&stream_);
 }
@@ -107,6 +114,32 @@ void CenterPointTRT::initPtr()
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
     shuffle_indices_d_.get(), indexes.data(), config_.cloud_capacity_ * sizeof(unsigned int),
     cudaMemcpyHostToDevice, stream_));
+}
+
+void CenterPointTRT::initTTAMemory()
+{
+  if (!tta_processor_ || !tta_processor_->isEnabled()) {
+    return;
+  }
+
+  int num_augmentations = tta_processor_->getNumAugmentations();
+
+  // Allocate TTA GPU memory buffers
+  tta_points_d_ = cuda::make_unique<float[]>(
+    config_.cloud_capacity_ * config_.point_feature_size_ * num_augmentations);
+  tta_voxels_d_ = cuda::make_unique<float[]>(voxels_size_ * num_augmentations);
+  tta_encoder_features_d_ =
+    cuda::make_unique<float[]>(encoder_in_feature_size_ * num_augmentations);
+  tta_spatial_features_d_ = cuda::make_unique<float[]>(spatial_features_size_ * num_augmentations);
+  tta_head_outputs_d_ = cuda::make_unique<float[]>(
+    (config_.down_grid_size_x_ * config_.down_grid_size_y_ *
+     (config_.class_size_ + config_.head_out_offset_size_ + config_.head_out_z_size_ +
+      config_.head_out_dim_size_ + config_.head_out_rot_size_ + config_.head_out_vel_size_)) *
+    num_augmentations);
+  tta_num_voxels_d_ = cuda::make_unique<unsigned int[]>(num_augmentations);
+  tta_coordinates_d_ = cuda::make_unique<int[]>(coordinates_size_ * num_augmentations);
+  tta_num_points_per_voxel_d_ =
+    cuda::make_unique<float[]>(config_.max_voxel_size_ * num_augmentations);
 }
 
 void CenterPointTRT::initTrt(
@@ -285,6 +318,142 @@ void CenterPointTRT::postProcess(std::vector<Box3D> & det_boxes3d)
   if (det_boxes3d.size() == 0) {
     RCLCPP_DEBUG_STREAM(rclcpp::get_logger(config_.logger_name_.c_str()), "No detected boxes.");
   }
+}
+
+bool CenterPointTRT::detectWithTTA(
+  const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg_ptr,
+  const tf2_ros::Buffer & tf_buffer, std::vector<Box3D> & det_boxes3d,
+  bool & is_num_pillars_within_range)
+{
+  if (!tta_processor_ || !tta_processor_->isEnabled()) {
+    return detect(input_pointcloud_msg_ptr, tf_buffer, det_boxes3d, is_num_pillars_within_range);
+  }
+
+  is_num_pillars_within_range = true;
+
+  // Clear GPU memory
+  CHECK_CUDA_ERROR(cudaMemsetAsync(
+    encoder_in_features_d_.get(), 0, encoder_in_feature_size_ * sizeof(float), stream_));
+  CHECK_CUDA_ERROR(
+    cudaMemsetAsync(spatial_features_d_.get(), 0, spatial_features_size_ * sizeof(float), stream_));
+
+  // Preprocess to get point cloud data
+  if (!preprocess(input_pointcloud_msg_ptr, tf_buffer)) {
+    RCLCPP_WARN(
+      rclcpp::get_logger(config_.logger_name_.c_str()), "Fail to preprocess and skip to detect.");
+    return false;
+  }
+
+  // Generate TTA augmentations
+  std::vector<TTAResult> tta_results =
+    tta_processor_->augmentPointCloud(points_d_.get(), config_.cloud_capacity_);
+
+  // Process each augmentation
+  std::vector<std::vector<Box3D>> all_detections;
+  inferenceTTA(tta_results, all_detections);
+
+  // Merge results
+  det_boxes3d = mergeTTADetections(tta_results, all_detections);
+
+  return true;
+}
+
+void CenterPointTRT::inferenceTTA(
+  const std::vector<TTAResult> & tta_results, std::vector<std::vector<Box3D>> & all_detections)
+{
+  all_detections.clear();
+  all_detections.resize(tta_results.size());
+
+  for (std::size_t i = 0; i < tta_results.size(); ++i) {
+    const auto & tta_result = tta_results[i];
+
+    // Copy augmented points to GPU
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(
+      tta_points_d_.get() + i * config_.cloud_capacity_ * config_.point_feature_size_,
+      tta_result.augmented_points.data(), tta_result.augmented_points.size() * sizeof(float),
+      cudaMemcpyHostToDevice, stream_));
+
+    // Clear GPU memory for this augmentation
+    CHECK_CUDA_ERROR(cudaMemsetAsync(
+      tta_encoder_features_d_.get() + i * encoder_in_feature_size_, 0,
+      encoder_in_feature_size_ * sizeof(float), stream_));
+    CHECK_CUDA_ERROR(cudaMemsetAsync(
+      tta_spatial_features_d_.get() + i * spatial_features_size_, 0,
+      spatial_features_size_ * sizeof(float), stream_));
+
+    // Generate voxels for this augmentation
+    CHECK_CUDA_ERROR(
+      cudaMemsetAsync(tta_num_voxels_d_.get() + i, 0, sizeof(unsigned int), stream_));
+
+    // Use the same voxel generation as original but with augmented points
+    CHECK_CUDA_ERROR(generateVoxels_random_launch(
+      tta_points_d_.get() + i * config_.cloud_capacity_ * config_.point_feature_size_,
+      config_.cloud_capacity_, config_.range_min_x_, config_.range_max_x_, config_.range_min_y_,
+      config_.range_max_y_, config_.range_min_z_, config_.range_max_z_, config_.voxel_size_x_,
+      config_.voxel_size_y_, config_.voxel_size_z_, config_.grid_size_y_, config_.grid_size_x_,
+      mask_d_.get(), voxels_buffer_d_.get(), stream_));
+
+    CHECK_CUDA_ERROR(generateBaseFeatures_launch(
+      mask_d_.get(), voxels_buffer_d_.get(), config_.grid_size_y_, config_.grid_size_x_,
+      config_.max_voxel_size_, tta_num_voxels_d_.get() + i, tta_voxels_d_.get() + i * voxels_size_,
+      tta_num_points_per_voxel_d_.get() + i * config_.max_voxel_size_,
+      tta_coordinates_d_.get() + i * coordinates_size_, stream_));
+
+    CHECK_CUDA_ERROR(generateFeatures_launch(
+      tta_voxels_d_.get() + i * voxels_size_,
+      tta_num_points_per_voxel_d_.get() + i * config_.max_voxel_size_,
+      tta_coordinates_d_.get() + i * coordinates_size_, tta_num_voxels_d_.get() + i,
+      config_.max_voxel_size_, config_.voxel_size_x_, config_.voxel_size_y_, config_.voxel_size_z_,
+      config_.range_min_x_, config_.range_min_y_, config_.range_min_z_,
+      tta_encoder_features_d_.get() + i * encoder_in_feature_size_,
+      config_.encoder_in_feature_size_, stream_));
+
+    // Run encoder inference
+    std::vector<void *> encoder_tensors = {
+      tta_encoder_features_d_.get() + i * encoder_in_feature_size_, pillar_features_d_.get()};
+    encoder_trt_ptr_->setTensorsAddresses(encoder_tensors);
+    encoder_trt_ptr_->enqueueV3(stream_);
+
+    // Scatter features
+    CHECK_CUDA_ERROR(scatterFeatures_launch(
+      pillar_features_d_.get(), tta_coordinates_d_.get() + i * coordinates_size_,
+      tta_num_voxels_d_.get() + i, config_.max_voxel_size_, config_.encoder_out_feature_size_,
+      config_.grid_size_x_, config_.grid_size_y_,
+      tta_spatial_features_d_.get() + i * spatial_features_size_, stream_));
+
+    // Run head inference
+    std::vector<void *> head_tensors = {
+      tta_spatial_features_d_.get() + i * spatial_features_size_,
+      head_out_heatmap_d_.get(),
+      head_out_offset_d_.get(),
+      head_out_z_d_.get(),
+      head_out_dim_d_.get(),
+      head_out_rot_d_.get(),
+      head_out_vel_d_.get()};
+    head_trt_ptr_->setTensorsAddresses(head_tensors);
+    head_trt_ptr_->enqueueV3(stream_);
+
+    // Post-process to get detections
+    CHECK_CUDA_ERROR(post_proc_ptr_->generateDetectedBoxes3D_launch(
+      head_out_heatmap_d_.get(), head_out_offset_d_.get(), head_out_z_d_.get(),
+      head_out_dim_d_.get(), head_out_rot_d_.get(), head_out_vel_d_.get(), all_detections[i],
+      stream_));
+  }
+}
+
+std::vector<Box3D> CenterPointTRT::mergeTTADetections(
+  const std::vector<TTAResult> & tta_results,
+  const std::vector<std::vector<Box3D>> & all_detections)
+{
+  // Transform detections back to original coordinate system
+  std::vector<TTAResult> transformed_results = tta_results;
+  for (std::size_t i = 0; i < tta_results.size(); ++i) {
+    transformed_results[i].detected_boxes =
+      tta_processor_->transformBoxes(all_detections[i], tta_results[i].inverse_transform_matrix);
+  }
+
+  // Merge all detections using TTA processor
+  return tta_processor_->mergeTTAResults(transformed_results);
 }
 
 }  // namespace autoware::lidar_centerpoint
