@@ -25,27 +25,14 @@ namespace autoware::lidar_centerpoint
 TTAProcessor::TTAProcessor(const TTAConfig & config, const CenterPointConfig & centerpoint_config)
 : config_(config), centerpoint_config_(centerpoint_config)
 {
-  // Debug logging
-  std::cout << "TTAProcessor constructor called" << std::endl;
-  std::cout << "TTA enabled: " << (config_.enabled ? "true" : "false") << std::endl;
-  std::cout << "Number of augmentations: " << config_.num_augmentations << std::endl;
-  std::cout << "Rotation angles: ";
-  for (const auto & angle : config_.rotation_angles) {
-    std::cout << angle << " ";
-  }
-  std::cout << std::endl;
 }
 
 std::vector<TTAResult> TTAProcessor::augmentPointCloud(
   const float * input_points, std::size_t num_points)
 {
-  std::cout << "TTAProcessor::augmentPointCloud called with " << num_points << " points"
-            << std::endl;
   std::vector<TTAResult> results;
 
-  std::cout << "Checking if TTA is enabled and rotation angles exist" << std::endl;
   if (!config_.enabled || config_.rotation_angles.empty()) {
-    std::cout << "TTA disabled or no rotation angles, returning original point cloud" << std::endl;
     // Return original point cloud if TTA is disabled or no rotation angles
     TTAResult result;
     result.augmented_points.resize(num_points * centerpoint_config_.point_feature_size_);
@@ -56,52 +43,36 @@ std::vector<TTAResult> TTAProcessor::augmentPointCloud(
     return results;
   }
 
-  std::cout << "TTA is enabled, generating augmentations for " << config_.num_augmentations
-            << " angles" << std::endl;
   // Generate augmentations for each rotation angle
   for (int i = 0; i < config_.num_augmentations; ++i) {
-    std::cout << "Processing augmentation " << i << " with angle " << config_.rotation_angles[i]
-              << std::endl;
     TTAResult result;
 
     // Generate transformation matrix for this rotation
-    std::cout << "Generating rotation transform" << std::endl;
     result.transform_matrix = generateRotationTransform(config_.rotation_angles[i]);
-    std::cout << "Computing inverse transform" << std::endl;
     result.inverse_transform_matrix = result.transform_matrix.inverse();
 
     // Apply transformation to point cloud
-    std::cout << "Resizing augmented points vector" << std::endl;
     result.augmented_points.resize(num_points * centerpoint_config_.point_feature_size_);
-    std::cout << "Applying transform to point cloud" << std::endl;
     applyTransform(
       input_points, num_points, result.transform_matrix, result.augmented_points.data());
 
-    std::cout << "Adding result to results vector" << std::endl;
     results.push_back(result);
   }
 
-  std::cout << "augmentPointCloud completed, returning " << results.size() << " results"
-            << std::endl;
   return results;
 }
 
 Eigen::Matrix4f TTAProcessor::generateRotationTransform(float angle_degrees)
 {
-  std::cout << "generateRotationTransform called with angle: " << angle_degrees << " degrees"
-            << std::endl;
-
   Eigen::Matrix4f transform = Eigen::Matrix4f::Identity();
 
   // Convert degrees to radians
   float angle_rad = degreesToRadians(angle_degrees);
-  std::cout << "Converted to radians: " << angle_rad << std::endl;
 
   // Create rotation matrix around Z-axis
   Eigen::Matrix3f rotation = Eigen::AngleAxisf(angle_rad, Eigen::Vector3f::UnitZ()).matrix();
   transform.block<3, 3>(0, 0) = rotation;
 
-  std::cout << "generateRotationTransform completed" << std::endl;
   return transform;
 }
 
@@ -109,32 +80,14 @@ void TTAProcessor::applyTransform(
   const float * input_points, std::size_t num_points, const Eigen::Matrix4f & transform,
   float * output_points)
 {
-  std::cout << "applyTransform called with " << num_points << " points" << std::endl;
-
   // Safety checks
-  if (input_points == nullptr) {
-    std::cout << "ERROR: input_points is null!" << std::endl;
+  if (input_points == nullptr || output_points == nullptr) {
     return;
   }
-
-  if (output_points == nullptr) {
-    std::cout << "ERROR: output_points is null!" << std::endl;
-    return;
-  }
-
-  std::cout << "Input points pointer: " << input_points << std::endl;
-  std::cout << "Output points pointer: " << output_points << std::endl;
-  std::cout << "First few input values: " << input_points[0] << ", " << input_points[1] << ", "
-            << input_points[2] << ", " << input_points[3] << std::endl;
 
   for (std::size_t i = 0; i < num_points; ++i) {
-    if (i % 10000 == 0) {
-      std::cout << "Processing point " << i << " of " << num_points << std::endl;
-    }
-
     // Check bounds before accessing
     if (i * 4 + 3 >= num_points * 4) {
-      std::cout << "ERROR: Array bounds exceeded at point " << i << std::endl;
       break;
     }
 
@@ -151,8 +104,6 @@ void TTAProcessor::applyTransform(
     output_points[i * 4 + 2] = transformed_point(2);     // z
     output_points[i * 4 + 3] = input_points[i * 4 + 3];  // intensity/time
   }
-
-  std::cout << "applyTransform completed" << std::endl;
 }
 
 std::vector<Box3D> TTAProcessor::transformBoxes(
