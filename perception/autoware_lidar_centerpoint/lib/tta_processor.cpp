@@ -86,11 +86,6 @@ void TTAProcessor::applyTransform(
   }
 
   for (std::size_t i = 0; i < num_points; ++i) {
-    // Check bounds before accessing
-    if (i * 4 + 3 >= num_points * 4) {
-      break;
-    }
-
     Eigen::Vector4f point;
     point << input_points[i * 4 + 0],  // x
       input_points[i * 4 + 1],         // y

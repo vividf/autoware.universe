@@ -32,7 +32,7 @@
 
         <!-- TTA parameters -->
         <param name="tta.enabled" value="true"/>
-        <param name="tta.rotation_angles" value="[0.0, 90.0, 180.0]"/>
+        <param name="tta.rotation_angles" value="[0.0, 30.0]"/>
         <param name="tta.iou_threshold" value="0.5"/>
       </composable_node>
     </load_composable_node>
@@ -53,7 +53,7 @@
 
       <!-- TTA parameters -->
       <param name="tta.enabled" value="true"/>
-      <param name="tta.rotation_angles" value="[0.0, 90.0, 180.0]"/>
+      <param name="tta.rotation_angles" value="[0.0, 30.0]"/>
       <param name="tta.iou_threshold" value="0.5"/>
     </node>
   </group>

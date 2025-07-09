@@ -358,6 +358,7 @@ bool CenterPointTRT::detect(
   const tf2_ros::Buffer & tf_buffer, std::vector<Box3D> & det_boxes3d,
   bool & is_num_pillars_within_range)
 {
+  auto start_time = std::chrono::high_resolution_clock::now();
   is_num_pillars_within_range = true;
 
   CHECK_CUDA_ERROR(cudaMemsetAsync(
@@ -365,14 +366,37 @@ bool CenterPointTRT::detect(
   CHECK_CUDA_ERROR(
     cudaMemsetAsync(spatial_features_d_.get(), 0, spatial_features_size_ * sizeof(float), stream_));
 
+  auto preprocess_start = std::chrono::high_resolution_clock::now();
   if (!preprocess(input_pointcloud_msg_ptr, tf_buffer)) {
     RCLCPP_WARN(
       rclcpp::get_logger(config_.logger_name_.c_str()), "Fail to preprocess and skip to detect.");
     return false;
   }
+  auto preprocess_end = std::chrono::high_resolution_clock::now();
+  auto preprocess_duration =
+    std::chrono::duration_cast<std::chrono::microseconds>(preprocess_end - preprocess_start);
+  RCLCPP_INFO(
+    rclcpp::get_logger(config_.logger_name_.c_str()), "Preprocess time: %.2f ms (detect())",
+    preprocess_duration.count() / 1000.0f);
 
+  auto inference_start = std::chrono::high_resolution_clock::now();
   inference();
+  cudaStreamSynchronize(stream_);
+  auto inference_end = std::chrono::high_resolution_clock::now();
+  auto inference_duration =
+    std::chrono::duration_cast<std::chrono::microseconds>(inference_end - inference_start);
+  RCLCPP_INFO(
+    rclcpp::get_logger(config_.logger_name_.c_str()), "Inference time: %.2f ms (detect())",
+    inference_duration.count() / 1000.0f);
+
+  auto postprocess_start = std::chrono::high_resolution_clock::now();
   postProcess(det_boxes3d);
+  auto postprocess_end = std::chrono::high_resolution_clock::now();
+  auto postprocess_duration =
+    std::chrono::duration_cast<std::chrono::microseconds>(postprocess_end - postprocess_start);
+  RCLCPP_INFO(
+    rclcpp::get_logger(config_.logger_name_.c_str()), "PostProcess time: %.2f ms (detect())",
+    postprocess_duration.count() / 1000.0f);
 
   // Check the actual number of pillars after inference to avoid unnecessary synchronization.
   unsigned int num_pillars = 0;
@@ -388,6 +412,13 @@ bool CenterPointTRT::detect(
       num_pillars, config_.max_voxel_size_);
     is_num_pillars_within_range = false;
   }
+
+  auto end_time = std::chrono::high_resolution_clock::now();
+  auto total_duration =
+    std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+  RCLCPP_INFO(
+    rclcpp::get_logger(config_.logger_name_.c_str()), "Total Processing time: %.2f ms (detect())",
+    total_duration.count() / 1000.0f);
 
   return true;
 }
@@ -442,7 +473,15 @@ void CenterPointTRT::inference()
   // pillar encoder network
   std::vector<void *> encoder_tensors = {encoder_in_features_d_.get(), pillar_features_d_.get()};
   encoder_trt_ptr_->setTensorsAddresses(encoder_tensors);
+  auto encoder_start = std::chrono::high_resolution_clock::now();
   encoder_trt_ptr_->enqueueV3(stream_);
+  cudaStreamSynchronize(stream_);
+  auto encoder_end = std::chrono::high_resolution_clock::now();
+  auto encoder_duration =
+    std::chrono::duration_cast<std::chrono::microseconds>(encoder_end - encoder_start);
+  RCLCPP_INFO(
+    rclcpp::get_logger(config_.logger_name_.c_str()),
+    "Encoder inference time: %.2f ms (inference())", encoder_duration.count() / 1000.0f);
 
   // scatter
   CHECK_CUDA_ERROR(scatterFeatures_launch(
@@ -456,8 +495,14 @@ void CenterPointTRT::inference()
                                       head_out_dim_d_.get(),     head_out_rot_d_.get(),
                                       head_out_vel_d_.get()};
   head_trt_ptr_->setTensorsAddresses(head_tensors);
-
+  auto head_start = std::chrono::high_resolution_clock::now();
   head_trt_ptr_->enqueueV3(stream_);
+  cudaStreamSynchronize(stream_);
+  auto head_end = std::chrono::high_resolution_clock::now();
+  auto head_duration = std::chrono::duration_cast<std::chrono::microseconds>(head_end - head_start);
+  RCLCPP_INFO(
+    rclcpp::get_logger(config_.logger_name_.c_str()), "Head inference time: %.2f ms (inference())",
+    head_duration.count() / 1000.0f);
 }
 
 void CenterPointTRT::postProcess(std::vector<Box3D> & det_boxes3d)
