@@ -59,7 +59,6 @@ public:
 protected:
   void initPtr();
   void initTrt(const TrtCommonConfig & encoder_param, const TrtCommonConfig & head_param);
-  void initBatchTrt(const TrtCommonConfig & head_param);
 
   virtual bool preprocess(
     const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg_ptr,
@@ -72,8 +71,6 @@ protected:
   // TTA-related methods
   void initTTAMemory();
   void inferenceTTA(const int num_augmentations, std::vector<std::vector<Box3D>> & all_detections);
-  void inferenceTTABatch(
-    const int num_augmentations, std::vector<std::vector<Box3D>> & all_detections);
   std::vector<Box3D> mergeTTADetections(
     const int num_augmentations, const std::vector<float> & rotation_angles_rad,
     const std::vector<std::vector<Box3D>> & all_detections);
@@ -81,9 +78,6 @@ protected:
   std::unique_ptr<VoxelGeneratorTemplate> vg_ptr_{nullptr};
   std::unique_ptr<tensorrt_common::TrtCommon> encoder_trt_ptr_{nullptr};
   std::unique_ptr<tensorrt_common::TrtCommon> head_trt_ptr_{nullptr};
-
-  // Batch processing engine for TTA (head only)
-  std::unique_ptr<tensorrt_common::TrtCommon> batch_head_trt_ptr_{nullptr};
 
   std::unique_ptr<PostProcessCUDA> post_proc_ptr_{nullptr};
   std::unique_ptr<TTAProcessor> tta_processor_{nullptr};
@@ -133,20 +127,6 @@ protected:
   cuda::unique_ptr<unsigned int[]> tta_num_voxels_d_{nullptr};
   cuda::unique_ptr<int[]> tta_coordinates_d_{nullptr};
   cuda::unique_ptr<float[]> tta_num_points_per_voxel_d_{nullptr};
-
-  // Batch processing buffers for TTA
-  cuda::unique_ptr<float[]> batch_encoder_in_features_d_{nullptr};
-  cuda::unique_ptr<float[]> batch_pillar_features_d_{nullptr};
-  cuda::unique_ptr<float[]> batch_spatial_features_d_{nullptr};
-  cuda::unique_ptr<float[]> batch_head_out_heatmap_d_{nullptr};
-  cuda::unique_ptr<float[]> batch_head_out_offset_d_{nullptr};
-  cuda::unique_ptr<float[]> batch_head_out_z_d_{nullptr};
-  cuda::unique_ptr<float[]> batch_head_out_dim_d_{nullptr};
-  cuda::unique_ptr<float[]> batch_head_out_rot_d_{nullptr};
-  cuda::unique_ptr<float[]> batch_head_out_vel_d_{nullptr};
-  cuda::unique_ptr<int[]> batch_coordinates_d_{nullptr};
-  cuda::unique_ptr<unsigned int[]> batch_num_voxels_d_{nullptr};
-  cuda::unique_ptr<float[]> batch_num_points_per_voxel_d_{nullptr};
 };
 
 }  // namespace autoware::lidar_centerpoint

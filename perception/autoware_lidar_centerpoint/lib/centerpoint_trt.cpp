@@ -64,12 +64,6 @@ CenterPointTRT::CenterPointTRT(
 
   initPtr();
   initTrt(encoder_param, head_param);
-
-  // Initialize batch TensorRT engines for TTA if enabled
-  if (tta_processor_ && tta_processor_->isEnabled()) {
-    initBatchTrt(head_param);
-  }
-
   initTTAMemory();
 }
 
@@ -187,49 +181,6 @@ void CenterPointTRT::initTTAMemory()
     tta_mask_buffers_[i] = cuda::make_unique<unsigned int[]>(mask_size_);
     tta_voxels_buffers_[i] = cuda::make_unique<float[]>(voxels_buffer_size_);
   }
-
-  // Allocate batch processing buffers for TTA with better memory layout
-  if (batch_head_trt_ptr_) {
-    const size_t batch_encoder_features_size = encoder_in_feature_size_ * num_augmentations;
-    const size_t batch_pillar_features_size =
-      config_.max_voxel_size_ * config_.encoder_out_feature_size_ * num_augmentations;
-    const size_t batch_spatial_features_size = spatial_features_size_ * num_augmentations;
-    const size_t batch_heatmap_size = config_.down_grid_size_x_ * config_.down_grid_size_y_ *
-                                      config_.class_size_ * num_augmentations;
-    const size_t batch_offset_size = config_.down_grid_size_x_ * config_.down_grid_size_y_ *
-                                     config_.head_out_offset_size_ * num_augmentations;
-    const size_t batch_z_size = config_.down_grid_size_x_ * config_.down_grid_size_y_ *
-                                config_.head_out_z_size_ * num_augmentations;
-    const size_t batch_dim_size = config_.down_grid_size_x_ * config_.down_grid_size_y_ *
-                                  config_.head_out_dim_size_ * num_augmentations;
-    const size_t batch_rot_size = config_.down_grid_size_x_ * config_.down_grid_size_y_ *
-                                  config_.head_out_rot_size_ * num_augmentations;
-    const size_t batch_vel_size = config_.down_grid_size_x_ * config_.down_grid_size_y_ *
-                                  config_.head_out_vel_size_ * num_augmentations;
-
-    batch_encoder_in_features_d_ = cuda::make_unique<float[]>(
-      (batch_encoder_features_size + alignment - 1) / alignment * alignment);
-    batch_pillar_features_d_ = cuda::make_unique<float[]>(
-      (batch_pillar_features_size + alignment - 1) / alignment * alignment);
-    batch_spatial_features_d_ = cuda::make_unique<float[]>(
-      (batch_spatial_features_size + alignment - 1) / alignment * alignment);
-    batch_head_out_heatmap_d_ =
-      cuda::make_unique<float[]>((batch_heatmap_size + alignment - 1) / alignment * alignment);
-    batch_head_out_offset_d_ =
-      cuda::make_unique<float[]>((batch_offset_size + alignment - 1) / alignment * alignment);
-    batch_head_out_z_d_ =
-      cuda::make_unique<float[]>((batch_z_size + alignment - 1) / alignment * alignment);
-    batch_head_out_dim_d_ =
-      cuda::make_unique<float[]>((batch_dim_size + alignment - 1) / alignment * alignment);
-    batch_head_out_rot_d_ =
-      cuda::make_unique<float[]>((batch_rot_size + alignment - 1) / alignment * alignment);
-    batch_head_out_vel_d_ =
-      cuda::make_unique<float[]>((batch_vel_size + alignment - 1) / alignment * alignment);
-    batch_coordinates_d_ = cuda::make_unique<int[]>(coordinates_size_ * num_augmentations);
-    batch_num_voxels_d_ = cuda::make_unique<unsigned int[]>(num_augmentations);
-    batch_num_points_per_voxel_d_ =
-      cuda::make_unique<float[]>(config_.max_voxel_size_ * num_augmentations);
-  }
 }
 
 void CenterPointTRT::initTrt(
@@ -292,73 +243,12 @@ void CenterPointTRT::initTrt(
   }
 }
 
-void CenterPointTRT::initBatchTrt(const TrtCommonConfig & head_param)
-{
-  int num_augmentations = tta_processor_->getNumAugmentations();
-
-  // Note: Encoder model doesn't support batch processing, so we'll use the original encoder
-  // and only create a batch head engine
-
-  // head input profile for batch processing
-  auto batch_head_in_dims = nvinfer1::Dims{
-    4,
-    {static_cast<int32_t>(num_augmentations),
-     static_cast<int32_t>(config_.encoder_out_feature_size_),
-     static_cast<int32_t>(config_.grid_size_y_), static_cast<int32_t>(config_.grid_size_x_)}};
-  std::vector<tensorrt_common::ProfileDims> batch_head_profile_dims{
-    tensorrt_common::ProfileDims(0, batch_head_in_dims, batch_head_in_dims, batch_head_in_dims)};
-  std::unordered_map<int32_t, std::int32_t> out_channel_map = {
-    {1, static_cast<int32_t>(config_.class_size_)},
-    {2, static_cast<int32_t>(config_.head_out_offset_size_)},
-    {3, static_cast<int32_t>(config_.head_out_z_size_)},
-    {4, static_cast<int32_t>(config_.head_out_dim_size_)},
-    {5, static_cast<int32_t>(config_.head_out_rot_size_)},
-    {6, static_cast<int32_t>(config_.head_out_vel_size_)}};
-  for (const auto & [tensor_name, channel_size] : out_channel_map) {
-    auto dims = nvinfer1::Dims{
-      4,
-      {static_cast<int32_t>(num_augmentations), channel_size,
-       static_cast<int32_t>(config_.down_grid_size_y_),
-       static_cast<int32_t>(config_.down_grid_size_x_)}};
-    batch_head_profile_dims.emplace_back(tensor_name, dims, dims, dims);
-  }
-  auto batch_head_profile_dims_ptr =
-    std::make_unique<std::vector<tensorrt_common::ProfileDims>>(batch_head_profile_dims);
-
-  // Create new TrtCommonConfig for batch head engine with modified engine path
-  TrtCommonConfig batch_head_param = head_param;
-
-  // Modify engine path to indicate batch processing
-  std::string batch_head_engine_path = head_param.engine_path.string();
-
-  // Insert "_batch" before the extension
-  size_t dot_pos = batch_head_engine_path.find_last_of('.');
-  if (dot_pos != std::string::npos) {
-    batch_head_engine_path.insert(dot_pos, "_batch");
-  }
-
-  batch_head_param.engine_path = batch_head_engine_path;
-
-  // initialize batch head trt wrapper (no batch encoder needed)
-  batch_head_trt_ptr_ = std::make_unique<tensorrt_common::TrtCommon>(batch_head_param);
-
-  // setup batch head trt engine
-  if (!batch_head_trt_ptr_->setup(std::move(batch_head_profile_dims_ptr))) {
-    throw std::runtime_error("Failed to setup batch head TRT engine.");
-  }
-
-  // set input shape for batch head processing
-  if (!batch_head_trt_ptr_->setInputShape(0, batch_head_in_dims)) {
-    throw std::runtime_error("Failed to set batch head input shape.");
-  }
-}
-
 bool CenterPointTRT::detect(
   const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg_ptr,
   const tf2_ros::Buffer & tf_buffer, std::vector<Box3D> & det_boxes3d,
   bool & is_num_pillars_within_range)
 {
-  auto start_time = std::chrono::high_resolution_clock::now();
+  // auto start_time = std::chrono::high_resolution_clock::now();
   is_num_pillars_within_range = true;
 
   CHECK_CUDA_ERROR(cudaMemsetAsync(
@@ -366,37 +256,37 @@ bool CenterPointTRT::detect(
   CHECK_CUDA_ERROR(
     cudaMemsetAsync(spatial_features_d_.get(), 0, spatial_features_size_ * sizeof(float), stream_));
 
-  auto preprocess_start = std::chrono::high_resolution_clock::now();
+  // auto preprocess_start = std::chrono::high_resolution_clock::now();
   if (!preprocess(input_pointcloud_msg_ptr, tf_buffer)) {
     RCLCPP_WARN(
       rclcpp::get_logger(config_.logger_name_.c_str()), "Fail to preprocess and skip to detect.");
     return false;
   }
-  auto preprocess_end = std::chrono::high_resolution_clock::now();
-  auto preprocess_duration =
-    std::chrono::duration_cast<std::chrono::microseconds>(preprocess_end - preprocess_start);
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()), "Preprocess time: %.2f ms (detect())",
-    preprocess_duration.count() / 1000.0f);
+  // auto preprocess_end = std::chrono::high_resolution_clock::now();
+  // auto preprocess_duration =
+  //   std::chrono::duration_cast<std::chrono::microseconds>(preprocess_end - preprocess_start);
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()), "Preprocess time: %.2f ms (detect())",
+  //   preprocess_duration.count() / 1000.0f);
 
-  auto inference_start = std::chrono::high_resolution_clock::now();
+  // auto inference_start = std::chrono::high_resolution_clock::now();
   inference();
-  cudaStreamSynchronize(stream_);
-  auto inference_end = std::chrono::high_resolution_clock::now();
-  auto inference_duration =
-    std::chrono::duration_cast<std::chrono::microseconds>(inference_end - inference_start);
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()), "Inference time: %.2f ms (detect())",
-    inference_duration.count() / 1000.0f);
+  // cudaStreamSynchronize(stream_);
+  // auto inference_end = std::chrono::high_resolution_clock::now();
+  // auto inference_duration =
+  //   std::chrono::duration_cast<std::chrono::microseconds>(inference_end - inference_start);
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()), "Inference time: %.2f ms (detect())",
+  //   inference_duration.count() / 1000.0f);
 
-  auto postprocess_start = std::chrono::high_resolution_clock::now();
+  // auto postprocess_start = std::chrono::high_resolution_clock::now();
   postProcess(det_boxes3d);
-  auto postprocess_end = std::chrono::high_resolution_clock::now();
-  auto postprocess_duration =
-    std::chrono::duration_cast<std::chrono::microseconds>(postprocess_end - postprocess_start);
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()), "PostProcess time: %.2f ms (detect())",
-    postprocess_duration.count() / 1000.0f);
+  // auto postprocess_end = std::chrono::high_resolution_clock::now();
+  // auto postprocess_duration =
+  //   std::chrono::duration_cast<std::chrono::microseconds>(postprocess_end - postprocess_start);
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()), "PostProcess time: %.2f ms (detect())",
+  //   postprocess_duration.count() / 1000.0f);
 
   // Check the actual number of pillars after inference to avoid unnecessary synchronization.
   unsigned int num_pillars = 0;
@@ -413,12 +303,12 @@ bool CenterPointTRT::detect(
     is_num_pillars_within_range = false;
   }
 
-  auto end_time = std::chrono::high_resolution_clock::now();
-  auto total_duration =
-    std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()), "Total Processing time: %.2f ms (detect())",
-    total_duration.count() / 1000.0f);
+  // auto end_time = std::chrono::high_resolution_clock::now();
+  // auto total_duration =
+  //   std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()), "Total Processing time: %.2f ms
+  //   (detect())", total_duration.count() / 1000.0f);
 
   return true;
 }
@@ -527,24 +417,24 @@ bool CenterPointTRT::detectWithTTA(
   is_num_pillars_within_range = true;
 
   // Start timing
-  auto start_time = std::chrono::high_resolution_clock::now();
+  // auto start_time = std::chrono::high_resolution_clock::now();
 
   // Preprocess to get point cloud data (only once)
-  auto preprocess_start = std::chrono::high_resolution_clock::now();
+  // auto preprocess_start = std::chrono::high_resolution_clock::now();
   if (!preprocess(input_pointcloud_msg_ptr, tf_buffer)) {
     RCLCPP_WARN(
       rclcpp::get_logger(config_.logger_name_.c_str()), "Fail to preprocess and skip to detect.");
     return false;
   }
-  auto preprocess_end = std::chrono::high_resolution_clock::now();
-  auto preprocess_duration =
-    std::chrono::duration_cast<std::chrono::microseconds>(preprocess_end - preprocess_start);
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "TTA Preprocess time: %.2f ms (detectWithTTA())", preprocess_duration.count() / 1000.0f);
+  // auto preprocess_end = std::chrono::high_resolution_clock::now();
+  // auto preprocess_duration =
+  //   std::chrono::duration_cast<std::chrono::microseconds>(preprocess_end - preprocess_start);
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "TTA Preprocess time: %.2f ms (detectWithTTA())", preprocess_duration.count() / 1000.0f);
 
   // Generate TTA augmentations using GPU kernels
-  auto augmentation_start = std::chrono::high_resolution_clock::now();
+  // auto augmentation_start = std::chrono::high_resolution_clock::now();
   // Get rotation angles from TTA processor
   std::vector<float> rotation_angles_rad;
   for (const auto & angle_deg : tta_processor_->getRotationAngles()) {
@@ -563,52 +453,46 @@ bool CenterPointTRT::detectWithTTA(
   rotatePointsParallel_launch(
     points_d_.get(), config_.cloud_capacity_, config_.point_feature_size_, rotation_angles_d.get(),
     num_augmentations, tta_points_d_.get(), stream_);
-  auto augmentation_end = std::chrono::high_resolution_clock::now();
-  auto augmentation_duration =
-    std::chrono::duration_cast<std::chrono::microseconds>(augmentation_end - augmentation_start);
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "TTA Augmentation time: %.2f ms (detectWithTTA())", augmentation_duration.count() / 1000.0f);
+  // auto augmentation_end = std::chrono::high_resolution_clock::now();
+  // auto augmentation_duration =
+  //   std::chrono::duration_cast<std::chrono::microseconds>(augmentation_end - augmentation_start);
+  // RCLCPP_INFO(
+  // rclcpp::get_logger(config_.logger_name_.c_str()),
+  // "TTA Augmentation time: %.2f ms (detectWithTTA())", augmentation_duration.count() / 1000.0f);
 
   // Process each augmentation
   std::vector<std::vector<Box3D>> all_detections;
 
   // Use batch processing if available, otherwise use parallel processing
-  auto inference_start = std::chrono::high_resolution_clock::now();
-  if (batch_head_trt_ptr_) {
-    RCLCPP_INFO(
-      rclcpp::get_logger(config_.logger_name_.c_str()), "Using batch processing for TTA inference");
-    inferenceTTABatch(num_augmentations, all_detections);
-  } else {
-    RCLCPP_INFO(
-      rclcpp::get_logger(config_.logger_name_.c_str()),
-      "Using parallel processing for TTA inference");
-    inferenceTTA(num_augmentations, all_detections);
-  }
-  auto inference_end = std::chrono::high_resolution_clock::now();
-  auto inference_duration =
-    std::chrono::duration_cast<std::chrono::microseconds>(inference_end - inference_start);
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "TTA Inference time: %.2f ms (detectWithTTA())", inference_duration.count() / 1000.0f);
+  // auto inference_start = std::chrono::high_resolution_clock::now();
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "Using parallel processing for TTA inference (multi-stream, no batch head)");
+  inferenceTTA(num_augmentations, all_detections);
+  // auto inference_end = std::chrono::high_resolution_clock::now();
+  // auto inference_duration =
+  //   std::chrono::duration_cast<std::chrono::microseconds>(inference_end - inference_start);
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "TTA Inference time: %.2f ms (detectWithTTA())", inference_duration.count() / 1000.0f);
 
   // Merge results
-  auto merge_start = std::chrono::high_resolution_clock::now();
+  // auto merge_start = std::chrono::high_resolution_clock::now();
   det_boxes3d = mergeTTADetections(num_augmentations, rotation_angles_rad, all_detections);
-  auto merge_end = std::chrono::high_resolution_clock::now();
-  auto merge_duration =
-    std::chrono::duration_cast<std::chrono::microseconds>(merge_end - merge_start);
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()), "TTA Merge time: %.2f ms (detectWithTTA())",
-    merge_duration.count() / 1000.0f);
+  // auto merge_end = std::chrono::high_resolution_clock::now();
+  // auto merge_duration =
+  //   std::chrono::duration_cast<std::chrono::microseconds>(merge_end - merge_start);
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()), "TTA Merge time: %.2f ms
+  //   (detectWithTTA())", merge_duration.count() / 1000.0f);
 
   // End timing and log performance
-  auto end_time = std::chrono::high_resolution_clock::now();
-  auto total_duration =
-    std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "TTA Total Processing time: %.2f ms (detectWithTTA())", total_duration.count() / 1000.0f);
+  // auto end_time = std::chrono::high_resolution_clock::now();
+  // auto total_duration =
+  //   std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "TTA Total Processing time: %.2f ms (detectWithTTA())", total_duration.count() / 1000.0f);
 
   return true;
 }
@@ -619,15 +503,16 @@ void CenterPointTRT::inferenceTTA(
   all_detections.clear();
   all_detections.resize(num_augmentations);
 
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "Starting TTA inference with %d augmentations (inferenceTTA())", num_augmentations);
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "Starting TTA inference with %d augmentations (inferenceTTA())", num_augmentations);
 
-  // Phase 1: Parallel voxel generation and feature extraction
-  auto phase1_start = std::chrono::high_resolution_clock::now();
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "Phase 1: Starting voxel generation for %d augmentations (inferenceTTA())", num_augmentations);
+  // // Phase 1: Parallel voxel generation and feature extraction
+  // auto phase1_start = std::chrono::high_resolution_clock::now();
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "Phase 1: Starting voxel generation for %d augmentations (inferenceTTA())",
+  //   num_augmentations);
 
   for (int i = 0; i < num_augmentations; ++i) {
     cudaStream_t & tta_stream = tta_streams_[i];
@@ -675,19 +560,20 @@ void CenterPointTRT::inferenceTTA(
   for (auto & tta_stream : tta_streams_) {
     CHECK_CUDA_ERROR(cudaStreamSynchronize(tta_stream));
   }
-  auto phase1_end = std::chrono::high_resolution_clock::now();
-  auto phase1_duration =
-    std::chrono::duration_cast<std::chrono::microseconds>(phase1_end - phase1_start);
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "Phase 1 (Voxel Generation) completed in: %.2f ms (inferenceTTA())",
-    phase1_duration.count() / 1000.0f);
+  // auto phase1_end = std::chrono::high_resolution_clock::now();
+  // auto phase1_duration =
+  //   std::chrono::duration_cast<std::chrono::microseconds>(phase1_end - phase1_start);
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "Phase 1 (Voxel Generation) completed in: %.2f ms (inferenceTTA())",
+  //   phase1_duration.count() / 1000.0f);
 
-  // Phase 2: Parallel encoder inference
-  auto phase2_start = std::chrono::high_resolution_clock::now();
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "Phase 2: Starting encoder inference for %d augmentations (inferenceTTA())", num_augmentations);
+  // // Phase 2: Parallel encoder inference
+  // auto phase2_start = std::chrono::high_resolution_clock::now();
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "Phase 2: Starting encoder inference for %d augmentations (inferenceTTA())",
+  //   num_augmentations);
 
   for (int i = 0; i < num_augmentations; ++i) {
     cudaStream_t & tta_stream = tta_streams_[i];
@@ -710,19 +596,19 @@ void CenterPointTRT::inferenceTTA(
   for (auto & tta_stream : tta_streams_) {
     CHECK_CUDA_ERROR(cudaStreamSynchronize(tta_stream));
   }
-  auto phase2_end = std::chrono::high_resolution_clock::now();
-  auto phase2_duration =
-    std::chrono::duration_cast<std::chrono::microseconds>(phase2_end - phase2_start);
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "Phase 2 (Encoder Inference) completed in: %.2f ms (inferenceTTA())",
-    phase2_duration.count() / 1000.0f);
+  // auto phase2_end = std::chrono::high_resolution_clock::now();
+  // auto phase2_duration =
+  //   std::chrono::duration_cast<std::chrono::microseconds>(phase2_end - phase2_start);
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "Phase 2 (Encoder Inference) completed in: %.2f ms (inferenceTTA())",
+  //   phase2_duration.count() / 1000.0f);
 
-  // Phase 3: Parallel head inference and post-processing
-  auto phase3_start = std::chrono::high_resolution_clock::now();
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "Phase 3: Starting head inference for %d augmentations (inferenceTTA())", num_augmentations);
+  // // Phase 3: Parallel head inference and post-processing
+  // auto phase3_start = std::chrono::high_resolution_clock::now();
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "Phase 3: Starting head inference for %d augmentations (inferenceTTA())", num_augmentations);
 
   for (int i = 0; i < num_augmentations; ++i) {
     cudaStream_t & tta_stream = tta_streams_[i];
@@ -753,198 +639,17 @@ void CenterPointTRT::inferenceTTA(
   for (auto & tta_stream : tta_streams_) {
     CHECK_CUDA_ERROR(cudaStreamSynchronize(tta_stream));
   }
-  auto phase3_end = std::chrono::high_resolution_clock::now();
-  auto phase3_duration =
-    std::chrono::duration_cast<std::chrono::microseconds>(phase3_end - phase3_start);
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "Phase 3 (Head Inference + Post-processing) completed in: %.2f ms (inferenceTTA())",
-    phase3_duration.count() / 1000.0f);
+  // auto phase3_end = std::chrono::high_resolution_clock::now();
+  // auto phase3_duration =
+  //   std::chrono::duration_cast<std::chrono::microseconds>(phase3_end - phase3_start);
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "Phase 3 (Head Inference + Post-processing) completed in: %.2f ms (inferenceTTA())",
+  //   phase3_duration.count() / 1000.0f);
 
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "TTA inference completed successfully (inferenceTTA())");
-}
-
-void CenterPointTRT::inferenceTTABatch(
-  const int num_augmentations, std::vector<std::vector<Box3D>> & all_detections)
-{
-  all_detections.clear();
-  all_detections.resize(num_augmentations);
-
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "Starting batch TTA inference with %d augmentations (inferenceTTABatch())", num_augmentations);
-
-  // Phase 1: Parallel voxel generation and feature extraction for all augmentations
-  auto phase1_start = std::chrono::high_resolution_clock::now();
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "Phase 1: Starting voxel generation for %d augmentations (inferenceTTABatch())",
-    num_augmentations);
-
-  // Pre-clear all GPU memory in parallel to reduce overhead
-  for (int i = 0; i < num_augmentations; ++i) {
-    cudaStream_t & tta_stream = tta_streams_[i];
-
-    // Clear GPU memory for this augmentation
-    CHECK_CUDA_ERROR(cudaMemsetAsync(
-      batch_encoder_in_features_d_.get() + i * encoder_in_feature_size_, 0,
-      encoder_in_feature_size_ * sizeof(float), tta_stream));
-    CHECK_CUDA_ERROR(cudaMemsetAsync(
-      batch_spatial_features_d_.get() + i * spatial_features_size_, 0,
-      spatial_features_size_ * sizeof(float), tta_stream));
-    CHECK_CUDA_ERROR(
-      cudaMemsetAsync(batch_num_voxels_d_.get() + i, 0, sizeof(unsigned int), tta_stream));
-  }
-
-  // Generate voxels for all augmentations in parallel
-  for (int i = 0; i < num_augmentations; ++i) {
-    cudaStream_t & tta_stream = tta_streams_[i];
-
-    // Use the same voxel generation as original but with augmented points
-    CHECK_CUDA_ERROR(generateVoxels_random_launch(
-      tta_points_d_.get() + i * config_.cloud_capacity_ * config_.point_feature_size_,
-      config_.cloud_capacity_, config_.range_min_x_, config_.range_max_x_, config_.range_min_y_,
-      config_.range_max_y_, config_.range_min_z_, config_.range_max_z_, config_.voxel_size_x_,
-      config_.voxel_size_y_, config_.voxel_size_z_, config_.grid_size_y_, config_.grid_size_x_,
-      tta_mask_buffers_[i].get(), tta_voxels_buffers_[i].get(), tta_stream));
-
-    CHECK_CUDA_ERROR(generateBaseFeatures_launch(
-      tta_mask_buffers_[i].get(), tta_voxels_buffers_[i].get(), config_.grid_size_y_,
-      config_.grid_size_x_, config_.max_voxel_size_, batch_num_voxels_d_.get() + i,
-      tta_voxels_d_.get() + i * voxels_size_,
-      batch_num_points_per_voxel_d_.get() + i * config_.max_voxel_size_,
-      batch_coordinates_d_.get() + i * coordinates_size_, tta_stream));
-
-    CHECK_CUDA_ERROR(generateFeatures_launch(
-      tta_voxels_d_.get() + i * voxels_size_,
-      batch_num_points_per_voxel_d_.get() + i * config_.max_voxel_size_,
-      batch_coordinates_d_.get() + i * coordinates_size_, batch_num_voxels_d_.get() + i,
-      config_.max_voxel_size_, config_.voxel_size_x_, config_.voxel_size_y_, config_.voxel_size_z_,
-      config_.range_min_x_, config_.range_min_y_, config_.range_min_z_,
-      batch_encoder_in_features_d_.get() + i * encoder_in_feature_size_,
-      config_.encoder_in_feature_size_, tta_stream));
-  }
-
-  // Synchronize voxel generation before sequential encoder processing
-  for (auto & tta_stream : tta_streams_) {
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(tta_stream));
-  }
-  auto phase1_end = std::chrono::high_resolution_clock::now();
-  auto phase1_duration =
-    std::chrono::duration_cast<std::chrono::microseconds>(phase1_end - phase1_start);
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "Phase 1 (Voxel Generation) completed in: %.2f ms (inferenceTTABatch())",
-    phase1_duration.count() / 1000.0f);
-
-  // Phase 2: Sequential encoder inference for each augmentation (since encoder doesn't support
-  // batch)
-  auto phase2_start = std::chrono::high_resolution_clock::now();
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "Phase 2: Starting sequential encoder inference for %d augmentations (inferenceTTABatch())",
-    num_augmentations);
-
-  // Use main stream for encoder to avoid stream switching overhead
-  for (int i = 0; i < num_augmentations; ++i) {
-    // Run encoder inference for this augmentation
-    std::vector<void *> encoder_tensors = {
-      batch_encoder_in_features_d_.get() + i * encoder_in_feature_size_, pillar_features_d_.get()};
-    encoder_trt_ptr_->setTensorsAddresses(encoder_tensors);
-    encoder_trt_ptr_->enqueueV3(stream_);
-
-    // Scatter features for this augmentation
-    CHECK_CUDA_ERROR(scatterFeatures_launch(
-      pillar_features_d_.get(), batch_coordinates_d_.get() + i * coordinates_size_,
-      batch_num_voxels_d_.get() + i, config_.max_voxel_size_, config_.encoder_out_feature_size_,
-      config_.grid_size_x_, config_.grid_size_y_,
-      batch_spatial_features_d_.get() + i * spatial_features_size_, stream_));
-  }
-
-  // Synchronize encoder operations before batch head inference
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
-  auto phase2_end = std::chrono::high_resolution_clock::now();
-  auto phase2_duration =
-    std::chrono::duration_cast<std::chrono::microseconds>(phase2_end - phase2_start);
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "Phase 2 (Sequential Encoder Inference) completed in: %.2f ms (inferenceTTABatch())",
-    phase2_duration.count() / 1000.0f);
-
-  // Phase 3: Single batch head inference for all augmentations
-  auto phase3_start = std::chrono::high_resolution_clock::now();
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "Phase 3: Starting batch head inference for %d augmentations (inferenceTTABatch())",
-    num_augmentations);
-
-  std::vector<void *> batch_head_tensors = {
-    batch_spatial_features_d_.get(), batch_head_out_heatmap_d_.get(),
-    batch_head_out_offset_d_.get(),  batch_head_out_z_d_.get(),
-    batch_head_out_dim_d_.get(),     batch_head_out_rot_d_.get(),
-    batch_head_out_vel_d_.get()};
-  batch_head_trt_ptr_->setTensorsAddresses(batch_head_tensors);
-  batch_head_trt_ptr_->enqueueV3(stream_);
-
-  // Synchronize batch head inference before post-processing
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
-  auto phase3_end = std::chrono::high_resolution_clock::now();
-  auto phase3_duration =
-    std::chrono::duration_cast<std::chrono::microseconds>(phase3_end - phase3_start);
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "Phase 3 (Batch Head Inference) completed in: %.2f ms (inferenceTTABatch())",
-    phase3_duration.count() / 1000.0f);
-
-  // Phase 4: Parallel post-processing for all augmentations
-  auto phase4_start = std::chrono::high_resolution_clock::now();
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "Phase 4: Starting parallel post-processing for %d augmentations (inferenceTTABatch())",
-    num_augmentations);
-
-  // Calculate output tensor sizes for batch processing
-  const size_t heatmap_size =
-    config_.down_grid_size_x_ * config_.down_grid_size_y_ * config_.class_size_;
-  const size_t offset_size =
-    config_.down_grid_size_x_ * config_.down_grid_size_y_ * config_.head_out_offset_size_;
-  const size_t z_size =
-    config_.down_grid_size_x_ * config_.down_grid_size_y_ * config_.head_out_z_size_;
-  const size_t dim_size =
-    config_.down_grid_size_x_ * config_.down_grid_size_y_ * config_.head_out_dim_size_;
-  const size_t rot_size =
-    config_.down_grid_size_x_ * config_.down_grid_size_y_ * config_.head_out_rot_size_;
-  const size_t vel_size =
-    config_.down_grid_size_x_ * config_.down_grid_size_y_ * config_.head_out_vel_size_;
-
-  for (int i = 0; i < num_augmentations; ++i) {
-    cudaStream_t & tta_stream = tta_streams_[i];
-
-    // Post-process to get detections for this augmentation
-    CHECK_CUDA_ERROR(post_proc_ptr_->generateDetectedBoxes3D_launch(
-      batch_head_out_heatmap_d_.get() + i * heatmap_size,
-      batch_head_out_offset_d_.get() + i * offset_size, batch_head_out_z_d_.get() + i * z_size,
-      batch_head_out_dim_d_.get() + i * dim_size, batch_head_out_rot_d_.get() + i * rot_size,
-      batch_head_out_vel_d_.get() + i * vel_size, all_detections[i], tta_stream));
-  }
-
-  // Synchronize all streams
-  for (auto & tta_stream : tta_streams_) {
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(tta_stream));
-  }
-  auto phase4_end = std::chrono::high_resolution_clock::now();
-  auto phase4_duration =
-    std::chrono::duration_cast<std::chrono::microseconds>(phase4_end - phase4_start);
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "Phase 4 (Post-processing) completed in: %.2f ms (inferenceTTABatch())",
-    phase4_duration.count() / 1000.0f);
-
-  RCLCPP_INFO(
-    rclcpp::get_logger(config_.logger_name_.c_str()),
-    "Batch TTA inference completed successfully (inferenceTTABatch())");
+  // RCLCPP_INFO(
+  //   rclcpp::get_logger(config_.logger_name_.c_str()),
+  //   "TTA inference completed successfully (inferenceTTA())");
 }
 
 std::vector<Box3D> CenterPointTRT::mergeTTADetections(
