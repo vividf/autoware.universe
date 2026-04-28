@@ -43,6 +43,8 @@ struct ImplicitGemmParameters
   std::int64_t is_train;
   float output_add_scale;
   float output_scale;
+  std::int32_t timing_enabled{0};       ///< 1 = log ConvGemmOps::implicit_gemm CUDA duration (stderr)
+  std::int32_t timing_max_logs{1000};     ///< max timing lines across all ImplicitGemm plugin instances
 };
 
 class ImplicitGemmPlugin : public IPluginV3,
@@ -54,7 +56,7 @@ public:
   using ConvTunerSimple = spconvlib::spconv::csrc::sparse::convops::spops::ConvTuner;
   ImplicitGemmPlugin(const std::string & name, ImplicitGemmParameters const & params);
 
-  ~ImplicitGemmPlugin() override = default;
+  ~ImplicitGemmPlugin() override;
 
   // IPluginV3 Methods
 
@@ -119,6 +121,8 @@ private:
   static constexpr std::int32_t INOUT_OUT_FEATURES_INDEX{5};
 
   void initFieldsToSerialize();
+  bool ensureTimingEvents() noexcept;
+  void destroyTimingEvents() noexcept;
 
   std::string layer_name_;
   ImplicitGemmParameters params_;
@@ -131,6 +135,10 @@ private:
 
   // Pre-allocated CPU mask tensor to avoid heap allocation during CUDA graph capture.
   tv::Tensor mask_tensor_;
+
+  cudaEvent_t timing_ev_implicit_start_{};
+  cudaEvent_t timing_ev_implicit_end_{};
+  bool timing_events_created_{false};
 };
 
 }  // namespace nvinfer1::plugin

@@ -26,13 +26,20 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <memory>
+#include <atomic>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+namespace
+{
+std::atomic<int> g_implicit_gemm_plugin_timing_seq{0};
+}
 
 namespace nvinfer1::plugin
 {
@@ -56,11 +63,50 @@ ImplicitGemmPlugin::ImplicitGemmPlugin(
   mask_tensor_.data_ptr<uint32_t>()[0] = 0xffffffff;
 }
 
+ImplicitGemmPlugin::~ImplicitGemmPlugin()
+{
+  destroyTimingEvents();
+}
+
+bool ImplicitGemmPlugin::ensureTimingEvents() noexcept
+{
+  if (timing_events_created_) {
+    return true;
+  }
+  cudaError_t e0 = cudaEventCreateWithFlags(&timing_ev_implicit_start_, cudaEventDefault);
+  cudaError_t e1 = cudaEventCreateWithFlags(&timing_ev_implicit_end_, cudaEventDefault);
+  if (e0 != cudaSuccess || e1 != cudaSuccess) {
+    std::fprintf(
+      stderr,
+      "[ImplicitGemmPlugin] %s: cudaEventCreate failed (%s %s)\n", layer_name_.c_str(),
+      cudaGetErrorString(e0), cudaGetErrorString(e1));
+    if (e0 == cudaSuccess) {
+      cudaEventDestroy(timing_ev_implicit_start_);
+    }
+    if (e1 == cudaSuccess) {
+      cudaEventDestroy(timing_ev_implicit_end_);
+    }
+    return false;
+  }
+  timing_events_created_ = true;
+  return true;
+}
+
+void ImplicitGemmPlugin::destroyTimingEvents() noexcept
+{
+  if (!timing_events_created_) {
+    return;
+  }
+  cudaEventDestroy(timing_ev_implicit_start_);
+  cudaEventDestroy(timing_ev_implicit_end_);
+  timing_events_created_ = false;
+}
+
 void ImplicitGemmPlugin::initFieldsToSerialize()
 {
   data_to_serialize_.clear();
   data_to_serialize_.emplace_back("act_alpha", &params_.act_alpha, PluginFieldType::kFLOAT32, 1);
-  data_to_serialize_.emplace_back("act_alpha", &params_.act_beta, PluginFieldType::kFLOAT32, 1);
+  data_to_serialize_.emplace_back("act_beta", &params_.act_beta, PluginFieldType::kFLOAT32, 1);
 
   data_to_serialize_.emplace_back(
     "is_subm", &params_.is_subm, PluginFieldType::kINT32, 1);  // cSpell:ignore subm
@@ -70,6 +116,10 @@ void ImplicitGemmPlugin::initFieldsToSerialize()
     "output_add_scale", &params_.output_add_scale, PluginFieldType::kFLOAT32, 1);
   data_to_serialize_.emplace_back(
     "output_scale", &params_.output_scale, PluginFieldType::kFLOAT32, 1);
+  data_to_serialize_.emplace_back(
+    "timing_enabled", &params_.timing_enabled, PluginFieldType::kINT32, 1);
+  data_to_serialize_.emplace_back(
+    "timing_max_logs", &params_.timing_max_logs, PluginFieldType::kINT32, 1);
 
   fc_to_serialize_.nbFields = data_to_serialize_.size();
   fc_to_serialize_.fields = data_to_serialize_.data();
@@ -286,11 +336,41 @@ std::int32_t ImplicitGemmPlugin::enqueue(
 
   auto & tuner_ptr = dtype == tv::float32 ? tuner_fp32_ptr_ : tuner_fp16_ptr_;
 
-  auto conv_run_status = ConvGemmOps::implicit_gemm(
+  bool do_timing = false;
+  int timing_seq = -1;
+  if (params_.timing_enabled != 0) {
+    timing_seq = g_implicit_gemm_plugin_timing_seq.fetch_add(1, std::memory_order_relaxed);
+    do_timing = timing_seq < params_.timing_max_logs && ensureTimingEvents();
+  }
+  if (do_timing) {
+    cudaEventRecord(timing_ev_implicit_start_, stream);
+  }
+
+  [[maybe_unused]] auto const conv_run_status = ConvGemmOps::implicit_gemm(
     alloc2, *tuner_ptr, input_features, weights, pair_fwd, pair_mask_splits, mask_argsort_splits,
     num_act_out, mask_tensor_, arch_, false, params_.is_subm,
     reinterpret_cast<std::uintptr_t>(stream), tv::CUDAKernelTimer(false), true, false, tv::Tensor(),
     0.0, 0.0, tv::gemm::Activation::kNone, false, 1.0, tv::Tensor(), tv::Tensor(), 0.0, -1);
+
+  if (do_timing) {
+    cudaEventRecord(timing_ev_implicit_end_, stream);
+    cudaError_t sync_st = cudaEventSynchronize(timing_ev_implicit_end_);
+    if (sync_st != cudaSuccess) {
+      std::fprintf(
+        stderr,
+        "[AUTOWARE_IMPLICIT_GEMM_TIMING] seq=%d layer=%s cudaEventSynchronize failed: %s\n",
+        timing_seq, layer_name_.c_str(), cudaGetErrorString(sync_st));
+    } else {
+      float ms_implicit = 0.F;
+      cudaEventElapsedTime(&ms_implicit, timing_ev_implicit_start_, timing_ev_implicit_end_);
+      char const * dt = in_features_type == DataType::kHALF ? "fp16" : "fp32";
+      std::fprintf(
+        stderr,
+        "[AUTOWARE_IMPLICIT_GEMM_TIMING] seq=%d layer=%s dtype=%s implicit_gemm_ms=%.5f "
+        "(sparse conv plugin time)\n",
+        timing_seq, layer_name_.c_str(), dt, ms_implicit);
+    }
+  }
 
   return 0;
 }
