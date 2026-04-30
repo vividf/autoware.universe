@@ -262,6 +262,14 @@ std::int32_t ImplicitGemmPlugin::configurePlugin(
         layer_name_.c_str());
       return -1;
     }
+    DataType const bias_t = in[INOUT_OPTIONAL_BIAS_INDEX].desc.type;
+    if (bias_t != DataType::kFLOAT && bias_t != DataType::kHALF) {
+      std::fprintf(
+        stderr,
+        "[ImplicitGemmPlugin] %s: configurePlugin optional bias must be FLOAT or HALF\n",
+        layer_name_.c_str());
+      return -1;
+    }
   }
 
   return 0;
@@ -372,6 +380,15 @@ std::int32_t ImplicitGemmPlugin::enqueue(
   using StaticAllocator = spconvlib::spconv::csrc::sparse::alloc::StaticAllocator;
   using ConvGemmOps = spconvlib::spconv::csrc::sparse::convops::spops::ConvGemmOps;
 
+  if (num_plugin_inputs_ != 5 && num_plugin_inputs_ != 6) {
+    std::fprintf(
+      stderr,
+      "[ImplicitGemmPlugin] %s: enqueue expected 5 or 6 inputs (set in configure/onShapeChange), "
+      "got num_plugin_inputs_=%d\n",
+      layer_name_.c_str(), static_cast<int>(num_plugin_inputs_));
+    return -1;
+  }
+
   std::int64_t num_act_in = input_desc[INOUT_IN_FEATURES_INDEX].dims.d[0];
   std::int64_t num_in_features = input_desc[INOUT_IN_FEATURES_INDEX].dims.d[1];
   // std::int64_t kernel_volume = input_desc[INOUT_PAIR_FWD_INDEX].dims.d[0];
@@ -382,8 +399,13 @@ std::int32_t ImplicitGemmPlugin::enqueue(
   [[maybe_unused]] auto filters_type = input_desc[INOUT_FILTERS_INDEX].type;
   [[maybe_unused]] auto out_features_type = output_desc[0].type;
 
-  assert(in_features_type == filters_type);
-  assert(in_features_type == out_features_type);
+  if (in_features_type != filters_type || in_features_type != out_features_type) {
+    std::fprintf(
+      stderr,
+      "[ImplicitGemmPlugin] %s: enqueue dtype mismatch (features/filters/out)\n",
+      layer_name_.c_str());
+    return -1;
+  }
 
   auto dtype = in_features_type == DataType::kFLOAT ? tv::float32 : tv::float16;
 
