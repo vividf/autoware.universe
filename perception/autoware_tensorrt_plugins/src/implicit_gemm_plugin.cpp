@@ -24,6 +24,9 @@
 #include <spconvlib/spconv/csrc/sparse/convops/spops/ConvGemmOps.h>
 #include <spconvlib/spconv/csrc/sparse/inference/InferenceOps.h>
 
+#include <cuda_fp16.h>
+#include <cuda_runtime_api.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -39,6 +42,102 @@
 namespace
 {
 std::atomic<int> g_implicit_gemm_plugin_timing_seq{0};
+
+/** Spconv fused bias/add expects bias tv::Tensor dtype to match activations (see InferenceOps bias_add). */
+bool build_bias_tensor_matching_activation(
+  tv::Tensor const & input_features, void const * bias_input, std::int64_t c_bias,
+  tv::DType activation_dtype, nvinfer1::DataType bias_trt_type, cudaStream_t stream,
+  std::string const & layer_name, tv::Tensor * out_bias) noexcept
+{
+  int const dev = input_features.device();
+  if (activation_dtype == tv::float16) {
+    if (bias_trt_type == nvinfer1::DataType::kHALF) {
+      *out_bias = tv::from_blob(
+        const_cast<void *>(bias_input), {c_bias}, tv::float16, dev);
+      return true;
+    }
+    if (bias_trt_type == nvinfer1::DataType::kFLOAT) {
+      tv::Tensor const bias_f32 =
+        tv::from_blob(const_cast<void *>(bias_input), {c_bias}, tv::float32, dev);
+      *out_bias = tv::empty({c_bias}, tv::float16, dev);
+      std::vector<float> host_f(static_cast<std::size_t>(c_bias));
+      cudaError_t e0 = cudaMemcpy(
+        host_f.data(), bias_f32.data_ptr<float>(),
+        static_cast<std::size_t>(c_bias) * sizeof(float), cudaMemcpyDeviceToHost);
+      if (e0 != cudaSuccess) {
+        std::fprintf(
+          stderr,
+          "[ImplicitGemmPlugin] %s: cudaMemcpy bias f32 D2H failed: %s\n", layer_name.c_str(),
+          cudaGetErrorString(e0));
+        return false;
+      }
+      std::vector<__half> host_h(static_cast<std::size_t>(c_bias));
+      for (std::int64_t i = 0; i < c_bias; ++i) {
+        host_h[static_cast<std::size_t>(i)] =
+          __float2half(host_f[static_cast<std::size_t>(i)]);
+      }
+      cudaError_t e1 = cudaMemcpyAsync(
+        out_bias->data_ptr<__half>(), host_h.data(),
+        static_cast<std::size_t>(c_bias) * sizeof(__half), cudaMemcpyHostToDevice, stream);
+      if (e1 != cudaSuccess) {
+        std::fprintf(
+          stderr,
+          "[ImplicitGemmPlugin] %s: cudaMemcpyAsync bias f16 H2D failed: %s\n",
+          layer_name.c_str(), cudaGetErrorString(e1));
+        return false;
+      }
+      return true;
+    }
+    std::fprintf(
+      stderr, "[ImplicitGemmPlugin] %s: unsupported bias TRT dtype for FP16 activations\n",
+      layer_name.c_str());
+    return false;
+  }
+  if (activation_dtype == tv::float32) {
+    if (bias_trt_type == nvinfer1::DataType::kFLOAT) {
+      *out_bias = tv::from_blob(
+        const_cast<void *>(bias_input), {c_bias}, tv::float32, dev);
+      return true;
+    }
+    if (bias_trt_type == nvinfer1::DataType::kHALF) {
+      tv::Tensor const bias_f16 =
+        tv::from_blob(const_cast<void *>(bias_input), {c_bias}, tv::float16, dev);
+      *out_bias = tv::empty({c_bias}, tv::float32, dev);
+      std::vector<__half> host_h(static_cast<std::size_t>(c_bias));
+      cudaError_t e0 = cudaMemcpy(
+        host_h.data(), bias_f16.data_ptr<__half>(),
+        static_cast<std::size_t>(c_bias) * sizeof(__half), cudaMemcpyDeviceToHost);
+      if (e0 != cudaSuccess) {
+        std::fprintf(
+          stderr,
+          "[ImplicitGemmPlugin] %s: cudaMemcpy bias f16 D2H failed: %s\n", layer_name.c_str(),
+          cudaGetErrorString(e0));
+        return false;
+      }
+      std::vector<float> host_f(static_cast<std::size_t>(c_bias));
+      for (std::int64_t i = 0; i < c_bias; ++i) {
+        host_f[static_cast<std::size_t>(i)] =
+          __half2float(host_h[static_cast<std::size_t>(i)]);
+      }
+      cudaError_t e1 = cudaMemcpyAsync(
+        out_bias->data_ptr<float>(), host_f.data(),
+        static_cast<std::size_t>(c_bias) * sizeof(float), cudaMemcpyHostToDevice, stream);
+      if (e1 != cudaSuccess) {
+        std::fprintf(
+          stderr,
+          "[ImplicitGemmPlugin] %s: cudaMemcpyAsync bias f32 H2D failed: %s\n",
+          layer_name.c_str(), cudaGetErrorString(e1));
+        return false;
+      }
+      return true;
+    }
+    std::fprintf(
+      stderr, "[ImplicitGemmPlugin] %s: unsupported bias TRT dtype for FP32 activations\n",
+      layer_name.c_str());
+    return false;
+  }
+  return false;
+}
 
 tv::gemm::Activation activation_from_int(std::int32_t const v) noexcept
 {
@@ -446,11 +545,12 @@ std::int32_t ImplicitGemmPlugin::enqueue(
   tv::Tensor bias_tv{};
   if (num_plugin_inputs_ >= 6) {
     auto const bias_type = input_desc[INOUT_OPTIONAL_BIAS_INDEX].type;
-    auto const bias_dtype =
-      bias_type == DataType::kHALF ? tv::float16 : tv::float32;
     std::int64_t const c_bias = input_desc[INOUT_OPTIONAL_BIAS_INDEX].dims.d[0];
-    bias_tv = tv::from_blob(
-      const_cast<void *>(inputs[INOUT_OPTIONAL_BIAS_INDEX]), {c_bias}, bias_dtype, 0);
+    if (!build_bias_tensor_matching_activation(
+          input_features, inputs[INOUT_OPTIONAL_BIAS_INDEX], c_bias, dtype, bias_type, stream,
+          layer_name_, &bias_tv)) {
+      return -1;
+    }
   }
 
   std::vector<tv::Tensor> pair_mask_splits;
