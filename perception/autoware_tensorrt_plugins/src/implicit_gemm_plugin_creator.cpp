@@ -43,6 +43,7 @@ ImplicitGemmPluginCreator::ImplicitGemmPluginCreator()
   plugin_attributes_.emplace_back("output_scale", nullptr, PluginFieldType::kFLOAT32, 1);
   plugin_attributes_.emplace_back("timing_enabled", nullptr, PluginFieldType::kINT32, 1);
   plugin_attributes_.emplace_back("timing_max_logs", nullptr, PluginFieldType::kINT32, 1);
+  plugin_attributes_.emplace_back("act_type", nullptr, PluginFieldType::kINT32, 1);
 
   fc_.nbFields = plugin_attributes_.size();
   fc_.fields = plugin_attributes_.data();
@@ -64,7 +65,7 @@ IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
       nvinfer1::PluginField const * fields{fc->fields};
       std::int32_t num_fields{fc->nbFields};
 
-      PLUGIN_VALIDATE(num_fields >= 6 && num_fields <= 8);
+      PLUGIN_VALIDATE(num_fields >= 6 && num_fields <= 9);
 
       ImplicitGemmParameters parameters{};
 
@@ -111,6 +112,11 @@ IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
           PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
           parameters.timing_max_logs = static_cast<std::int32_t const *>(fields[i].data)[0];
         }
+
+        if (attr_name == "act_type") {
+          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
+          parameters.act_type = static_cast<std::int32_t const *>(fields[i].data)[0];
+        }
       }
 
       if (parameters.timing_max_logs <= 0) {
@@ -152,6 +158,10 @@ IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
 
       ss.str("");
       ss << "timing_max_logs: " << parameters.timing_max_logs;
+      logDebug(ss.str().c_str());
+
+      ss.str("");
+      ss << "act_type: " << parameters.act_type;
       logDebug(ss.str().c_str());
 
       ImplicitGemmPlugin * const plugin{new ImplicitGemmPlugin{std::string(name), parameters}};
