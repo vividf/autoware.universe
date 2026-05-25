@@ -18,15 +18,15 @@
 
 #include <NvInferRuntime.h>
 #include <NvInferRuntimePlugin.h>
+#include <cuda_fp16.h>
+#include <cuda_runtime_api.h>
 #include <spconvlib/spconv/csrc/sparse/all/SpconvOps.h>  // cSpell:ignore spconvlib
 #include <spconvlib/spconv/csrc/sparse/alloc/StaticAllocator.h>
 #include <spconvlib/spconv/csrc/sparse/convops/SimpleExternalSpconvMatmul.h>
 #include <spconvlib/spconv/csrc/sparse/convops/spops/ConvGemmOps.h>
 #include <spconvlib/spconv/csrc/sparse/inference/InferenceOps.h>
 
-#include <cuda_fp16.h>
-#include <cuda_runtime_api.h>
-
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -34,7 +34,6 @@
 #include <cstring>
 #include <exception>
 #include <memory>
-#include <atomic>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -43,7 +42,8 @@ namespace
 {
 std::atomic<int> g_implicit_gemm_plugin_timing_seq{0};
 
-/** Spconv fused bias/add expects bias tv::Tensor dtype to match activations (see InferenceOps bias_add). */
+/** Spconv fused bias/add expects bias tv::Tensor dtype to match activations (see InferenceOps
+ * bias_add). */
 bool build_bias_tensor_matching_activation(
   tv::Tensor const & input_features, void const * bias_input, std::int64_t c_bias,
   tv::DType activation_dtype, nvinfer1::DataType bias_trt_type, cudaStream_t stream,
@@ -52,8 +52,7 @@ bool build_bias_tensor_matching_activation(
   int const dev = input_features.device();
   if (activation_dtype == tv::float16) {
     if (bias_trt_type == nvinfer1::DataType::kHALF) {
-      *out_bias = tv::from_blob(
-        const_cast<void *>(bias_input), {c_bias}, tv::float16, dev);
+      *out_bias = tv::from_blob(const_cast<void *>(bias_input), {c_bias}, tv::float16, dev);
       return true;
     }
     if (bias_trt_type == nvinfer1::DataType::kFLOAT) {
@@ -62,27 +61,24 @@ bool build_bias_tensor_matching_activation(
       *out_bias = tv::empty({c_bias}, tv::float16, dev);
       std::vector<float> host_f(static_cast<std::size_t>(c_bias));
       cudaError_t e0 = cudaMemcpy(
-        host_f.data(), bias_f32.data_ptr<float>(),
-        static_cast<std::size_t>(c_bias) * sizeof(float), cudaMemcpyDeviceToHost);
+        host_f.data(), bias_f32.data_ptr<float>(), static_cast<std::size_t>(c_bias) * sizeof(float),
+        cudaMemcpyDeviceToHost);
       if (e0 != cudaSuccess) {
         std::fprintf(
-          stderr,
-          "[ImplicitGemmPlugin] %s: cudaMemcpy bias f32 D2H failed: %s\n", layer_name.c_str(),
-          cudaGetErrorString(e0));
+          stderr, "[ImplicitGemmPlugin] %s: cudaMemcpy bias f32 D2H failed: %s\n",
+          layer_name.c_str(), cudaGetErrorString(e0));
         return false;
       }
       std::vector<__half> host_h(static_cast<std::size_t>(c_bias));
       for (std::int64_t i = 0; i < c_bias; ++i) {
-        host_h[static_cast<std::size_t>(i)] =
-          __float2half(host_f[static_cast<std::size_t>(i)]);
+        host_h[static_cast<std::size_t>(i)] = __float2half(host_f[static_cast<std::size_t>(i)]);
       }
       cudaError_t e1 = cudaMemcpyAsync(
         out_bias->data_ptr<__half>(), host_h.data(),
         static_cast<std::size_t>(c_bias) * sizeof(__half), cudaMemcpyHostToDevice, stream);
       if (e1 != cudaSuccess) {
         std::fprintf(
-          stderr,
-          "[ImplicitGemmPlugin] %s: cudaMemcpyAsync bias f16 H2D failed: %s\n",
+          stderr, "[ImplicitGemmPlugin] %s: cudaMemcpyAsync bias f16 H2D failed: %s\n",
           layer_name.c_str(), cudaGetErrorString(e1));
         return false;
       }
@@ -95,8 +91,7 @@ bool build_bias_tensor_matching_activation(
   }
   if (activation_dtype == tv::float32) {
     if (bias_trt_type == nvinfer1::DataType::kFLOAT) {
-      *out_bias = tv::from_blob(
-        const_cast<void *>(bias_input), {c_bias}, tv::float32, dev);
+      *out_bias = tv::from_blob(const_cast<void *>(bias_input), {c_bias}, tv::float32, dev);
       return true;
     }
     if (bias_trt_type == nvinfer1::DataType::kHALF) {
@@ -109,23 +104,20 @@ bool build_bias_tensor_matching_activation(
         static_cast<std::size_t>(c_bias) * sizeof(__half), cudaMemcpyDeviceToHost);
       if (e0 != cudaSuccess) {
         std::fprintf(
-          stderr,
-          "[ImplicitGemmPlugin] %s: cudaMemcpy bias f16 D2H failed: %s\n", layer_name.c_str(),
-          cudaGetErrorString(e0));
+          stderr, "[ImplicitGemmPlugin] %s: cudaMemcpy bias f16 D2H failed: %s\n",
+          layer_name.c_str(), cudaGetErrorString(e0));
         return false;
       }
       std::vector<float> host_f(static_cast<std::size_t>(c_bias));
       for (std::int64_t i = 0; i < c_bias; ++i) {
-        host_f[static_cast<std::size_t>(i)] =
-          __half2float(host_h[static_cast<std::size_t>(i)]);
+        host_f[static_cast<std::size_t>(i)] = __half2float(host_h[static_cast<std::size_t>(i)]);
       }
       cudaError_t e1 = cudaMemcpyAsync(
         out_bias->data_ptr<float>(), host_f.data(),
         static_cast<std::size_t>(c_bias) * sizeof(float), cudaMemcpyHostToDevice, stream);
       if (e1 != cudaSuccess) {
         std::fprintf(
-          stderr,
-          "[ImplicitGemmPlugin] %s: cudaMemcpyAsync bias f32 H2D failed: %s\n",
+          stderr, "[ImplicitGemmPlugin] %s: cudaMemcpyAsync bias f32 H2D failed: %s\n",
           layer_name.c_str(), cudaGetErrorString(e1));
         return false;
       }
@@ -192,8 +184,7 @@ bool ImplicitGemmPlugin::ensureTimingEvents() noexcept
   cudaError_t e1 = cudaEventCreateWithFlags(&timing_ev_implicit_end_, cudaEventDefault);
   if (e0 != cudaSuccess || e1 != cudaSuccess) {
     std::fprintf(
-      stderr,
-      "[ImplicitGemmPlugin] %s: cudaEventCreate failed (%s %s)\n", layer_name_.c_str(),
+      stderr, "[ImplicitGemmPlugin] %s: cudaEventCreate failed (%s %s)\n", layer_name_.c_str(),
       cudaGetErrorString(e0), cudaGetErrorString(e1));
     if (e0 == cudaSuccess) {
       cudaEventDestroy(timing_ev_implicit_start_);
@@ -314,12 +305,12 @@ std::int32_t ImplicitGemmPlugin::configurePlugin(
 
   num_plugin_inputs_ = num_inputs;
 
-  if (in[INOUT_IN_FEATURES_INDEX].desc.dims.nbDims != 2 ||
-      in[INOUT_FILTERS_INDEX].desc.dims.nbDims != 5 ||
-      in[INOUT_PAIR_FWD_INDEX].desc.dims.nbDims != 2 ||
-      in[INOUT_PAIR_MASK_FWD_SPLITS_INDEX].desc.dims.nbDims != 2 ||
-      in[INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX].desc.dims.nbDims != 1 || out[0].desc.dims.nbDims != 2)
-  {
+  if (
+    in[INOUT_IN_FEATURES_INDEX].desc.dims.nbDims != 2 ||
+    in[INOUT_FILTERS_INDEX].desc.dims.nbDims != 5 ||
+    in[INOUT_PAIR_FWD_INDEX].desc.dims.nbDims != 2 ||
+    in[INOUT_PAIR_MASK_FWD_SPLITS_INDEX].desc.dims.nbDims != 2 ||
+    in[INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX].desc.dims.nbDims != 1 || out[0].desc.dims.nbDims != 2) {
     std::fprintf(
       stderr,
       "[ImplicitGemmPlugin] %s: configurePlugin unexpected tensor ranks (features/filters/pairs)\n",
@@ -327,23 +318,24 @@ std::int32_t ImplicitGemmPlugin::configurePlugin(
     return -1;
   }
 
-  if (in[INOUT_FILTERS_INDEX].desc.dims.d[4] != in[INOUT_IN_FEATURES_INDEX].desc.dims.d[1] ||
-      in[INOUT_PAIR_MASK_FWD_SPLITS_INDEX].desc.dims.d[0] != in[INOUT_PAIR_FWD_INDEX].desc.dims.d[1] ||
-      in[INOUT_PAIR_MASK_FWD_SPLITS_INDEX].desc.dims.d[1] != 1 ||
-      in[INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX].desc.dims.d[0] !=
-        in[INOUT_PAIR_FWD_INDEX].desc.dims.d[1])
-  {
+  if (
+    in[INOUT_FILTERS_INDEX].desc.dims.d[4] != in[INOUT_IN_FEATURES_INDEX].desc.dims.d[1] ||
+    in[INOUT_PAIR_MASK_FWD_SPLITS_INDEX].desc.dims.d[0] !=
+      in[INOUT_PAIR_FWD_INDEX].desc.dims.d[1] ||
+    in[INOUT_PAIR_MASK_FWD_SPLITS_INDEX].desc.dims.d[1] != 1 ||
+    in[INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX].desc.dims.d[0] !=
+      in[INOUT_PAIR_FWD_INDEX].desc.dims.d[1]) {
     std::fprintf(
       stderr, "[ImplicitGemmPlugin] %s: configurePlugin dimension mismatch (pairs vs features)\n",
       layer_name_.c_str());
     return -1;
   }
 
-  if (in[INOUT_IN_FEATURES_INDEX].desc.type != in[INOUT_FILTERS_INDEX].desc.type ||
-      in[INOUT_IN_FEATURES_INDEX].desc.type != out[0].desc.type ||
-      in[INOUT_PAIR_FWD_INDEX].desc.type != in[INOUT_PAIR_MASK_FWD_SPLITS_INDEX].desc.type ||
-      in[INOUT_PAIR_FWD_INDEX].desc.type != in[INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX].desc.type)
-  {
+  if (
+    in[INOUT_IN_FEATURES_INDEX].desc.type != in[INOUT_FILTERS_INDEX].desc.type ||
+    in[INOUT_IN_FEATURES_INDEX].desc.type != out[0].desc.type ||
+    in[INOUT_PAIR_FWD_INDEX].desc.type != in[INOUT_PAIR_MASK_FWD_SPLITS_INDEX].desc.type ||
+    in[INOUT_PAIR_FWD_INDEX].desc.type != in[INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX].desc.type) {
     std::fprintf(
       stderr, "[ImplicitGemmPlugin] %s: configurePlugin dtype mismatch between IO tensors\n",
       layer_name_.c_str());
@@ -351,9 +343,9 @@ std::int32_t ImplicitGemmPlugin::configurePlugin(
   }
 
   if (num_inputs == 6) {
-    if (in[INOUT_OPTIONAL_BIAS_INDEX].desc.dims.nbDims != 1 ||
-        in[INOUT_OPTIONAL_BIAS_INDEX].desc.dims.d[0] != in[INOUT_FILTERS_INDEX].desc.dims.d[0])
-    {
+    if (
+      in[INOUT_OPTIONAL_BIAS_INDEX].desc.dims.nbDims != 1 ||
+      in[INOUT_OPTIONAL_BIAS_INDEX].desc.dims.d[0] != in[INOUT_FILTERS_INDEX].desc.dims.d[0]) {
       std::fprintf(
         stderr,
         "[ImplicitGemmPlugin] %s: configurePlugin optional bias must be [C_out], matching filters "
@@ -364,8 +356,7 @@ std::int32_t ImplicitGemmPlugin::configurePlugin(
     DataType const bias_t = in[INOUT_OPTIONAL_BIAS_INDEX].desc.type;
     if (bias_t != DataType::kFLOAT && bias_t != DataType::kHALF) {
       std::fprintf(
-        stderr,
-        "[ImplicitGemmPlugin] %s: configurePlugin optional bias must be FLOAT or HALF\n",
+        stderr, "[ImplicitGemmPlugin] %s: configurePlugin optional bias must be FLOAT or HALF\n",
         layer_name_.c_str());
       return -1;
     }
@@ -500,8 +491,7 @@ std::int32_t ImplicitGemmPlugin::enqueue(
 
   if (in_features_type != filters_type || in_features_type != out_features_type) {
     std::fprintf(
-      stderr,
-      "[ImplicitGemmPlugin] %s: enqueue dtype mismatch (features/filters/out)\n",
+      stderr, "[ImplicitGemmPlugin] %s: enqueue dtype mismatch (features/filters/out)\n",
       layer_name_.c_str());
     return -1;
   }
@@ -580,16 +570,15 @@ std::int32_t ImplicitGemmPlugin::enqueue(
   [[maybe_unused]] auto const conv_run_status = ConvGemmOps::implicit_gemm(
     alloc2, *tuner_ptr, input_features, weights, pair_fwd, pair_mask_splits, mask_argsort_splits,
     num_act_out, mask_tensor_, arch_, false, params_.is_subm,
-    reinterpret_cast<std::uintptr_t>(stream), tv::CUDAKernelTimer(false), true, false, bias_tv,
-    0.0, 0.0, activation_from_int(params_.act_type), false, 1.0, tv::Tensor(), tv::Tensor(), 0.0, -1);
+    reinterpret_cast<std::uintptr_t>(stream), tv::CUDAKernelTimer(false), true, false, bias_tv, 0.0,
+    0.0, activation_from_int(params_.act_type), false, 1.0, tv::Tensor(), tv::Tensor(), 0.0, -1);
 
   if (do_timing) {
     cudaEventRecord(timing_ev_implicit_end_, stream);
     cudaError_t sync_st = cudaEventSynchronize(timing_ev_implicit_end_);
     if (sync_st != cudaSuccess) {
       std::fprintf(
-        stderr,
-        "[AUTOWARE_IMPLICIT_GEMM_TIMING] seq=%d layer=%s cudaEventSynchronize failed: %s\n",
+        stderr, "[AUTOWARE_IMPLICIT_GEMM_TIMING] seq=%d layer=%s cudaEventSynchronize failed: %s\n",
         timing_seq, layer_name_.c_str(), cudaGetErrorString(sync_st));
     } else {
       float ms_implicit = 0.F;

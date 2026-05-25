@@ -393,7 +393,8 @@ std::int32_t GetIndicesPairsImplicitGemmPlugin::enqueue(
     pair_res = SpconvOps::get_indice_pairs_implicit_gemm(
       alloc, input_indices, params_.batch_size, input_dims, static_cast<int>(params_.algo), ksize,
       stride, padding, dilation, {0, 0, 0}, params_.subm, params_.transpose, false /*is_train*/,
-      reinterpret_cast<std::uintptr_t>(stream), out_indices_num_limit_, tv::CUDAKernelTimer(false), use_direct_table, static_cast<bool>(params_.do_sort));
+      reinterpret_cast<std::uintptr_t>(stream), out_indices_num_limit_, tv::CUDAKernelTimer(false),
+      use_direct_table, static_cast<bool>(params_.do_sort));
 
   } else {
     // Allocate bwd tensors from the workspace instead of tv::empty to avoid cudaMalloc during
@@ -432,7 +433,8 @@ std::int32_t GetIndicesPairsImplicitGemmPlugin::enqueue(
     pair_res = SpconvOps::get_indice_pairs_implicit_gemm(
       alloc, input_indices, params_.batch_size, input_dims, static_cast<int>(params_.algo), ksize,
       stride, padding, dilation, {0, 0, 0}, params_.subm, params_.transpose, false /*is_train*/,
-      reinterpret_cast<std::uintptr_t>(stream), out_indices_num_limit_, tv::CUDAKernelTimer(false), use_direct_table, static_cast<bool>(params_.do_sort));
+      reinterpret_cast<std::uintptr_t>(stream), out_indices_num_limit_, tv::CUDAKernelTimer(false),
+      use_direct_table, static_cast<bool>(params_.do_sort));
   }
 
   std::int32_t num_act_out_real = std::get<1>(pair_res);

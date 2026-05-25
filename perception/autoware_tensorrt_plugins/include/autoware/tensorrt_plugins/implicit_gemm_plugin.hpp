@@ -43,9 +43,11 @@ struct ImplicitGemmParameters
   std::int64_t is_train;
   float output_add_scale;
   float output_scale;
-  std::int32_t timing_enabled{0};       ///< 1 = log ConvGemmOps::implicit_gemm CUDA duration (stderr)
-  std::int32_t timing_max_logs{1000};     ///< max timing lines across all ImplicitGemm plugin instances
-  /// ``tv::gemm::Activation`` as integer (kNone=0, kReLU=1, kSigmoid=2, kLeakyReLU=3); ONNX ``act_type`` / ``act_type_i``.
+  std::int32_t timing_enabled{0};  ///< 1 = log ConvGemmOps::implicit_gemm CUDA duration (stderr)
+  std::int32_t timing_max_logs{
+    1000};  ///< max timing lines across all ImplicitGemm plugin instances
+  /// ``tv::gemm::Activation`` as integer (kNone=0, kReLU=1, kSigmoid=2, kLeakyReLU=3); ONNX
+  /// ``act_type`` / ``act_type_i``.
   std::int32_t act_type{0};
 };
 

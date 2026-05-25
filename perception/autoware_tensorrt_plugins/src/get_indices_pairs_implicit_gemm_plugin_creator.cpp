@@ -47,7 +47,8 @@ GetIndicesPairsImplicitGemmPluginCreator::GetIndicesPairsImplicitGemmPluginCreat
   plugin_attributes_.emplace_back(
     "subm", nullptr, PluginFieldType::kINT32, 1);  // cSpell:ignore subm
   plugin_attributes_.emplace_back("transpose", nullptr, PluginFieldType::kINT32, 1);
-  // Optional attribute; absent on old ONNX graphs -> GetIndicesPairsImplicitGemmParameters::do_sort defaults to 1 (sort).
+  // Optional attribute; absent on old ONNX graphs -> GetIndicesPairsImplicitGemmParameters::do_sort
+  // defaults to 1 (sort).
   plugin_attributes_.emplace_back("do_sort", nullptr, PluginFieldType::kINT32, 1);
 
   fc_.nbFields = plugin_attributes_.size();
