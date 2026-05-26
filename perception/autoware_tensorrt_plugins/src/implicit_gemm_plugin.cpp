@@ -18,6 +18,7 @@
 
 #include <NvInferRuntime.h>
 #include <NvInferRuntimePlugin.h>
+#include <cuda_runtime_api.h>
 #include <spconvlib/spconv/csrc/sparse/all/SpconvOps.h>  // cSpell:ignore spconvlib
 #include <spconvlib/spconv/csrc/sparse/alloc/StaticAllocator.h>
 #include <spconvlib/spconv/csrc/sparse/convops/SimpleExternalSpconvMatmul.h>
@@ -26,6 +27,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
@@ -33,6 +35,58 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+namespace
+{
+
+/** Spconv fused bias/add expects bias tv::Tensor dtype to match activations (see InferenceOps
+ * bias_add). Keep this strict to avoid per-enqueue D2H/H2D dtype conversion overhead. */
+bool build_bias_tensor_matching_activation(
+  tv::Tensor const & input_features, void const * bias_input, std::int64_t c_bias,
+  tv::DType activation_dtype, nvinfer1::DataType bias_trt_type, cudaStream_t stream,
+  std::string const & layer_name, tv::Tensor * out_bias) noexcept
+{
+  (void)stream;
+  int const dev = input_features.device();
+  if (activation_dtype == tv::float16) {
+    if (bias_trt_type == nvinfer1::DataType::kHALF) {
+      *out_bias = tv::from_blob(const_cast<void *>(bias_input), {c_bias}, tv::float16, dev);
+      return true;
+    }
+    std::fprintf(
+      stderr, "[ImplicitGemmPlugin] %s: optional bias dtype must be HALF for FP16 activations\n",
+      layer_name.c_str());
+    return false;
+  }
+  if (activation_dtype == tv::float32) {
+    if (bias_trt_type == nvinfer1::DataType::kFLOAT) {
+      *out_bias = tv::from_blob(const_cast<void *>(bias_input), {c_bias}, tv::float32, dev);
+      return true;
+    }
+    std::fprintf(
+      stderr, "[ImplicitGemmPlugin] %s: optional bias dtype must be FLOAT for FP32 activations\n",
+      layer_name.c_str());
+    return false;
+  }
+  return false;
+}
+
+tv::gemm::Activation activation_from_int(std::int32_t const v) noexcept
+{
+  switch (v) {
+    case 0:
+      return tv::gemm::Activation::kNone;
+    case 1:
+      return tv::gemm::Activation::kReLU;
+    case 2:
+      return tv::gemm::Activation::kSigmoid;
+    case 3:
+      return tv::gemm::Activation::kLeakyReLU;
+    default:
+      return tv::gemm::Activation::kNone;
+  }
+}
+}  // namespace
 
 namespace nvinfer1::plugin
 {
@@ -56,7 +110,7 @@ void ImplicitGemmPlugin::initFieldsToSerialize()
 {
   data_to_serialize_.clear();
   data_to_serialize_.emplace_back("act_alpha", &params_.act_alpha, PluginFieldType::kFLOAT32, 1);
-  data_to_serialize_.emplace_back("act_alpha", &params_.act_beta, PluginFieldType::kFLOAT32, 1);
+  data_to_serialize_.emplace_back("act_beta", &params_.act_beta, PluginFieldType::kFLOAT32, 1);
 
   data_to_serialize_.emplace_back(
     "is_subm", &params_.is_subm, PluginFieldType::kINT32, 1);  // cSpell:ignore subm
@@ -66,6 +120,7 @@ void ImplicitGemmPlugin::initFieldsToSerialize()
     "output_add_scale", &params_.output_add_scale, PluginFieldType::kFLOAT32, 1);
   data_to_serialize_.emplace_back(
     "output_scale", &params_.output_scale, PluginFieldType::kFLOAT32, 1);
+  data_to_serialize_.emplace_back("act_type", &params_.act_type, PluginFieldType::kINT32, 1);
 
   fc_to_serialize_.nbFields = data_to_serialize_.size();
   fc_to_serialize_.fields = data_to_serialize_.data();
@@ -91,7 +146,8 @@ IPluginCapability * ImplicitGemmPlugin::getCapabilityInterface(PluginCapabilityT
 IPluginV3 * ImplicitGemmPlugin::clone() noexcept
 {
   try {
-    IPluginV3 * const plugin{new ImplicitGemmPlugin{layer_name_, params_}};
+    ImplicitGemmPlugin * const plugin{new ImplicitGemmPlugin{layer_name_, params_}};
+    plugin->num_plugin_inputs_ = num_plugin_inputs_;
     return plugin;
   } catch (std::exception const & e) {
     caughtError(e);
@@ -123,29 +179,83 @@ std::int32_t ImplicitGemmPlugin::configurePlugin(
   DynamicPluginTensorDesc const * in, std::int32_t num_inputs, DynamicPluginTensorDesc const * out,
   std::int32_t num_outputs) noexcept
 {
-  // Validate input arguments.
-  PLUGIN_ASSERT(num_inputs == 5);
-  PLUGIN_ASSERT(num_outputs == 1);
-  PLUGIN_ASSERT(in[INOUT_IN_FEATURES_INDEX].desc.dims.nbDims == 2);
-  PLUGIN_ASSERT(in[INOUT_FILTERS_INDEX].desc.dims.nbDims == 5);
-  PLUGIN_ASSERT(in[INOUT_PAIR_FWD_INDEX].desc.dims.nbDims == 2);
-  PLUGIN_ASSERT(in[INOUT_PAIR_MASK_FWD_SPLITS_INDEX].desc.dims.nbDims == 2);
-  PLUGIN_ASSERT(in[INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX].desc.dims.nbDims == 1);
-  PLUGIN_ASSERT(out[0].desc.dims.nbDims == 2);
-  PLUGIN_ASSERT(
-    in[INOUT_FILTERS_INDEX].desc.dims.d[4] == in[INOUT_IN_FEATURES_INDEX].desc.dims.d[1]);
-  PLUGIN_ASSERT(
-    in[INOUT_PAIR_MASK_FWD_SPLITS_INDEX].desc.dims.d[0] == in[INOUT_PAIR_FWD_INDEX].desc.dims.d[1]);
-  PLUGIN_ASSERT(in[INOUT_PAIR_MASK_FWD_SPLITS_INDEX].desc.dims.d[1] == 1);
-  PLUGIN_ASSERT(
-    in[INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX].desc.dims.d[0] ==
-    in[INOUT_PAIR_FWD_INDEX].desc.dims.d[1]);
-  PLUGIN_ASSERT(in[INOUT_IN_FEATURES_INDEX].desc.type == in[INOUT_FILTERS_INDEX].desc.type);
-  PLUGIN_ASSERT(in[INOUT_IN_FEATURES_INDEX].desc.type == out[0].desc.type);
-  PLUGIN_ASSERT(
-    in[INOUT_PAIR_FWD_INDEX].desc.type == in[INOUT_PAIR_MASK_FWD_SPLITS_INDEX].desc.type);
-  PLUGIN_ASSERT(
-    in[INOUT_PAIR_FWD_INDEX].desc.type == in[INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX].desc.type);
+  // Validate input arguments (5 = legacy; 6 = optional per-channel bias for ONNX-fused Add).
+  // Never abort: TensorRT probes invalid combinations during build; return an error code instead.
+  if (in == nullptr || out == nullptr) {
+    return -1;
+  }
+  if (num_inputs != 5 && num_inputs != 6) {
+    std::fprintf(
+      stderr, "[ImplicitGemmPlugin] %s: configurePlugin expected 5 or 6 inputs, got %d\n",
+      layer_name_.c_str(), static_cast<int>(num_inputs));
+    return -1;
+  }
+  if (num_outputs != 1) {
+    std::fprintf(
+      stderr, "[ImplicitGemmPlugin] %s: configurePlugin expected 1 output, got %d\n",
+      layer_name_.c_str(), static_cast<int>(num_outputs));
+    return -1;
+  }
+
+  num_plugin_inputs_ = num_inputs;
+
+  if (
+    in[INOUT_IN_FEATURES_INDEX].desc.dims.nbDims != 2 ||
+    in[INOUT_FILTERS_INDEX].desc.dims.nbDims != 5 ||
+    in[INOUT_PAIR_FWD_INDEX].desc.dims.nbDims != 2 ||
+    in[INOUT_PAIR_MASK_FWD_SPLITS_INDEX].desc.dims.nbDims != 2 ||
+    in[INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX].desc.dims.nbDims != 1 || out[0].desc.dims.nbDims != 2) {
+    std::fprintf(
+      stderr,
+      "[ImplicitGemmPlugin] %s: configurePlugin unexpected tensor ranks (features/filters/pairs)\n",
+      layer_name_.c_str());
+    return -1;
+  }
+
+  if (
+    in[INOUT_FILTERS_INDEX].desc.dims.d[4] != in[INOUT_IN_FEATURES_INDEX].desc.dims.d[1] ||
+    in[INOUT_PAIR_MASK_FWD_SPLITS_INDEX].desc.dims.d[0] !=
+      in[INOUT_PAIR_FWD_INDEX].desc.dims.d[1] ||
+    in[INOUT_PAIR_MASK_FWD_SPLITS_INDEX].desc.dims.d[1] != 1 ||
+    in[INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX].desc.dims.d[0] !=
+      in[INOUT_PAIR_FWD_INDEX].desc.dims.d[1]) {
+    std::fprintf(
+      stderr, "[ImplicitGemmPlugin] %s: configurePlugin dimension mismatch (pairs vs features)\n",
+      layer_name_.c_str());
+    return -1;
+  }
+
+  if (
+    in[INOUT_IN_FEATURES_INDEX].desc.type != in[INOUT_FILTERS_INDEX].desc.type ||
+    in[INOUT_IN_FEATURES_INDEX].desc.type != out[0].desc.type ||
+    in[INOUT_PAIR_FWD_INDEX].desc.type != in[INOUT_PAIR_MASK_FWD_SPLITS_INDEX].desc.type ||
+    in[INOUT_PAIR_FWD_INDEX].desc.type != in[INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX].desc.type) {
+    std::fprintf(
+      stderr, "[ImplicitGemmPlugin] %s: configurePlugin dtype mismatch between IO tensors\n",
+      layer_name_.c_str());
+    return -1;
+  }
+
+  if (num_inputs == 6) {
+    if (
+      in[INOUT_OPTIONAL_BIAS_INDEX].desc.dims.nbDims != 1 ||
+      in[INOUT_OPTIONAL_BIAS_INDEX].desc.dims.d[0] != in[INOUT_FILTERS_INDEX].desc.dims.d[0]) {
+      std::fprintf(
+        stderr,
+        "[ImplicitGemmPlugin] %s: configurePlugin optional bias must be [C_out], matching filters "
+        "dim 0\n",
+        layer_name_.c_str());
+      return -1;
+    }
+    DataType const bias_t = in[INOUT_OPTIONAL_BIAS_INDEX].desc.type;
+    if (bias_t != in[INOUT_IN_FEATURES_INDEX].desc.type) {
+      std::fprintf(
+        stderr,
+        "[ImplicitGemmPlugin] %s: configurePlugin optional bias dtype must match features dtype\n",
+        layer_name_.c_str());
+      return -1;
+    }
+  }
 
   return 0;
 }
@@ -154,10 +264,28 @@ bool ImplicitGemmPlugin::supportsFormatCombination(
   std::int32_t pos, DynamicPluginTensorDesc const * in_out, std::int32_t num_inputs,
   std::int32_t num_outputs) noexcept
 {
-  PLUGIN_ASSERT(num_inputs == 5);
-  PLUGIN_ASSERT(num_outputs == 1);
+  // TRT calls this for many (pos, format) pairs; must never abort.
+  if (in_out == nullptr) {
+    return false;
+  }
+  if (num_outputs != 1) {
+    return false;
+  }
+  if (num_inputs != 5 && num_inputs != 6) {
+    return false;
+  }
+  std::int32_t const n_slots = num_inputs + num_outputs;
+  if (pos < 0 || pos >= n_slots) {
+    return false;
+  }
 
   bool supported = in_out[pos].desc.format == nvinfer1::TensorFormat::kLINEAR;
+
+  std::int32_t const out_pos = num_inputs;
+  if (pos == out_pos) {
+    supported &= in_out[pos].desc.type == in_out[INOUT_IN_FEATURES_INDEX].desc.type;
+    return supported;
+  }
 
   switch (pos) {
     case INOUT_IN_FEATURES_INDEX:
@@ -166,13 +294,19 @@ bool ImplicitGemmPlugin::supportsFormatCombination(
          in_out[pos].desc.type == nvinfer1::DataType::kHALF);
       break;
     case INOUT_FILTERS_INDEX:
-    case INOUT_OUT_FEATURES_INDEX:
       supported &= in_out[pos].desc.type == in_out[INOUT_IN_FEATURES_INDEX].desc.type;
       break;
     case INOUT_PAIR_FWD_INDEX:
     case INOUT_PAIR_MASK_FWD_SPLITS_INDEX:
     case INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX:
       supported &= in_out[pos].desc.type == nvinfer1::DataType::kINT32;
+      break;
+    case INOUT_OPTIONAL_BIAS_INDEX:
+      if (num_inputs == 6) {
+        supported &= in_out[pos].desc.type == in_out[INOUT_IN_FEATURES_INDEX].desc.type;
+      } else {
+        supported = false;
+      }
       break;
     default:
       supported = false;
@@ -186,8 +320,12 @@ std::int32_t ImplicitGemmPlugin::getOutputDataTypes(
   DataType * output_types, std::int32_t num_outputs, DataType const * input_types,
   std::int32_t num_inputs) const noexcept
 {
-  PLUGIN_ASSERT(num_inputs == 5);
-  PLUGIN_ASSERT(num_outputs == 1);
+  if (output_types == nullptr || input_types == nullptr) {
+    return -1;
+  }
+  if (num_outputs != 1 || (num_inputs != 5 && num_inputs != 6)) {
+    return -1;
+  }
 
   output_types[0] = input_types[INOUT_IN_FEATURES_INDEX];
 
@@ -200,9 +338,15 @@ std::int32_t ImplicitGemmPlugin::getOutputShapes(
   DimsExprs * outputs, std::int32_t num_outputs,
   [[maybe_unused]] IExprBuilder & expr_builder) noexcept
 {
-  PLUGIN_ASSERT(num_inputs == 5);
-  PLUGIN_ASSERT(num_outputs == 1);
-  PLUGIN_ASSERT(inputs[0].nbDims == 2);
+  if (inputs == nullptr || outputs == nullptr) {
+    return -1;
+  }
+  if (num_outputs != 1 || (num_inputs != 5 && num_inputs != 6)) {
+    return -1;
+  }
+  if (inputs[0].nbDims != 2) {
+    return -1;
+  }
 
   outputs[0].nbDims = 2;
   outputs[0].d[0] = inputs[3].d[0];
@@ -219,6 +363,15 @@ std::int32_t ImplicitGemmPlugin::enqueue(
   using StaticAllocator = spconvlib::spconv::csrc::sparse::alloc::StaticAllocator;
   using ConvGemmOps = spconvlib::spconv::csrc::sparse::convops::spops::ConvGemmOps;
 
+  if (num_plugin_inputs_ != 5 && num_plugin_inputs_ != 6) {
+    std::fprintf(
+      stderr,
+      "[ImplicitGemmPlugin] %s: enqueue expected 5 or 6 inputs (set in configure/onShapeChange), "
+      "got num_plugin_inputs_=%d\n",
+      layer_name_.c_str(), static_cast<int>(num_plugin_inputs_));
+    return -1;
+  }
+
   std::int64_t num_act_in = input_desc[INOUT_IN_FEATURES_INDEX].dims.d[0];
   std::int64_t num_in_features = input_desc[INOUT_IN_FEATURES_INDEX].dims.d[1];
   // std::int64_t kernel_volume = input_desc[INOUT_PAIR_FWD_INDEX].dims.d[0];
@@ -227,10 +380,14 @@ std::int32_t ImplicitGemmPlugin::enqueue(
 
   auto in_features_type = input_desc[INOUT_IN_FEATURES_INDEX].type;
   [[maybe_unused]] auto filters_type = input_desc[INOUT_FILTERS_INDEX].type;
-  [[maybe_unused]] auto out_features_type = input_desc[INOUT_OUT_FEATURES_INDEX].type;
+  [[maybe_unused]] auto out_features_type = output_desc[0].type;
 
-  assert(in_features_type == filters_type);
-  assert(in_features_type == out_features_type);
+  if (in_features_type != filters_type || in_features_type != out_features_type) {
+    std::fprintf(
+      stderr, "[ImplicitGemmPlugin] %s: enqueue dtype mismatch (features/filters/out)\n",
+      layer_name_.c_str());
+    return -1;
+  }
 
   auto dtype = in_features_type == DataType::kFLOAT ? tv::float32 : tv::float16;
 
@@ -261,17 +418,35 @@ std::int32_t ImplicitGemmPlugin::enqueue(
     },
     tv::int32, 0);
 
-  PLUGIN_ASSERT(
-    input_desc[INOUT_PAIR_FWD_INDEX].dims.d[1] ==
-    input_desc[INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX].dims.d[0]);
-  PLUGIN_ASSERT(input_desc[INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX].dims.nbDims == 1);
+  if (
+    input_desc[INOUT_PAIR_FWD_INDEX].dims.d[1] !=
+      input_desc[INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX].dims.d[0] ||
+    input_desc[INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX].dims.nbDims != 1) {
+    std::fprintf(
+      stderr, "[ImplicitGemmPlugin] %s: enqueue invalid pair/mask-argsort tensor shape\n",
+      layer_name_.c_str());
+    return -1;
+  }
 
   tv::Tensor out_features = tv::from_blob(outputs[0], {num_act_out, num_out_features}, dtype, 0);
 
+<<<<<<< HEAD
   tv::Tensor mask_tensor = tv::zeros({1}, tv::uint32, -1);
 
   auto mask_tensor_ptr = mask_tensor.data_ptr<uint32_t>();
   mask_tensor_ptr[0] = 0xffffffff;
+=======
+  tv::Tensor bias_tv{};
+  if (num_plugin_inputs_ >= 6) {
+    auto const bias_type = input_desc[INOUT_OPTIONAL_BIAS_INDEX].type;
+    std::int64_t const c_bias = input_desc[INOUT_OPTIONAL_BIAS_INDEX].dims.d[0];
+    if (!build_bias_tensor_matching_activation(
+          input_features, inputs[INOUT_OPTIONAL_BIAS_INDEX], c_bias, dtype, bias_type, stream,
+          layer_name_, &bias_tv)) {
+      return -1;
+    }
+  }
+>>>>>>> dcb08b3e45 (feat: fuse  activation)
 
   std::vector<tv::Tensor> pair_mask_splits;
   std::vector<tv::Tensor> mask_argsort_splits;
@@ -287,19 +462,29 @@ std::int32_t ImplicitGemmPlugin::enqueue(
 
   auto & tuner_ptr = dtype == tv::float32 ? tuner_fp32_ptr_ : tuner_fp16_ptr_;
 
-  auto conv_run_status = ConvGemmOps::implicit_gemm(
+  [[maybe_unused]] auto const conv_run_status = ConvGemmOps::implicit_gemm(
     alloc2, *tuner_ptr, input_features, weights, pair_fwd, pair_mask_splits, mask_argsort_splits,
+<<<<<<< HEAD
     num_act_out, mask_tensor, arch_, false, params_.is_subm,
     reinterpret_cast<std::uintptr_t>(stream), tv::CUDAKernelTimer(false), true, false, tv::Tensor(),
     0.0, 0.0, tv::gemm::Activation::kNone, false, 1.0, tv::Tensor(), tv::Tensor(), 0.0, -1);
 
+=======
+    num_act_out, mask_tensor_, arch_, false, params_.is_subm,
+    reinterpret_cast<std::uintptr_t>(stream), tv::CUDAKernelTimer(false), true, false, bias_tv,
+    params_.act_alpha, params_.act_beta, activation_from_int(params_.act_type), false, 1.0,
+    tv::Tensor(), tv::Tensor(), 0.0, -1);
+>>>>>>> dcb08b3e45 (feat: fuse  activation)
   return 0;
 }
 
 std::int32_t ImplicitGemmPlugin::onShapeChange(
-  [[maybe_unused]] PluginTensorDesc const * in, [[maybe_unused]] std::int32_t num_inputs,
+  [[maybe_unused]] PluginTensorDesc const * in, std::int32_t num_inputs,
   [[maybe_unused]] PluginTensorDesc const * out, [[maybe_unused]] std::int32_t num_outputs) noexcept
 {
+  if (num_inputs == 5 || num_inputs == 6) {
+    num_plugin_inputs_ = num_inputs;
+  }
   return 0;
 }
 

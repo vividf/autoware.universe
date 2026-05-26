@@ -41,6 +41,7 @@ ImplicitGemmPluginCreator::ImplicitGemmPluginCreator()
   plugin_attributes_.emplace_back("is_train", nullptr, PluginFieldType::kINT32, 1);
   plugin_attributes_.emplace_back("output_add_scale", nullptr, PluginFieldType::kFLOAT32, 1);
   plugin_attributes_.emplace_back("output_scale", nullptr, PluginFieldType::kFLOAT32, 1);
+  plugin_attributes_.emplace_back("act_type", nullptr, PluginFieldType::kINT32, 1);
 
   fc_.nbFields = plugin_attributes_.size();
   fc_.fields = plugin_attributes_.data();
@@ -56,15 +57,15 @@ IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
   char const * name, PluginFieldCollection const * fc, TensorRTPhase phase) noexcept
 {
   // The build phase and the deserialization phase are handled differently.
-  if (phase == TensorRTPhase::kBUILD || phase == TensorRTPhase::kRUNTIME) {
+  if (phase == TensorRTPhase::kBUILD) {
     // The attributes from the ONNX node will be parsed and passed via fc.
     try {
       nvinfer1::PluginField const * fields{fc->fields};
       std::int32_t num_fields{fc->nbFields};
 
-      PLUGIN_VALIDATE(num_fields == 6);
+      PLUGIN_VALIDATE(num_fields >= 6 && num_fields <= 7);
 
-      ImplicitGemmParameters parameters;
+      ImplicitGemmParameters parameters{};
 
       for (std::int32_t i{0}; i < num_fields; ++i) {
         const std::string attr_name = fields[i].name;
@@ -99,6 +100,11 @@ IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
           PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kFLOAT32);
           parameters.output_scale = static_cast<float const *>(fields[i].data)[0];
         }
+
+        if (attr_name == "act_type") {
+          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
+          parameters.act_type = static_cast<std::int32_t const *>(fields[i].data)[0];
+        }
       }
 
       // Log the attributes parsed from ONNX node.
@@ -128,6 +134,10 @@ IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
 
       ss.str("");
       ss << "output_scale: " << parameters.output_scale;
+      logDebug(ss.str().c_str());
+
+      ss.str("");
+      ss << "act_type: " << parameters.act_type;
       logDebug(ss.str().c_str());
 
       ImplicitGemmPlugin * const plugin{new ImplicitGemmPlugin{std::string(name), parameters}};
