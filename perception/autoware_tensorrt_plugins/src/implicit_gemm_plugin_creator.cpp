@@ -56,6 +56,51 @@ nvinfer1::PluginFieldCollection const * ImplicitGemmPluginCreator::getFieldNames
 IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
   char const * name, PluginFieldCollection const * fc, TensorRTPhase phase) noexcept
 {
+  auto parse_expanded_fields = [](
+                                 nvinfer1::PluginField const * fields, std::int32_t num_fields,
+                                 ImplicitGemmParameters & parameters) {
+    PLUGIN_VALIDATE(num_fields >= 6 && num_fields <= 7);
+    for (std::int32_t i{0}; i < num_fields; ++i) {
+      const std::string attr_name = fields[i].name;
+      const nvinfer1::PluginFieldType type = fields[i].type;
+
+      if (attr_name == "act_alpha") {
+        PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kFLOAT32);
+        parameters.act_alpha = static_cast<float const *>(fields[i].data)[0];
+      }
+
+      if (attr_name == "act_beta") {
+        PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kFLOAT32);
+        parameters.act_beta = static_cast<float const *>(fields[i].data)[0];
+      }
+
+      if (attr_name == "is_subm") {
+        PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
+        parameters.is_subm = static_cast<std::int32_t const *>(fields[i].data)[0];
+      }
+
+      if (attr_name == "is_train") {
+        PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
+        parameters.is_train = static_cast<std::int32_t const *>(fields[i].data)[0];
+      }
+
+      if (attr_name == "output_add_scale") {
+        PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kFLOAT32);
+        parameters.output_add_scale = static_cast<float const *>(fields[i].data)[0];
+      }
+
+      if (attr_name == "output_scale") {
+        PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kFLOAT32);
+        parameters.output_scale = static_cast<float const *>(fields[i].data)[0];
+      }
+
+      if (attr_name == "act_type") {
+        PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
+        parameters.act_type = static_cast<std::int32_t const *>(fields[i].data)[0];
+      }
+    }
+  };
+
   // The build phase and the deserialization phase are handled differently.
   if (phase == TensorRTPhase::kBUILD) {
     // The attributes from the ONNX node will be parsed and passed via fc.
@@ -63,49 +108,8 @@ IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
       nvinfer1::PluginField const * fields{fc->fields};
       std::int32_t num_fields{fc->nbFields};
 
-      PLUGIN_VALIDATE(num_fields >= 6 && num_fields <= 7);
-
       ImplicitGemmParameters parameters{};
-
-      for (std::int32_t i{0}; i < num_fields; ++i) {
-        const std::string attr_name = fields[i].name;
-        const nvinfer1::PluginFieldType type = fields[i].type;
-
-        if (attr_name == "act_alpha") {
-          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kFLOAT32);
-          parameters.act_alpha = static_cast<float const *>(fields[i].data)[0];
-        }
-
-        if (attr_name == "act_beta") {
-          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kFLOAT32);
-          parameters.act_beta = static_cast<float const *>(fields[i].data)[0];
-        }
-
-        if (attr_name == "is_subm") {
-          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
-          parameters.is_subm = static_cast<std::int32_t const *>(fields[i].data)[0];
-        }
-
-        if (attr_name == "is_train") {
-          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
-          parameters.is_train = static_cast<std::int32_t const *>(fields[i].data)[0];
-        }
-
-        if (attr_name == "output_add_scale") {
-          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kFLOAT32);
-          parameters.output_add_scale = static_cast<float const *>(fields[i].data)[0];
-        }
-
-        if (attr_name == "output_scale") {
-          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kFLOAT32);
-          parameters.output_scale = static_cast<float const *>(fields[i].data)[0];
-        }
-
-        if (attr_name == "act_type") {
-          PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
-          parameters.act_type = static_cast<std::int32_t const *>(fields[i].data)[0];
-        }
-      }
+      parse_expanded_fields(fields, num_fields, parameters);
 
       // Log the attributes parsed from ONNX node.
       std::stringstream ss;
@@ -151,13 +155,17 @@ IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
     try {
       nvinfer1::PluginField const * fields{fc->fields};
       std::int32_t num_fields{fc->nbFields};
-      PLUGIN_VALIDATE(num_fields == 1);
-
-      char const * attr_name = fields[0].name;
-      PLUGIN_VALIDATE(!strcmp(attr_name, "parameters"));
-      PLUGIN_VALIDATE(fields[0].type == nvinfer1::PluginFieldType::kUNKNOWN);
-      PLUGIN_VALIDATE(fields[0].length == sizeof(ImplicitGemmParameters));
-      ImplicitGemmParameters params{*(static_cast<ImplicitGemmParameters const *>(fields[0].data))};
+      ImplicitGemmParameters params{};
+      // Backward compatibility:
+      // - Legacy runtime serialization: one packed "parameters" blob (kUNKNOWN)
+      // - Current runtime serialization: expanded per-attribute plugin fields
+      if (num_fields == 1 && fields[0].name != nullptr && !strcmp(fields[0].name, "parameters")) {
+        PLUGIN_VALIDATE(fields[0].type == nvinfer1::PluginFieldType::kUNKNOWN);
+        PLUGIN_VALIDATE(fields[0].length == sizeof(ImplicitGemmParameters));
+        params = *(static_cast<ImplicitGemmParameters const *>(fields[0].data));
+      } else {
+        parse_expanded_fields(fields, num_fields, params);
+      }
 
       ImplicitGemmPlugin * const plugin{new ImplicitGemmPlugin{std::string(name), params}};
       return plugin;
