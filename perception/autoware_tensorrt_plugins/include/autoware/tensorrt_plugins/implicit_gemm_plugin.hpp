@@ -120,7 +120,6 @@ private:
   static constexpr std::int32_t INOUT_PAIR_FWD_INDEX{2};
   static constexpr std::int32_t INOUT_PAIR_MASK_FWD_SPLITS_INDEX{3};
   static constexpr std::int32_t INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX{4};
-  /// Optional 6th input: 1D bias ``[C_out]`` (FLOAT/ HALF, same as activations). ONNX fusion only.
   static constexpr std::int32_t INOUT_OPTIONAL_BIAS_INDEX{5};
 
   void initFieldsToSerialize();
