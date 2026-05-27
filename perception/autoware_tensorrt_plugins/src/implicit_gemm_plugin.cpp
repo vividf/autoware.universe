@@ -27,7 +27,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
@@ -39,36 +38,24 @@
 namespace
 {
 
-/** Spconv fused bias/add expects bias tv::Tensor dtype to match activations (see InferenceOps
- * bias_add). Keep this strict to avoid per-enqueue D2H/H2D dtype conversion overhead. */
-bool build_bias_tensor_matching_activation(
+/** Wrap the optional per-channel bias pointer into a tv::Tensor of the right dtype.
+ *
+ * Spconv fused bias/add requires the bias dtype to match the activation dtype (see InferenceOps
+ * bias_add). This avoids per-enqueue D2H/H2D dtype conversion overhead. */
+void build_bias_tensor_matching_activation(
   tv::Tensor const & input_features, void const * bias_input, std::int64_t c_bias,
-  tv::DType activation_dtype, nvinfer1::DataType bias_trt_type, cudaStream_t stream,
-  std::string const & layer_name, tv::Tensor * out_bias) noexcept
+  tv::DType activation_dtype, nvinfer1::DataType bias_trt_type, tv::Tensor * out_bias) noexcept
 {
-  (void)stream;
+  PLUGIN_ASSERT(out_bias != nullptr);
+  PLUGIN_ASSERT(activation_dtype == tv::float16 || activation_dtype == tv::float32);
   int const dev = input_features.device();
   if (activation_dtype == tv::float16) {
-    if (bias_trt_type == nvinfer1::DataType::kHALF) {
-      *out_bias = tv::from_blob(const_cast<void *>(bias_input), {c_bias}, tv::float16, dev);
-      return true;
-    }
-    std::fprintf(
-      stderr, "[ImplicitGemmPlugin] %s: optional bias dtype must be HALF for FP16 activations\n",
-      layer_name.c_str());
-    return false;
+    PLUGIN_ASSERT(bias_trt_type == nvinfer1::DataType::kHALF);
+    *out_bias = tv::from_blob(const_cast<void *>(bias_input), {c_bias}, tv::float16, dev);
+    return;
   }
-  if (activation_dtype == tv::float32) {
-    if (bias_trt_type == nvinfer1::DataType::kFLOAT) {
-      *out_bias = tv::from_blob(const_cast<void *>(bias_input), {c_bias}, tv::float32, dev);
-      return true;
-    }
-    std::fprintf(
-      stderr, "[ImplicitGemmPlugin] %s: optional bias dtype must be FLOAT for FP32 activations\n",
-      layer_name.c_str());
-    return false;
-  }
-  return false;
+  PLUGIN_ASSERT(bias_trt_type == nvinfer1::DataType::kFLOAT);
+  *out_bias = tv::from_blob(const_cast<void *>(bias_input), {c_bias}, tv::float32, dev);
 }
 
 tv::gemm::Activation activation_from_int(std::int32_t const v) noexcept
@@ -83,6 +70,7 @@ tv::gemm::Activation activation_from_int(std::int32_t const v) noexcept
     case 3:
       return tv::gemm::Activation::kLeakyReLU;
     default:
+      PLUGIN_ASSERT(false);  // should not happen
       return tv::gemm::Activation::kNone;
   }
 }
@@ -184,7 +172,8 @@ std::int32_t ImplicitGemmPlugin::configurePlugin(
   std::int32_t num_outputs) noexcept
 {
   // Validate input arguments (5 = legacy; 6 = optional per-channel bias for ONNX-fused Add).
-  // TODO(vividf): should use PLUGIN_VALIDATE_AND_RETURN instead of PLUGIN_ASSERT
+  // TODO(vividf): should use PLUGIN_VALIDATE_AND_RETURN instead of PLUGIN_ASSERT for input
+  // arguments
   PLUGIN_ASSERT(in != nullptr);
   PLUGIN_ASSERT(out != nullptr);
   PLUGIN_ASSERT(num_inputs == 5 || num_inputs == 6);
@@ -220,6 +209,7 @@ std::int32_t ImplicitGemmPlugin::configurePlugin(
     DataType const bias_t = in[INOUT_OPTIONAL_BIAS_INDEX].desc.type;
     PLUGIN_ASSERT(bias_t == in[INOUT_IN_FEATURES_INDEX].desc.type);
   }
+  PLUGIN_ASSERT(params_.act_type >= 0 && params_.act_type <= 3);
 
   return 0;
 }
@@ -324,8 +314,8 @@ std::int32_t ImplicitGemmPlugin::enqueue(
   [[maybe_unused]] auto filters_type = input_desc[INOUT_FILTERS_INDEX].type;
   [[maybe_unused]] auto out_features_type = output_desc[0].type;
 
-  assert(in_features_type == filters_type);
-  assert(in_features_type == out_features_type);
+  PLUGIN_ASSERT(in_features_type == filters_type);
+  PLUGIN_ASSERT(in_features_type == out_features_type);
 
   auto dtype = in_features_type == DataType::kFLOAT ? tv::float32 : tv::float16;
 
@@ -363,15 +353,15 @@ std::int32_t ImplicitGemmPlugin::enqueue(
 
   tv::Tensor out_features = tv::from_blob(outputs[0], {num_act_out, num_out_features}, dtype, 0);
 
+  // Wrap the optional per-channel bias (BN-folded, 6th ONNX input) into a tv::Tensor.
+  // When present, spconv fuses it inside the GEMM kernel instead of a separate bias_add kernel.
+  // bias_tv stays empty (default-constructed) when there are only 5 inputs (no bias).
   tv::Tensor bias_tv{};
-  if (num_plugin_inputs_ >= 6) {
+  if (num_plugin_inputs_ == 6) {
     auto const bias_type = input_desc[INOUT_OPTIONAL_BIAS_INDEX].type;
     std::int64_t const c_bias = input_desc[INOUT_OPTIONAL_BIAS_INDEX].dims.d[0];
-    if (!build_bias_tensor_matching_activation(
-          input_features, inputs[INOUT_OPTIONAL_BIAS_INDEX], c_bias, dtype, bias_type, stream,
-          layer_name_, &bias_tv)) {
-      return -1;
-    }
+    build_bias_tensor_matching_activation(
+      input_features, inputs[INOUT_OPTIONAL_BIAS_INDEX], c_bias, dtype, bias_type, &bias_tv);
   }
 
   std::vector<tv::Tensor> pair_mask_splits;
@@ -401,9 +391,8 @@ std::int32_t ImplicitGemmPlugin::onShapeChange(
   [[maybe_unused]] PluginTensorDesc const * in, std::int32_t num_inputs,
   [[maybe_unused]] PluginTensorDesc const * out, [[maybe_unused]] std::int32_t num_outputs) noexcept
 {
-  if (num_inputs == 5 || num_inputs == 6) {
-    num_plugin_inputs_ = num_inputs;
-  }
+  PLUGIN_ASSERT(num_inputs == 5 || num_inputs == 6);
+  num_plugin_inputs_ = num_inputs;
   return 0;
 }
 

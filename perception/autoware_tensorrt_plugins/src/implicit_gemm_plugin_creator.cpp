@@ -59,7 +59,8 @@ IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
   auto parse_expanded_fields = [](
                                  nvinfer1::PluginField const * fields, std::int32_t num_fields,
                                  ImplicitGemmParameters & parameters) {
-    PLUGIN_VALIDATE(num_fields >= 6 && num_fields <= 7);
+    // support additional field for act_type
+    PLUGIN_VALIDATE(num_fields == 6 || num_fields == 7);
     for (std::int32_t i{0}; i < num_fields; ++i) {
       const std::string attr_name = fields[i].name;
       const nvinfer1::PluginFieldType type = fields[i].type;
@@ -97,6 +98,7 @@ IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
       if (attr_name == "act_type") {
         PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
         parameters.act_type = static_cast<std::int32_t const *>(fields[i].data)[0];
+        PLUGIN_VALIDATE(parameters.act_type >= 0 && parameters.act_type <= 3);
       }
     }
   };
@@ -113,35 +115,11 @@ IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
 
       // Log the attributes parsed from ONNX node.
       std::stringstream ss;
-      ss << name << " plugin Attributes:";
-      logDebug(ss.str().c_str());
-
-      ss.str("");
-      ss << "act_alpha: " << parameters.act_alpha;
-      logDebug(ss.str().c_str());
-
-      ss.str("");
-      ss << "act_beta: " << parameters.act_beta;
-      logDebug(ss.str().c_str());
-
-      ss.str("");
-      ss << "is_subm: " << parameters.is_subm;
-      logDebug(ss.str().c_str());
-
-      ss.str("");
-      ss << "is_train: " << parameters.is_train;
-      logDebug(ss.str().c_str());
-
-      ss.str("");
-      ss << "output_add_scale: " << parameters.output_add_scale;
-      logDebug(ss.str().c_str());
-
-      ss.str("");
-      ss << "output_scale: " << parameters.output_scale;
-      logDebug(ss.str().c_str());
-
-      ss.str("");
-      ss << "act_type: " << parameters.act_type;
+      ss << name << " plugin Attributes:"
+         << " act_alpha=" << parameters.act_alpha << " act_beta=" << parameters.act_beta
+         << " is_subm=" << parameters.is_subm << " is_train=" << parameters.is_train
+         << " output_add_scale=" << parameters.output_add_scale
+         << " output_scale=" << parameters.output_scale << " act_type=" << parameters.act_type;
       logDebug(ss.str().c_str());
 
       ImplicitGemmPlugin * const plugin{new ImplicitGemmPlugin{std::string(name), parameters}};
