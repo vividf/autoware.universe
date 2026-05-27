@@ -131,7 +131,6 @@ IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
       PLUGIN_VALIDATE(fields[0].length == sizeof(ImplicitGemmParameters));
       PLUGIN_VALIDATE(fields[0].data != nullptr);
       auto params = *(static_cast<ImplicitGemmParameters const *>(fields[0].data));
-
       ImplicitGemmPlugin * const plugin{new ImplicitGemmPlugin{std::string(name), params}};
       return plugin;
     } catch (std::exception const & e) {
