@@ -121,16 +121,18 @@ IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
     try {
       nvinfer1::PluginField const * fields{fc->fields};
       std::int32_t num_fields{fc->nbFields};
-      // Runtime deserialization only supports the current packed parameter format.
-      // Engines built with older plugin I/O contracts are not supported.
-      // Please rebuild the TensorRT engine.
-      PLUGIN_VALIDATE(num_fields == 1);
-      PLUGIN_VALIDATE(fields[0].name != nullptr);
-      PLUGIN_VALIDATE(!strcmp(fields[0].name, "parameters"));
-      PLUGIN_VALIDATE(fields[0].type == nvinfer1::PluginFieldType::kUNKNOWN);
-      PLUGIN_VALIDATE(fields[0].length == sizeof(ImplicitGemmParameters));
-      PLUGIN_VALIDATE(fields[0].data != nullptr);
-      auto params = *(static_cast<ImplicitGemmParameters const *>(fields[0].data));
+      ImplicitGemmParameters params{};
+      // Backward compatibility:
+      // - Legacy runtime serialization: one packed "parameters" blob (kUNKNOWN)
+      // - Current runtime serialization: expanded per-attribute plugin fields
+      if (num_fields == 1 && fields[0].name != nullptr && !strcmp(fields[0].name, "parameters")) {
+        PLUGIN_VALIDATE(fields[0].type == nvinfer1::PluginFieldType::kUNKNOWN);
+        PLUGIN_VALIDATE(fields[0].length == sizeof(ImplicitGemmParameters));
+        params = *(static_cast<ImplicitGemmParameters const *>(fields[0].data));
+      } else {
+        parse_expanded_fields(fields, num_fields, params);
+      }
+
       ImplicitGemmPlugin * const plugin{new ImplicitGemmPlugin{std::string(name), params}};
       return plugin;
     } catch (std::exception const & e) {
