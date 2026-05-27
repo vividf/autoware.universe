@@ -68,3 +68,17 @@ void reportValidation(bool success, char const * msg, char const * file, std::in
     getLogger()->log(nvinfer1::ILogger::Severity::kINTERNAL_ERROR, stream.str().c_str());
   }
 }
+
+void reportValidationMsg(
+  bool success, char const * msg, char const * detail, char const * file, std::int32_t line)
+{
+  if (!success) {
+    std::ostringstream stream;
+    stream << "Validation failed: " << msg << std::endl;
+    if (detail != nullptr && std::strlen(detail) > 0) {
+      stream << detail << std::endl;
+    }
+    stream << file << ':' << line << std::endl;
+    getLogger()->log(nvinfer1::ILogger::Severity::kINTERNAL_ERROR, stream.str().c_str());
+  }
+}
