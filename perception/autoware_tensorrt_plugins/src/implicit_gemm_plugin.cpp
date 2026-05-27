@@ -167,7 +167,9 @@ std::int32_t ImplicitGemmPlugin::configurePlugin(
   DynamicPluginTensorDesc const * in, std::int32_t num_inputs, DynamicPluginTensorDesc const * out,
   std::int32_t num_outputs) noexcept
 {
-  // Validate input arguments (5 = legacy; 6 = optional per-channel bias for ONNX-fused Add).
+  // Validate input arguments.
+  // 5 inputs: standard implicit GEMM path without fused bias.
+  // 6 inputs: implicit GEMM path with optional per-channel bias.
   // TODO(vividf): should use PLUGIN_VALIDATE_AND_RETURN instead of PLUGIN_ASSERT for input
   // arguments
   PLUGIN_ASSERT(in != nullptr);

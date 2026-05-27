@@ -68,34 +68,22 @@ IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
       if (attr_name == "act_alpha") {
         PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kFLOAT32);
         parameters.act_alpha = static_cast<float const *>(fields[i].data)[0];
-      }
-
-      if (attr_name == "act_beta") {
+      } else if (attr_name == "act_beta") {
         PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kFLOAT32);
         parameters.act_beta = static_cast<float const *>(fields[i].data)[0];
-      }
-
-      if (attr_name == "is_subm") {
+      } else if (attr_name == "is_subm") {
         PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
         parameters.is_subm = static_cast<std::int32_t const *>(fields[i].data)[0];
-      }
-
-      if (attr_name == "is_train") {
+      } else if (attr_name == "is_train") {
         PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
         parameters.is_train = static_cast<std::int32_t const *>(fields[i].data)[0];
-      }
-
-      if (attr_name == "output_add_scale") {
+      } else if (attr_name == "output_add_scale") {
         PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kFLOAT32);
         parameters.output_add_scale = static_cast<float const *>(fields[i].data)[0];
-      }
-
-      if (attr_name == "output_scale") {
+      } else if (attr_name == "output_scale") {
         PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kFLOAT32);
         parameters.output_scale = static_cast<float const *>(fields[i].data)[0];
-      }
-
-      if (attr_name == "act_type") {
+      } else if (attr_name == "act_type") {
         PLUGIN_VALIDATE(type == nvinfer1::PluginFieldType::kINT32);
         parameters.act_type = static_cast<std::int32_t const *>(fields[i].data)[0];
         PLUGIN_VALIDATE(parameters.act_type >= 0 && parameters.act_type <= 3);
@@ -133,17 +121,16 @@ IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
     try {
       nvinfer1::PluginField const * fields{fc->fields};
       std::int32_t num_fields{fc->nbFields};
-      ImplicitGemmParameters params{};
-      // Backward compatibility:
-      // - Legacy runtime serialization: one packed "parameters" blob (kUNKNOWN)
-      // - Current runtime serialization: expanded per-attribute plugin fields
-      if (num_fields == 1 && fields[0].name != nullptr && !strcmp(fields[0].name, "parameters")) {
-        PLUGIN_VALIDATE(fields[0].type == nvinfer1::PluginFieldType::kUNKNOWN);
-        PLUGIN_VALIDATE(fields[0].length == sizeof(ImplicitGemmParameters));
-        params = *(static_cast<ImplicitGemmParameters const *>(fields[0].data));
-      } else {
-        parse_expanded_fields(fields, num_fields, params);
-      }
+      // Runtime deserialization only supports the current packed parameter format.
+      // Engines built with older plugin I/O contracts are not supported.
+      // Please rebuild the TensorRT engine.
+      PLUGIN_VALIDATE(num_fields == 1);
+      PLUGIN_VALIDATE(fields[0].name != nullptr);
+      PLUGIN_VALIDATE(!strcmp(fields[0].name, "parameters"));
+      PLUGIN_VALIDATE(fields[0].type == nvinfer1::PluginFieldType::kUNKNOWN);
+      PLUGIN_VALIDATE(fields[0].length == sizeof(ImplicitGemmParameters));
+      PLUGIN_VALIDATE(fields[0].data != nullptr);
+      auto params = *(static_cast<ImplicitGemmParameters const *>(fields[0].data));
 
       ImplicitGemmPlugin * const plugin{new ImplicitGemmPlugin{std::string(name), params}};
       return plugin;
