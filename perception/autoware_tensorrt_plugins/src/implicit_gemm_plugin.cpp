@@ -101,18 +101,8 @@ ImplicitGemmPlugin::ImplicitGemmPlugin(
 void ImplicitGemmPlugin::initFieldsToSerialize()
 {
   data_to_serialize_.clear();
-  data_to_serialize_.emplace_back("act_alpha", &params_.act_alpha, PluginFieldType::kFLOAT32, 1);
-  data_to_serialize_.emplace_back("act_beta", &params_.act_beta, PluginFieldType::kFLOAT32, 1);
-
   data_to_serialize_.emplace_back(
-    "is_subm", &params_.is_subm, PluginFieldType::kINT32, 1);  // cSpell:ignore subm
-  data_to_serialize_.emplace_back("is_train", &params_.is_train, PluginFieldType::kINT32, 1);
-
-  data_to_serialize_.emplace_back(
-    "output_add_scale", &params_.output_add_scale, PluginFieldType::kFLOAT32, 1);
-  data_to_serialize_.emplace_back(
-    "output_scale", &params_.output_scale, PluginFieldType::kFLOAT32, 1);
-  data_to_serialize_.emplace_back("act_type", &params_.act_type, PluginFieldType::kINT32, 1);
+    "parameters", &params_, PluginFieldType::kUNKNOWN, sizeof(ImplicitGemmParameters));
 
   fc_to_serialize_.nbFields = data_to_serialize_.size();
   fc_to_serialize_.fields = data_to_serialize_.data();
