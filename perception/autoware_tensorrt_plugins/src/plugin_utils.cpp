@@ -42,6 +42,22 @@ void reportAssertion(bool success, char const * msg, char const * file, std::int
   }
 }
 
+
+void reportAssertionMsg(bool success, char const * msg, char const* detail, char const * file, std::int32_t line)
+{
+  if (!success) {
+    std::ostringstream stream;
+    stream << "Assertion failed: " << msg << std::endl
+           << file << ':' << line << std::endl
+           << "Aborting..." << std::endl;
+    if (detail != nullptr && std::strlen(detail) > 0) {
+      stream << detail << std::endl;
+    }
+    getLogger()->log(nvinfer1::ILogger::Severity::kINTERNAL_ERROR, stream.str().c_str());
+    std::abort();
+  }
+}
+
 void reportValidation(bool success, char const * msg, char const * file, std::int32_t line)
 {
   if (!success) {
