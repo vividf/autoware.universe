@@ -92,6 +92,10 @@ ImplicitGemmPlugin::ImplicitGemmPlugin(
   tuner_fp16_ptr_ =
     std::make_unique<ConvTunerSimple>(ConvMain::get_all_conv_algo_desp());  // cSpell:ignore desp
   tuner_fp32_ptr_ = std::make_unique<ConvTunerSimple>(ConvMain::get_all_conv_algo_desp());
+
+  // Pre-allocate CPU mask tensor to avoid heap allocation during CUDA graph capture.
+  mask_tensor_ = tv::zeros({1}, tv::uint32, -1);
+  mask_tensor_.data_ptr<uint32_t>()[0] = 0xffffffff;
 }
 
 void ImplicitGemmPlugin::initFieldsToSerialize()
@@ -342,10 +346,10 @@ std::int32_t ImplicitGemmPlugin::enqueue(
   tv::Tensor out_features = tv::from_blob(outputs[0], {num_act_out, num_out_features}, dtype, 0);
 
 
-  tv::Tensor mask_tensor = tv::zeros({1}, tv::uint32, -1);
+  // tv::Tensor mask_tensor = tv::zeros({1}, tv::uint32, -1);
 
-  auto mask_tensor_ptr = mask_tensor.data_ptr<uint32_t>();
-  mask_tensor_ptr[0] = 0xffffffff;
+  // auto mask_tensor_ptr = mask_tensor.data_ptr<uint32_t>();
+  // mask_tensor_ptr[0] = 0xffffffff;
 
   // Wrap the optional per-channel bias (BN-folded, 6th ONNX input) into a tv::Tensor.
   // When present, spconv fuses it inside the GEMM kernel instead of a separate bias_add kernel.
