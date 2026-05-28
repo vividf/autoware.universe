@@ -121,7 +121,7 @@ IPluginV3 * ImplicitGemmPluginCreator::createPlugin(
     try {
       nvinfer1::PluginField const * fields{fc->fields};
       std::int32_t num_fields{fc->nbFields};
-      PLUGIN_VALIDATE_MSG(
+      PLUGIN_ASSERT_MSG(
         num_fields == 1,
         "Unsupported serialized plugin format. The plugin I/O contract has changed. "
         "Please rebuild the TensorRT engine.");
