@@ -371,7 +371,7 @@ std::int32_t ImplicitGemmPlugin::enqueue(
 
   [[maybe_unused]] auto const conv_run_status = ConvGemmOps::implicit_gemm(
     alloc2, *tuner_ptr, input_features, weights, pair_fwd, pair_mask_splits, mask_argsort_splits,
-    num_act_out, mask_tensor_, arch_, false, params_.is_subm,
+    num_act_out, mask_tensor_, arch_, false, params_.is_subm,  // cSpell:ignore subm
     reinterpret_cast<std::uintptr_t>(stream), tv::CUDAKernelTimer(false), true, false, bias_tv,
     params_.act_alpha, params_.act_beta, activation_from_int(params_.act_type), false, 1.0,
     tv::Tensor(), tv::Tensor(), 0.0, -1);
