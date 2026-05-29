@@ -18,7 +18,6 @@
 
 #include <NvInferRuntime.h>
 #include <NvInferRuntimePlugin.h>
-#include <cuda_runtime_api.h>
 #include <spconvlib/spconv/csrc/sparse/all/SpconvOps.h>  // cSpell:ignore spconvlib
 #include <spconvlib/spconv/csrc/sparse/alloc/StaticAllocator.h>
 #include <spconvlib/spconv/csrc/sparse/convops/SimpleExternalSpconvMatmul.h>
