@@ -45,9 +45,11 @@ struct GetIndicesPairsImplicitGemmParameters
   std::vector<std::int32_t> stride;
   std::int32_t subm;  // cSpell:ignore subm
   std::int32_t transpose;
-  // do_sort: 1 = run the pair-mask argsort (default; required for FP16).
-  //          0 = skip it (for faster inference, matching spconv's INT8 guide
-  //          https://github.com/traveller59/spconv/blob/master/docs/INT8_GUIDE.md#performance-guide
+  // do_sort: 1 = run pair-mask argsort (default).
+  //          0 = skip argsort for faster inference. spconv documents this mainly for INT8
+  //          (https://github.com/traveller59/spconv/blob/master/docs/INT8_GUIDE.md#performance-guide);
+  //          our FP16 benchmarks also show a large sparse-encoder latency reduction with skipping
+  //          argsort.
   std::int32_t do_sort{1};
 
   nvinfer1::Dims dilation_dims;

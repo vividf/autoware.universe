@@ -70,8 +70,16 @@ IPluginV3 * GetIndicesPairsImplicitGemmPluginCreator::createPlugin(
       nvinfer1::PluginField const * fields{fc->fields};
       std::int32_t num_fields{fc->nbFields};
 
-      // Accept 11 (ONNX without do_sort attribute) or 12 (with do_sort attribute)
+      // Accept 11 (legacy ONNX without do_sort) or 12 (with do_sort attribute).
       PLUGIN_VALIDATE(num_fields == 11 || num_fields == 12);
+
+      if (num_fields == 11) {
+        std::ostringstream ss;
+        ss << name << ": legacy ONNX (11 plugin fields, missing do_sort). "
+           << "Re-export ONNX with explicit do_sort; 11-field support will be removed later. "
+           << "Using default do_sort=1.";
+        logWarning(ss.str().c_str());
+      }
 
       GetIndicesPairsImplicitGemmParameters parameters;
 
