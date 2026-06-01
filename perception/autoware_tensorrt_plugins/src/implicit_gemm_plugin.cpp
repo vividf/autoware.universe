@@ -341,18 +341,14 @@ std::int32_t ImplicitGemmPlugin::enqueue(
 
   tv::Tensor out_features = tv::from_blob(outputs[0], {num_act_out, num_out_features}, dtype, 0);
 
-<<<<<<< HEAD
-<<<<<<< HEAD
   tv::Tensor mask_tensor = tv::zeros({1}, tv::uint32, -1);
 
   auto mask_tensor_ptr = mask_tensor.data_ptr<uint32_t>();
   mask_tensor_ptr[0] = 0xffffffff;
-=======
-=======
+
   // Wrap the optional per-channel bias (BN-folded, 6th ONNX input) into a tv::Tensor.
   // When present, spconv fuses it inside the GEMM kernel instead of a separate bias_add kernel.
   // bias_tv stays empty (default-constructed) when there are only 5 inputs (no bias).
->>>>>>> 0422de136c (chore: clean code)
   tv::Tensor bias_tv{};
   if (num_plugin_inputs_ == 6) {
     auto const bias_type = input_desc[INOUT_OPTIONAL_BIAS_INDEX].type;
@@ -360,7 +356,7 @@ std::int32_t ImplicitGemmPlugin::enqueue(
     build_bias_tensor_matching_activation(
       input_features, inputs[INOUT_OPTIONAL_BIAS_INDEX], c_bias, dtype, bias_type, &bias_tv);
   }
->>>>>>> dcb08b3e45 (feat: fuse  activation)
+
 
   std::vector<tv::Tensor> pair_mask_splits;
   std::vector<tv::Tensor> mask_argsort_splits;
@@ -378,17 +374,10 @@ std::int32_t ImplicitGemmPlugin::enqueue(
 
   [[maybe_unused]] auto const conv_run_status = ConvGemmOps::implicit_gemm(
     alloc2, *tuner_ptr, input_features, weights, pair_fwd, pair_mask_splits, mask_argsort_splits,
-<<<<<<< HEAD
     num_act_out, mask_tensor, arch_, false, params_.is_subm,
-    reinterpret_cast<std::uintptr_t>(stream), tv::CUDAKernelTimer(false), true, false, tv::Tensor(),
-    0.0, 0.0, tv::gemm::Activation::kNone, false, 1.0, tv::Tensor(), tv::Tensor(), 0.0, -1);
-
-=======
-    num_act_out, mask_tensor_, arch_, false, params_.is_subm,
     reinterpret_cast<std::uintptr_t>(stream), tv::CUDAKernelTimer(false), true, false, bias_tv,
     params_.act_alpha, params_.act_beta, activation_from_int(params_.act_type), false, 1.0,
     tv::Tensor(), tv::Tensor(), 0.0, -1);
->>>>>>> dcb08b3e45 (feat: fuse  activation)
   return 0;
 }
 
