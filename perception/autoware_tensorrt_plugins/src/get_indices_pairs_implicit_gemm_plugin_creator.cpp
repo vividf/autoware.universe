@@ -69,8 +69,7 @@ IPluginV3 * GetIndicesPairsImplicitGemmPluginCreator::createPlugin(
     try {
       nvinfer1::PluginField const * fields{fc->fields};
       std::int32_t num_fields{fc->nbFields};
-
-<<<<<<< HEAD
+      
       // Accept 11 (legacy ONNX without do_sort) or 12 (with do_sort attribute).
       PLUGIN_VALIDATE(num_fields == 11 || num_fields == 12);
 
@@ -81,10 +80,6 @@ IPluginV3 * GetIndicesPairsImplicitGemmPluginCreator::createPlugin(
            << "Using default do_sort=1.";
         logWarning(ss.str().c_str());
       }
-=======
-      // Accept 11 (ONNX without do_sort attribute) or 12 (with do_sort attribute)
-      PLUGIN_VALIDATE(num_fields == 11 || num_fields == 12);
->>>>>>> b48ce6308 (feat: add do sort attribute for faster inference)
 
       GetIndicesPairsImplicitGemmParameters parameters;
 
