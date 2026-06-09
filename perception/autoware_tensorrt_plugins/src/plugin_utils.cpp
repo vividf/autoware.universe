@@ -26,11 +26,11 @@ void logAssertionFailure(
   char const * msg, char const * detail, char const * file, std::int32_t line)
 {
   std::ostringstream stream;
-  stream << "Assertion failed: " << msg << std::endl;
+  stream << "Assertion failed: " << msg << '\n';
   if (detail != nullptr && std::strlen(detail) > 0) {
-    stream << detail << std::endl;
+    stream << detail << '\n';
   }
-  stream << file << ':' << line << std::endl << "Aborting..." << std::endl;
+  stream << file << ':' << line << '\n' << "Aborting..." << '\n';
   getLogger()->log(nvinfer1::ILogger::Severity::kINTERNAL_ERROR, stream.str().c_str());
 }
 
@@ -38,11 +38,11 @@ void logValidationFailure(
   char const * msg, char const * detail, char const * file, std::int32_t line)
 {
   std::ostringstream stream;
-  stream << "Validation failed: " << msg << std::endl;
+  stream << "Validation failed: " << msg << '\n';
   if (detail != nullptr && std::strlen(detail) > 0) {
-    stream << detail << std::endl;
+    stream << detail << '\n';
   }
-  stream << file << ':' << line << std::endl;
+  stream << file << ':' << line << '\n';
   getLogger()->log(nvinfer1::ILogger::Severity::kINTERNAL_ERROR, stream.str().c_str());
 }
 }  // namespace

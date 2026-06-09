@@ -59,19 +59,10 @@ void build_bias_tensor_matching_activation(
 
 tv::gemm::Activation activation_from_int(std::int32_t const v) noexcept
 {
-  switch (v) {
-    case 0:
-      return tv::gemm::Activation::kNone;
-    case 1:
-      return tv::gemm::Activation::kReLU;
-    case 2:
-      return tv::gemm::Activation::kSigmoid;
-    case 3:
-      return tv::gemm::Activation::kLeakyReLU;
-    default:
-      PLUGIN_ASSERT(false);  // should not happen
-      return tv::gemm::Activation::kNone;
-  }
+  PLUGIN_ASSERT(
+    v >= static_cast<std::int32_t>(tv::gemm::Activation::kNone) &&
+    v <= static_cast<std::int32_t>(tv::gemm::Activation::kLeakyReLU));
+  return static_cast<tv::gemm::Activation>(v);
 }
 }  // namespace
 
@@ -167,7 +158,7 @@ std::int32_t ImplicitGemmPlugin::configurePlugin(
   // arguments
   PLUGIN_ASSERT(in != nullptr);
   PLUGIN_ASSERT(out != nullptr);
-  PLUGIN_ASSERT(num_inputs == 5 || num_inputs == 6);
+  PLUGIN_ASSERT(num_inputs == kNumPluginInputsNoBias || num_inputs == kNumPluginInputsBias);
   PLUGIN_ASSERT(num_outputs == 1);
 
   num_plugin_inputs_ = num_inputs;
@@ -193,14 +184,16 @@ std::int32_t ImplicitGemmPlugin::configurePlugin(
   PLUGIN_ASSERT(
     in[INOUT_PAIR_FWD_INDEX].desc.type == in[INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX].desc.type);
 
-  if (num_inputs == 6) {
+  if (num_inputs == kNumPluginInputsBias) {
     PLUGIN_ASSERT(in[INOUT_OPTIONAL_BIAS_INDEX].desc.dims.nbDims == 1);
     PLUGIN_ASSERT(
       in[INOUT_OPTIONAL_BIAS_INDEX].desc.dims.d[0] == in[INOUT_FILTERS_INDEX].desc.dims.d[0]);
     DataType const bias_t = in[INOUT_OPTIONAL_BIAS_INDEX].desc.type;
     PLUGIN_ASSERT(bias_t == in[INOUT_IN_FEATURES_INDEX].desc.type);
   }
-  PLUGIN_ASSERT(params_.act_type >= 0 && params_.act_type <= 3);
+  PLUGIN_ASSERT(
+    params_.act_type >= static_cast<std::int32_t>(tv::gemm::Activation::kNone) &&
+    params_.act_type <= static_cast<std::int32_t>(tv::gemm::Activation::kLeakyReLU));
 
   return 0;
 }
@@ -210,13 +203,17 @@ bool ImplicitGemmPlugin::supportsFormatCombination(
   std::int32_t num_outputs) noexcept
 {
   PLUGIN_ASSERT(in_out != nullptr);
-  PLUGIN_ASSERT(num_inputs == 5 || num_inputs == 6);
+  PLUGIN_ASSERT(num_inputs == kNumPluginInputsNoBias || num_inputs == kNumPluginInputsBias);
   PLUGIN_ASSERT(num_outputs == 1);
+  // in_out is the combined [inputs..., outputs...] tensor array; n_slots = num_inputs +
+  // num_outputs.
   std::int32_t const n_slots = num_inputs + num_outputs;
   PLUGIN_ASSERT(pos >= 0 && pos < n_slots);
 
+  // spconv only supports contiguous (LINEAR) layout for all tensors.
   bool supported = in_out[pos].desc.format == nvinfer1::TensorFormat::kLINEAR;
 
+  // Output features must match the input features dtype.
   std::int32_t const out_pos = num_inputs;
   if (pos == out_pos) {
     supported &= in_out[pos].desc.type == in_out[INOUT_IN_FEATURES_INDEX].desc.type;
@@ -224,21 +221,25 @@ bool ImplicitGemmPlugin::supportsFormatCombination(
   }
 
   switch (pos) {
+    // Input features: fp32 or fp16 (spconv supports both precisions).
     case INOUT_IN_FEATURES_INDEX:
       supported &=
         (in_out[pos].desc.type == nvinfer1::DataType::kFLOAT ||
          in_out[pos].desc.type == nvinfer1::DataType::kHALF);
       break;
+    // Filter weights must match input features dtype for mixed-precision-free GEMM.
     case INOUT_FILTERS_INDEX:
       supported &= in_out[pos].desc.type == in_out[INOUT_IN_FEATURES_INDEX].desc.type;
       break;
+    // Index / mask tensors are always int32 regardless of activation dtype.
     case INOUT_PAIR_FWD_INDEX:
     case INOUT_PAIR_MASK_FWD_SPLITS_INDEX:
     case INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX:
       supported &= in_out[pos].desc.type == nvinfer1::DataType::kINT32;
       break;
+    // Optional fused bias must match input features dtype; rejected when there are only 5 inputs.
     case INOUT_OPTIONAL_BIAS_INDEX:
-      if (num_inputs == 6) {
+      if (num_inputs == kNumPluginInputsBias) {
         supported &= in_out[pos].desc.type == in_out[INOUT_IN_FEATURES_INDEX].desc.type;
       } else {
         supported = false;
@@ -258,7 +259,7 @@ std::int32_t ImplicitGemmPlugin::getOutputDataTypes(
 {
   PLUGIN_ASSERT(output_types != nullptr);
   PLUGIN_ASSERT(input_types != nullptr);
-  PLUGIN_ASSERT(num_inputs == 5 || num_inputs == 6);
+  PLUGIN_ASSERT(num_inputs == kNumPluginInputsNoBias || num_inputs == kNumPluginInputsBias);
   PLUGIN_ASSERT(num_outputs == 1);
 
   output_types[0] = input_types[INOUT_IN_FEATURES_INDEX];
@@ -274,7 +275,7 @@ std::int32_t ImplicitGemmPlugin::getOutputShapes(
 {
   PLUGIN_ASSERT(inputs != nullptr);
   PLUGIN_ASSERT(outputs != nullptr);
-  PLUGIN_ASSERT(num_inputs == 5 || num_inputs == 6);
+  PLUGIN_ASSERT(num_inputs == kNumPluginInputsNoBias || num_inputs == kNumPluginInputsBias);
   PLUGIN_ASSERT(num_outputs == 1);
   PLUGIN_ASSERT(inputs[0].nbDims == 2);
 
@@ -293,7 +294,8 @@ std::int32_t ImplicitGemmPlugin::enqueue(
   using StaticAllocator = spconvlib::spconv::csrc::sparse::alloc::StaticAllocator;
   using ConvGemmOps = spconvlib::spconv::csrc::sparse::convops::spops::ConvGemmOps;
 
-  PLUGIN_ASSERT(num_plugin_inputs_ == 5 || num_plugin_inputs_ == 6);
+  PLUGIN_ASSERT(
+    num_plugin_inputs_ == kNumPluginInputsNoBias || num_plugin_inputs_ == kNumPluginInputsBias);
 
   std::int64_t num_act_in = input_desc[INOUT_IN_FEATURES_INDEX].dims.d[0];
   std::int64_t num_in_features = input_desc[INOUT_IN_FEATURES_INDEX].dims.d[1];
@@ -348,7 +350,7 @@ std::int32_t ImplicitGemmPlugin::enqueue(
   // When present, spconv fuses it inside the GEMM kernel instead of a separate bias_add kernel.
   // bias_tv stays empty (default-constructed) when there are only 5 inputs (no bias).
   tv::Tensor bias_tv{};
-  if (num_plugin_inputs_ == 6) {
+  if (num_plugin_inputs_ == kNumPluginInputsBias) {
     auto const bias_type = input_desc[INOUT_OPTIONAL_BIAS_INDEX].type;
     std::int64_t const c_bias = input_desc[INOUT_OPTIONAL_BIAS_INDEX].dims.d[0];
     build_bias_tensor_matching_activation(
@@ -382,7 +384,7 @@ std::int32_t ImplicitGemmPlugin::onShapeChange(
   [[maybe_unused]] PluginTensorDesc const * in, std::int32_t num_inputs,
   [[maybe_unused]] PluginTensorDesc const * out, [[maybe_unused]] std::int32_t num_outputs) noexcept
 {
-  PLUGIN_ASSERT(num_inputs == 5 || num_inputs == 6);
+  PLUGIN_ASSERT(num_inputs == kNumPluginInputsNoBias || num_inputs == kNumPluginInputsBias);
   num_plugin_inputs_ = num_inputs;
   return 0;
 }
