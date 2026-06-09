@@ -121,15 +121,16 @@ private:
   static constexpr std::int32_t INOUT_PAIR_MASK_FWD_SPLITS_INDEX{3};
   static constexpr std::int32_t INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX{4};
   static constexpr std::int32_t INOUT_OPTIONAL_BIAS_INDEX{5};
-  static constexpr std::int32_t kNumPluginInputsNoBias{5};
-  static constexpr std::int32_t kNumPluginInputsBias{6};
+
+  static constexpr std::int32_t NUM_PLUGIN_INPUTS_NO_BIAS{5};
+  static constexpr std::int32_t NUM_PLUGIN_INPUTS_BIAS{6};
 
   void initFieldsToSerialize();
 
   std::string layer_name_;
   ImplicitGemmParameters params_;
   /// Set in ``configurePlugin`` / ``onShapeChange``.
-  std::int32_t num_plugin_inputs_{kNumPluginInputsNoBias};
+  std::int32_t num_plugin_inputs_{NUM_PLUGIN_INPUTS_NO_BIAS};
   std::tuple<int, int> arch_;
   std::vector<nvinfer1::PluginField> data_to_serialize_;
   nvinfer1::PluginFieldCollection fc_to_serialize_;

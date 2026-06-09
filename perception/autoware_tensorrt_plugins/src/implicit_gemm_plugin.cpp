@@ -158,7 +158,7 @@ std::int32_t ImplicitGemmPlugin::configurePlugin(
   // arguments
   PLUGIN_ASSERT(in != nullptr);
   PLUGIN_ASSERT(out != nullptr);
-  PLUGIN_ASSERT(num_inputs == kNumPluginInputsNoBias || num_inputs == kNumPluginInputsBias);
+  PLUGIN_ASSERT(num_inputs == NUM_PLUGIN_INPUTS_NO_BIAS || num_inputs == NUM_PLUGIN_INPUTS_BIAS);
   PLUGIN_ASSERT(num_outputs == 1);
 
   num_plugin_inputs_ = num_inputs;
@@ -184,7 +184,7 @@ std::int32_t ImplicitGemmPlugin::configurePlugin(
   PLUGIN_ASSERT(
     in[INOUT_PAIR_FWD_INDEX].desc.type == in[INOUT_MASK_ARGSORT_FWD_SPLITS_INDEX].desc.type);
 
-  if (num_inputs == kNumPluginInputsBias) {
+  if (num_inputs == NUM_PLUGIN_INPUTS_BIAS) {
     PLUGIN_ASSERT(in[INOUT_OPTIONAL_BIAS_INDEX].desc.dims.nbDims == 1);
     PLUGIN_ASSERT(
       in[INOUT_OPTIONAL_BIAS_INDEX].desc.dims.d[0] == in[INOUT_FILTERS_INDEX].desc.dims.d[0]);
@@ -203,7 +203,7 @@ bool ImplicitGemmPlugin::supportsFormatCombination(
   std::int32_t num_outputs) noexcept
 {
   PLUGIN_ASSERT(in_out != nullptr);
-  PLUGIN_ASSERT(num_inputs == kNumPluginInputsNoBias || num_inputs == kNumPluginInputsBias);
+  PLUGIN_ASSERT(num_inputs == NUM_PLUGIN_INPUTS_NO_BIAS || num_inputs == NUM_PLUGIN_INPUTS_BIAS);
   PLUGIN_ASSERT(num_outputs == 1);
   // in_out is the combined [inputs..., outputs...] tensor array; n_slots = num_inputs +
   // num_outputs.
@@ -239,7 +239,7 @@ bool ImplicitGemmPlugin::supportsFormatCombination(
       break;
     // Optional fused bias must match input features dtype; rejected when there are only 5 inputs.
     case INOUT_OPTIONAL_BIAS_INDEX:
-      if (num_inputs == kNumPluginInputsBias) {
+      if (num_inputs == NUM_PLUGIN_INPUTS_BIAS) {
         supported &= in_out[pos].desc.type == in_out[INOUT_IN_FEATURES_INDEX].desc.type;
       } else {
         supported = false;
@@ -259,7 +259,7 @@ std::int32_t ImplicitGemmPlugin::getOutputDataTypes(
 {
   PLUGIN_ASSERT(output_types != nullptr);
   PLUGIN_ASSERT(input_types != nullptr);
-  PLUGIN_ASSERT(num_inputs == kNumPluginInputsNoBias || num_inputs == kNumPluginInputsBias);
+  PLUGIN_ASSERT(num_inputs == NUM_PLUGIN_INPUTS_NO_BIAS || num_inputs == NUM_PLUGIN_INPUTS_BIAS);
   PLUGIN_ASSERT(num_outputs == 1);
 
   output_types[0] = input_types[INOUT_IN_FEATURES_INDEX];
@@ -275,7 +275,7 @@ std::int32_t ImplicitGemmPlugin::getOutputShapes(
 {
   PLUGIN_ASSERT(inputs != nullptr);
   PLUGIN_ASSERT(outputs != nullptr);
-  PLUGIN_ASSERT(num_inputs == kNumPluginInputsNoBias || num_inputs == kNumPluginInputsBias);
+  PLUGIN_ASSERT(num_inputs == NUM_PLUGIN_INPUTS_NO_BIAS || num_inputs == NUM_PLUGIN_INPUTS_BIAS);
   PLUGIN_ASSERT(num_outputs == 1);
   PLUGIN_ASSERT(inputs[0].nbDims == 2);
 
@@ -295,7 +295,8 @@ std::int32_t ImplicitGemmPlugin::enqueue(
   using ConvGemmOps = spconvlib::spconv::csrc::sparse::convops::spops::ConvGemmOps;
 
   PLUGIN_ASSERT(
-    num_plugin_inputs_ == kNumPluginInputsNoBias || num_plugin_inputs_ == kNumPluginInputsBias);
+    num_plugin_inputs_ == NUM_PLUGIN_INPUTS_NO_BIAS ||
+    num_plugin_inputs_ == NUM_PLUGIN_INPUTS_BIAS);
 
   std::int64_t num_act_in = input_desc[INOUT_IN_FEATURES_INDEX].dims.d[0];
   std::int64_t num_in_features = input_desc[INOUT_IN_FEATURES_INDEX].dims.d[1];
@@ -350,7 +351,7 @@ std::int32_t ImplicitGemmPlugin::enqueue(
   // When present, spconv fuses it inside the GEMM kernel instead of a separate bias_add kernel.
   // bias_tv stays empty (default-constructed) when there are only 5 inputs (no bias).
   tv::Tensor bias_tv{};
-  if (num_plugin_inputs_ == kNumPluginInputsBias) {
+  if (num_plugin_inputs_ == NUM_PLUGIN_INPUTS_BIAS) {
     auto const bias_type = input_desc[INOUT_OPTIONAL_BIAS_INDEX].type;
     std::int64_t const c_bias = input_desc[INOUT_OPTIONAL_BIAS_INDEX].dims.d[0];
     build_bias_tensor_matching_activation(
@@ -384,7 +385,7 @@ std::int32_t ImplicitGemmPlugin::onShapeChange(
   [[maybe_unused]] PluginTensorDesc const * in, std::int32_t num_inputs,
   [[maybe_unused]] PluginTensorDesc const * out, [[maybe_unused]] std::int32_t num_outputs) noexcept
 {
-  PLUGIN_ASSERT(num_inputs == kNumPluginInputsNoBias || num_inputs == kNumPluginInputsBias);
+  PLUGIN_ASSERT(num_inputs == NUM_PLUGIN_INPUTS_NO_BIAS || num_inputs == NUM_PLUGIN_INPUTS_BIAS);
   num_plugin_inputs_ = num_inputs;
   return 0;
 }
