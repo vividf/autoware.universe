@@ -37,24 +37,21 @@
 namespace
 {
 
-/** Wrap the optional per-channel bias pointer into a tv::Tensor of the right dtype.
+/** Wrap the bias device pointer into a tv::Tensor of the activation dtype (no copy).
  *
- * Spconv fused bias/add requires the bias dtype to match the activation dtype (see InferenceOps
- * bias_add). This avoids per-enqueue D2H/H2D dtype conversion overhead. */
-void build_bias_tensor_matching_activation(
-  tv::Tensor const & input_features, void const * bias_input, std::int64_t c_bias,
-  tv::DType activation_dtype, nvinfer1::DataType bias_trt_type, tv::Tensor * out_bias) noexcept
+ * Spconv's fused bias-add needs the bias dtype to match the activation dtype; the ONNX export
+ * already emits it that way, so we only assert the match and wrap the pointer. */
+void wrap_bias_tensor(
+  void const * bias_in, std::int64_t c_bias, tv::DType activation_dtype,
+  nvinfer1::DataType bias_trt_type, int device, tv::Tensor * bias_out) noexcept
 {
-  PLUGIN_ASSERT(out_bias != nullptr);
+  PLUGIN_ASSERT(bias_out != nullptr);
+  PLUGIN_ASSERT(bias_in != nullptr);
   PLUGIN_ASSERT(activation_dtype == tv::float16 || activation_dtype == tv::float32);
-  int const dev = input_features.device();
-  if (activation_dtype == tv::float16) {
-    PLUGIN_ASSERT(bias_trt_type == nvinfer1::DataType::kHALF);
-    *out_bias = tv::from_blob(const_cast<void *>(bias_input), {c_bias}, tv::float16, dev);
-    return;
-  }
-  PLUGIN_ASSERT(bias_trt_type == nvinfer1::DataType::kFLOAT);
-  *out_bias = tv::from_blob(const_cast<void *>(bias_input), {c_bias}, tv::float32, dev);
+  PLUGIN_ASSERT(
+    bias_trt_type ==
+    (activation_dtype == tv::float16 ? nvinfer1::DataType::kHALF : nvinfer1::DataType::kFLOAT));
+  *bias_out = tv::from_blob(const_cast<void *>(bias_in), {c_bias}, activation_dtype, device);
 }
 
 tv::gemm::Activation activation_from_int(std::int32_t const v) noexcept
@@ -349,13 +346,15 @@ std::int32_t ImplicitGemmPlugin::enqueue(
 
   // Wrap the optional per-channel bias (BN-folded, 6th ONNX input) into a tv::Tensor.
   // When present, spconv fuses it inside the GEMM kernel instead of a separate bias_add kernel.
-  // bias_tv stays empty (default-constructed) when there are only 5 inputs (no bias).
+  // bias_tv stays empty (default-constructed) when there are only 5 inputs (no bias), in which
+  // case implicit_gemm runs without a bias term.
   tv::Tensor bias_tv{};
   if (num_plugin_inputs_ == NUM_PLUGIN_INPUTS_BIAS) {
     auto const bias_type = input_desc[INOUT_OPTIONAL_BIAS_INDEX].type;
     std::int64_t const c_bias = input_desc[INOUT_OPTIONAL_BIAS_INDEX].dims.d[0];
-    build_bias_tensor_matching_activation(
-      input_features, inputs[INOUT_OPTIONAL_BIAS_INDEX], c_bias, dtype, bias_type, &bias_tv);
+    wrap_bias_tensor(
+      inputs[INOUT_OPTIONAL_BIAS_INDEX], c_bias, dtype, bias_type, input_features.device(),
+      &bias_tv);
   }
 
   std::vector<tv::Tensor> pair_mask_splits;
