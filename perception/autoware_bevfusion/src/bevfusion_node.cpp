@@ -128,6 +128,11 @@ BEVFusionNode::BEVFusionNode(const rclcpp::NodeOptions & options)
 
   sensor_fusion_ = config.sensor_fusion_;
 
+  // trainStation/DDS removal: enable when the sparse engine was exported with the 4 down-sample
+  // GetIndicePairsImplicitGemm nodes removed (rulebooks precomputed + bound at runtime).
+  config.sparse_remove_trainstation_ =
+    this->declare_parameter<bool>("sparse_remove_trainstation", false, descriptor);
+
   DensificationParam densification_param(
     densification_world_frame_id, densification_num_past_frames);
 
