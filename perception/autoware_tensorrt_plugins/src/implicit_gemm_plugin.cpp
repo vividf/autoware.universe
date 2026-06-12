@@ -37,11 +37,12 @@
 namespace
 {
 
-/** Wrap the bias device pointer into a tv::Tensor of the activation dtype (no copy).
+/** Validate the bias inputs, then wrap the bias device pointer into a tv::Tensor of the
+ * activation dtype (no copy).
  *
  * Spconv's fused bias-add needs the bias dtype to match the activation dtype; the ONNX export
  * already emits it that way, so we only assert the match and wrap the pointer. */
-void wrap_bias_tensor(
+void validate_and_wrap_bias_tensor(
   void const * bias_in, std::int64_t c_bias, tv::DType activation_dtype,
   nvinfer1::DataType bias_trt_type, int device, tv::Tensor * bias_out) noexcept
 {
@@ -352,7 +353,7 @@ std::int32_t ImplicitGemmPlugin::enqueue(
   if (num_plugin_inputs_ == NUM_PLUGIN_INPUTS_BIAS) {
     auto const bias_type = input_desc[INOUT_OPTIONAL_BIAS_INDEX].type;
     std::int64_t const c_bias = input_desc[INOUT_OPTIONAL_BIAS_INDEX].dims.d[0];
-    wrap_bias_tensor(
+    validate_and_wrap_bias_tensor(
       inputs[INOUT_OPTIONAL_BIAS_INDEX], c_bias, dtype, bias_type, input_features.device(),
       &bias_tv);
   }
