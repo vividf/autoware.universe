@@ -42,6 +42,7 @@
   <depend>builtin_interfaces</depend>
   <depend>cgal</depend>
   <depend>cv_bridge</depend>
+  <depend>diagnostic_msgs</depend>
   <depend>diagnostic_updater</depend>
   <depend>geometry_msgs</depend>
   <depend>image_transport</depend>

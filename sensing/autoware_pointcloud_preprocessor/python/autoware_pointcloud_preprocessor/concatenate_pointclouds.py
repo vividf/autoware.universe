@@ -35,6 +35,8 @@ from typing import NamedTuple
 from typing import Optional
 
 from autoware_sensing_msgs.msg import ConcatenatedPointCloudInfo
+from diagnostic_msgs.msg import DiagnosticStatus
+from diagnostic_msgs.msg import KeyValue
 from geometry_msgs.msg import TransformStamped
 from geometry_msgs.msg import TwistWithCovarianceStamped
 from nav_msgs.msg import Odometry
@@ -50,11 +52,27 @@ __all__ = [
     "ConcatenationResult",
     "ConcatenatedFrame",
     "CollectorStatus",
+    "build_diagnostics",
 ]
 
 
 def _stamp_to_seconds(stamp) -> float:
     return float(stamp.sec) + float(stamp.nanosec) * 1e-9
+
+
+def _format_timestamp(seconds: float) -> str:
+    """Format a timestamp like the node's ``format_timestamp`` (fixed, 9 decimal places)."""
+    return f"{seconds:.9f}"
+
+
+def _format_double(value: float) -> str:
+    """Format a double like C++ ``std::to_string(double)`` (fixed, 6 decimal places)."""
+    return f"{value:.6f}"
+
+
+def _format_bool(value: bool) -> str:
+    """Format a bool like ``autoware_utils`` ``DiagnosticsInterface`` (``"True"`` / ``"False"``)."""
+    return "True" if value else "False"
 
 
 class CollectorStatus:
@@ -87,6 +105,14 @@ class ConcatenatedFrame(NamedTuple):
 
     status: str  # one of CollectorStatus
     result: ConcatenationResult
+    # Matching context of the collector that produced this frame (left as None when a frame is built
+    # outside the Concatenator). Used by build_diagnostics to reproduce the node's per-collector
+    # window fields: for ``advanced``, ``reference_time +/- noise_window`` is the matching window;
+    # ``first_arrival_time`` is the arrival time of the cloud that opened the collector (the node's
+    # naive "First pointcloud arrival timestamp").
+    reference_time: Optional[float] = None
+    noise_window: Optional[float] = None
+    first_arrival_time: Optional[float] = None
 
 
 class CombineCloudHandler:
@@ -264,7 +290,13 @@ class Concatenator:
         result = self._handler.combine_pointclouds(
             collector.topic_to_cloud, reference_timestamp, noise_window
         )
-        return ConcatenatedFrame(status=status, result=result)
+        return ConcatenatedFrame(
+            status=status,
+            result=result,
+            reference_time=collector.reference_time,
+            noise_window=collector.noise_window,
+            first_arrival_time=collector.creation_arrival,
+        )
 
     def process_cloud(
         self, topic: str, cloud: PointCloud2, arrival_time: float
@@ -335,3 +367,136 @@ class Concatenator:
         ]
         self._collectors = []
         return outputs
+
+    def build_diagnostics(self, frame: ConcatenatedFrame, **kwargs) -> DiagnosticStatus:
+        """Build the node-equivalent :class:`DiagnosticStatus` for ``frame``.
+
+        Convenience wrapper around :func:`build_diagnostics` that supplies this concatenator's
+        ``input_topics`` (so the per-topic entries appear in the configured order). Extra keyword
+        arguments (``node_name``, ``processing_time_ms``, ``now``, ``drop_previous_but_late``) are
+        forwarded unchanged.
+        """
+        return build_diagnostics(frame, self._input_topics, **kwargs)
+
+
+# Default name used for the offline DiagnosticStatus (the online node uses its fully-qualified name).
+_DEFAULT_DIAGNOSTIC_NODE_NAME = "concatenate_data_synchronizer"
+
+
+def build_diagnostics(
+    frame: ConcatenatedFrame,
+    input_topics: List[str],
+    *,
+    node_name: str = _DEFAULT_DIAGNOSTIC_NODE_NAME,
+    diagnostic_name: Optional[str] = None,
+    processing_time_ms: Optional[float] = None,
+    now: Optional[float] = None,
+    drop_previous_but_late: bool = False,
+) -> DiagnosticStatus:
+    """Build a :class:`DiagnosticStatus` mirroring the concatenate node's ``check_concat_status``.
+
+    Reproduces, offline, what the node publishes on ``/diagnostics`` for a single concatenated
+    frame: the same key/value entries (same order, same string formatting), level, and message.
+    Pass a frame returned by :meth:`Concatenator.process_cloud` or :meth:`Concatenator.flush`;
+    ``input_topics`` fixes the order of the per-topic entries (use the node's ``input_topics``).
+
+    Two groups of entries have no offline meaning unless you supply the data, so they are opt-in:
+
+    * ``processing_time_ms`` -- if given, added as ``"Processing time (ms)"``.
+    * ``now`` (seconds) -- a publish-time analog (e.g. the frame's arrival/record timestamp). If
+      given, ``"Pipeline latency (ms)"`` and the per-topic ``"Latency (ms): <topic>"`` are computed
+      as ``(now - original_stamp) * 1000``, exactly as the node does against its wall clock.
+
+    ``drop_previous_but_late`` reproduces the node's out-of-order-republish guard; offline batches
+    normally leave it ``False``.
+
+    Note: like the node, ``"Concatenated: <topic>"`` reflects whether the topic *contributed a
+    cloud* (it is in ``topic_to_original_stamp``), not whether that cloud survived -- a cloud dropped
+    for a missing transform still shows ``True`` here. The finer per-source verdict (OK / TIMEOUT /
+    INVALID) lives in ``frame.result.concatenation_info.source_info``.
+    """
+    result = frame.result
+    info = result.concatenation_info
+    cloud = result.concatenated_cloud
+
+    values: List[KeyValue] = []
+
+    def add(key: str, value: str) -> None:
+        values.append(KeyValue(key=key, value=value))
+
+    add(
+        "Concatenated pointcloud timestamp",
+        _format_timestamp(_stamp_to_seconds(cloud.header.stamp)),
+    )
+
+    is_advanced = (
+        info is not None and info.matching_strategy == ConcatenatedPointCloudInfo.STRATEGY_ADVANCED
+    )
+    if is_advanced:
+        if frame.reference_time is not None and frame.noise_window is not None:
+            add(
+                "Minimum reference timestamp",
+                _format_timestamp(frame.reference_time - frame.noise_window),
+            )
+            add(
+                "Maximum reference timestamp",
+                _format_timestamp(frame.reference_time + frame.noise_window),
+            )
+    elif frame.first_arrival_time is not None:
+        add("First pointcloud arrival timestamp", _format_timestamp(frame.first_arrival_time))
+
+    if processing_time_ms is not None:
+        add("Processing time (ms)", _format_double(processing_time_ms))
+
+    topic_to_latency: Dict[str, float] = {}
+    if now is not None:
+        max_latency = 0.0
+        for topic, stamp in result.topic_to_original_stamp.items():
+            latency_ms = (now - stamp) * 1000.0
+            topic_to_latency[topic] = latency_ms
+            max_latency = max(max_latency, latency_ms)
+        add("Pipeline latency (ms)", _format_double(max_latency))
+
+    topic_miss = False
+    concatenation_success = True
+    for topic in input_topics:
+        found = topic in result.topic_to_original_stamp
+        add("Concatenated: " + topic, _format_bool(found))
+        if found:
+            add("Timestamp: " + topic, _format_timestamp(result.topic_to_original_stamp[topic]))
+        else:
+            topic_miss = True
+            concatenation_success = False
+        if topic in topic_to_latency:
+            add("Latency (ms): " + topic, _format_double(topic_to_latency[topic]))
+
+    add("Pointcloud concatenation succeeded", _format_bool(concatenation_success))
+
+    is_concatenated_cloud_empty = cloud.width * cloud.height == 0
+    level = DiagnosticStatus.OK
+    message = "Concatenated pointcloud is published and includes all topics"
+    if drop_previous_but_late:
+        level = DiagnosticStatus.ERROR
+        message = (
+            "Concatenated pointcloud was dropped due to missing topics and its timestamp is "
+            "earlier than the latest published one"
+            if topic_miss
+            else "Concatenated pointcloud was dropped due to its timestamp is earlier than the "
+            "latest published one"
+        )
+    elif is_concatenated_cloud_empty:
+        level = DiagnosticStatus.ERROR
+        message = "Concatenated pointcloud is empty"
+    elif topic_miss:
+        level = DiagnosticStatus.ERROR
+        message = "Concatenated pointcloud is published but misses some topics"
+
+    status = DiagnosticStatus()
+    status.level = level
+    status.name = f"{node_name}: {diagnostic_name}" if diagnostic_name else node_name
+    status.hardware_id = node_name
+    # The node's DiagnosticsInterface publishes "OK" as the message whenever the level is OK (see
+    # create_diagnostics_array); mirror that so the output matches /diagnostics verbatim.
+    status.message = "OK" if level == DiagnosticStatus.OK else message
+    status.values = values
+    return status

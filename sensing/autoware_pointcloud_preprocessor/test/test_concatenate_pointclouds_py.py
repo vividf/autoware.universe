@@ -15,9 +15,11 @@
 import math
 import struct
 
+from autoware_pointcloud_preprocessor.concatenate_pointclouds import build_diagnostics
 from autoware_pointcloud_preprocessor.concatenate_pointclouds import CollectorStatus
 from autoware_pointcloud_preprocessor.concatenate_pointclouds import CombineCloudHandler
 from autoware_pointcloud_preprocessor.concatenate_pointclouds import Concatenator
+from diagnostic_msgs.msg import DiagnosticStatus
 from geometry_msgs.msg import TransformStamped
 from geometry_msgs.msg import TwistWithCovarianceStamped
 from sensor_msgs.msg import PointCloud2
@@ -358,3 +360,149 @@ def test_process_cloud_rejects_unknown_topic():
         pass
     else:
         raise AssertionError("process_cloud should reject a topic not in input_topics")
+
+
+# --------------------------- Diagnostics (mirrors the node's check_concat_status) ---------------
+
+
+def _values(status):
+    """Flatten a DiagnosticStatus's key/value pairs into a dict for assertions."""
+    return {kv.key: kv.value for kv in status.values}
+
+
+def test_build_diagnostics_complete_naive_is_ok():
+    concatenator = Concatenator(
+        _INPUT_TOPICS, _OUTPUT_FRAME, tf_static={}, timeout_sec=0.2, is_motion_compensated=False
+    )
+    concatenator.process_cloud("lidar_top", _make_cloud(10, 0), arrival_time=100.00)
+    concatenator.process_cloud("lidar_left", _make_cloud(10, 1_000_000), arrival_time=100.01)
+    frames = concatenator.process_cloud("lidar_right", _make_cloud(10, 2_000_000), arrival_time=100.02)
+    assert frames[0].status == CollectorStatus.COMPLETE
+
+    status = concatenator.build_diagnostics(frames[0])
+    values = _values(status)
+
+    # A complete group is OK; the published message is "OK" (matching the node's DiagnosticsInterface).
+    assert status.level == DiagnosticStatus.OK
+    assert status.message == "OK"
+    assert values["Pointcloud concatenation succeeded"] == "True"
+    # Every input topic contributed; "Concatenated: <topic>" is "True" with a 9-decimal timestamp.
+    for topic in _INPUT_TOPICS:
+        assert values["Concatenated: " + topic] == "True"
+        assert "Timestamp: " + topic in values
+    assert values["Concatenated pointcloud timestamp"] == "10.000000000"
+    # Naive records the first arrival timestamp, not an advanced reference window.
+    assert "First pointcloud arrival timestamp" in values
+    assert "Minimum reference timestamp" not in values
+
+
+def test_build_diagnostics_timeout_reports_missing_topics_as_error():
+    concatenator = Concatenator(
+        _INPUT_TOPICS, _OUTPUT_FRAME, tf_static={}, timeout_sec=0.2, is_motion_compensated=False
+    )
+    # Only lidar_top arrives; a later cloud advances the clock past the timeout and closes the group.
+    concatenator.process_cloud("lidar_top", _make_cloud(10, 0), arrival_time=100.0)
+    frames = concatenator.process_cloud("lidar_left", _make_cloud(10, 0), arrival_time=100.5)
+    assert frames[0].status == CollectorStatus.TIMEOUT
+
+    status = concatenator.build_diagnostics(frames[0])
+    values = _values(status)
+
+    assert status.level == DiagnosticStatus.ERROR
+    assert status.message == "Concatenated pointcloud is published but misses some topics"
+    assert values["Pointcloud concatenation succeeded"] == "False"
+    assert values["Concatenated: lidar_top"] == "True"
+    assert values["Concatenated: lidar_left"] == "False"
+    # A topic that never arrived has no "Timestamp:" entry.
+    assert "Timestamp: lidar_left" not in values
+
+
+def test_build_diagnostics_advanced_records_reference_window():
+    concatenator = _advanced_concatenator()
+    # Per-topic stamps staggered by the offsets, so all correct to 10.00 s -> one complete group
+    # whose reference is 10.00 s with a 0.01 s noise window.
+    concatenator.process_cloud("lidar_top", _make_cloud(10, 0), arrival_time=100.00)
+    concatenator.process_cloud("lidar_left", _make_cloud(10, 40_000_000), arrival_time=100.01)
+    frames = concatenator.process_cloud("lidar_right", _make_cloud(10, 80_000_000), arrival_time=100.02)
+    assert frames[0].status == CollectorStatus.COMPLETE
+
+    values = _values(concatenator.build_diagnostics(frames[0]))
+
+    assert values["Minimum reference timestamp"] == "9.990000000"
+    assert values["Maximum reference timestamp"] == "10.010000000"
+    # Advanced does not emit the naive first-arrival entry.
+    assert "First pointcloud arrival timestamp" not in values
+
+
+def test_build_diagnostics_optional_latency_and_processing_time():
+    concatenator = Concatenator(
+        _INPUT_TOPICS, _OUTPUT_FRAME, tf_static={}, timeout_sec=0.2, is_motion_compensated=False
+    )
+    concatenator.process_cloud("lidar_top", _make_cloud(10, 0), arrival_time=100.00)
+    concatenator.process_cloud("lidar_left", _make_cloud(10, 0), arrival_time=100.01)
+    frames = concatenator.process_cloud("lidar_right", _make_cloud(10, 0), arrival_time=100.02)
+
+    # now=10.1 s is 0.1 s after the 10.0 s stamps -> 100 ms latency; processing time is passed through.
+    values = _values(
+        concatenator.build_diagnostics(frames[0], now=10.1, processing_time_ms=2.5)
+    )
+
+    assert values["Processing time (ms)"] == "2.500000"
+    assert values["Pipeline latency (ms)"] == "100.000000"
+    for topic in _INPUT_TOPICS:
+        assert values["Latency (ms): " + topic] == "100.000000"
+
+
+def test_build_diagnostics_omits_runtime_fields_by_default():
+    concatenator = Concatenator(
+        _INPUT_TOPICS, _OUTPUT_FRAME, tf_static={}, timeout_sec=0.2, is_motion_compensated=False
+    )
+    concatenator.process_cloud("lidar_top", _make_cloud(10, 0), arrival_time=100.00)
+    concatenator.process_cloud("lidar_left", _make_cloud(10, 0), arrival_time=100.01)
+    frames = concatenator.process_cloud("lidar_right", _make_cloud(10, 0), arrival_time=100.02)
+
+    values = _values(concatenator.build_diagnostics(frames[0]))
+
+    # Wall-clock-only fields are not fabricated when no data is supplied.
+    assert "Processing time (ms)" not in values
+    assert "Pipeline latency (ms)" not in values
+    assert "Latency (ms): lidar_top" not in values
+
+
+def test_build_diagnostics_module_function_matches_method():
+    # The module-level function and the Concatenator.build_diagnostics convenience wrapper must
+    # produce the same DiagnosticStatus (the wrapper only injects the configured input_topics).
+    concatenator = Concatenator(
+        _INPUT_TOPICS, _OUTPUT_FRAME, tf_static={}, timeout_sec=0.2, is_motion_compensated=False
+    )
+    concatenator.process_cloud("lidar_top", _make_cloud(10, 0), arrival_time=100.00)
+    concatenator.process_cloud("lidar_left", _make_cloud(10, 0), arrival_time=100.01)
+    frames = concatenator.process_cloud("lidar_right", _make_cloud(10, 0), arrival_time=100.02)
+
+    via_function = build_diagnostics(frames[0], _INPUT_TOPICS)
+    via_method = concatenator.build_diagnostics(frames[0])
+
+    assert via_function.level == via_method.level
+    assert via_function.message == via_method.message
+    assert _values(via_function) == _values(via_method)
+
+
+def test_build_diagnostics_empty_cloud_is_error():
+    # A single source whose extrinsic is missing is dropped, so the concatenated cloud is empty.
+    # The topic still "contributed" (it is in topic_to_original_stamp), so the failure surfaces as
+    # the empty-cloud error rather than a missing-topic one.
+    concatenator = Concatenator(
+        ["lidar_x"], _OUTPUT_FRAME, tf_static={}, timeout_sec=0.2, is_motion_compensated=False
+    )
+    frames = concatenator.process_cloud(
+        "lidar_x", _make_cloud(10, 0, frame_id="lidar_x"), arrival_time=100.0
+    )
+    assert frames[0].status == CollectorStatus.COMPLETE
+    assert frames[0].result.concatenated_cloud.width == 0
+
+    status = concatenator.build_diagnostics(frames[0])
+    values = _values(status)
+
+    assert status.level == DiagnosticStatus.ERROR
+    assert status.message == "Concatenated pointcloud is empty"
+    assert values["Concatenated: lidar_x"] == "True"  # contributed, even though it was dropped
