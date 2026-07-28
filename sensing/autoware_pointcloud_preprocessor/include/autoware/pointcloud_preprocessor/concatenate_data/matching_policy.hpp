@@ -24,6 +24,13 @@
 namespace autoware::pointcloud_preprocessor
 {
 
+// How the structs below relate:
+//   - IncomingCloudInfo describes the cloud being matched.
+//   - MatchingReference is returned by reference_for() when a cloud starts a new collector;
+//     the caller stores it on that collector.
+//   - CandidateCollectorState is that stored reference read back (plus has_topic) and fed to
+//     match() when later clouds arrive.
+
 // Information about an incoming cloud that the strategy matches on.
 struct IncomingCloudInfo
 {
@@ -40,11 +47,12 @@ struct CandidateCollectorState
   bool has_topic;         // whether the collector already holds IncomingCloudInfo.topic_name
 };
 
-// The reference a freshly-created collector should be given for an incoming cloud.
-struct CollectorReference
+// The time reference (timestamp + tolerance) that a new collector is
+// initialized with for an incoming cloud.
+struct MatchingReference
 {
   double reference_time;
-  double noise_window;
+  double noise_window;  // 0 for naive matching
 };
 
 class MatchingPolicy
@@ -58,7 +66,8 @@ public:
     const IncomingCloudInfo & incoming_cloud_info) const = 0;
 
   // Reference (timestamp + noise window) for a new collector created for this cloud.
-  [[nodiscard]] virtual CollectorReference reference_for(const IncomingCloudInfo & incoming_cloud_info) const = 0;
+  [[nodiscard]] virtual MatchingReference reference_for(
+    const IncomingCloudInfo & incoming_cloud_info) const = 0;
 };
 
 // Match the closest collector (by arrival time) that does not yet hold the topic.
@@ -68,7 +77,8 @@ public:
   [[nodiscard]] std::optional<std::size_t> match(
     const std::vector<CandidateCollectorState> & collectors,
     const IncomingCloudInfo & incoming_cloud_info) const override;
-  [[nodiscard]] CollectorReference reference_for(const IncomingCloudInfo & incoming_cloud_info) const override;
+  [[nodiscard]] MatchingReference reference_for(
+    const IncomingCloudInfo & incoming_cloud_info) const override;
 };
 
 // Match by an offset-corrected timestamp falling inside a collector's noise window.
@@ -83,7 +93,8 @@ public:
   [[nodiscard]] std::optional<std::size_t> match(
     const std::vector<CandidateCollectorState> & collectors,
     const IncomingCloudInfo & incoming_cloud_info) const override;
-  [[nodiscard]] CollectorReference reference_for(const IncomingCloudInfo & incoming_cloud_info) const override;
+  [[nodiscard]] MatchingReference reference_for(
+    const IncomingCloudInfo & incoming_cloud_info) const override;
 
 private:
   std::unordered_map<std::string, double> topic_to_offset_map_;
