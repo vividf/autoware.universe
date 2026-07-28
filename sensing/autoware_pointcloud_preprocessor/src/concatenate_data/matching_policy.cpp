@@ -44,10 +44,10 @@ std::optional<std::size_t> NaiveMatchingPolicy::match(
   return closest_collector;
 }
 
-CollectorReference NaiveMatchingPolicy::reference_for(
+MatchingReference NaiveMatchingPolicy::reference_for(
   const IncomingCloudInfo & incoming_cloud_info) const
 {
-  return CollectorReference{incoming_cloud_info.cloud_arrival_time, 0.0};
+  return MatchingReference{incoming_cloud_info.cloud_arrival_time, 0.0};
 }
 
 AdvancedMatchingPolicy::AdvancedMatchingPolicy(
@@ -92,10 +92,10 @@ std::optional<std::size_t> AdvancedMatchingPolicy::match(
   return std::nullopt;
 }
 
-CollectorReference AdvancedMatchingPolicy::reference_for(
+MatchingReference AdvancedMatchingPolicy::reference_for(
   const IncomingCloudInfo & incoming_cloud_info) const
 {
-  return CollectorReference{
+  return MatchingReference{
     incoming_cloud_info.cloud_timestamp - topic_to_offset_map_.at(incoming_cloud_info.topic_name),
     topic_to_noise_window_map_.at(incoming_cloud_info.topic_name)};
 }
