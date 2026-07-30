@@ -14,7 +14,7 @@
 
 #include "autoware/pointcloud_preprocessor/concatenate_data/combine_cloud_handler_base.hpp"
 
-#include "conversion.hpp"
+#include "autoware/pointcloud_preprocessor/concatenate_data/conversion.hpp"
 
 #include <algorithm>
 #include <cmath>

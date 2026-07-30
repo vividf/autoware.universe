@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "cloud_concatenator.hpp"
+
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 
 #include <optional>
@@ -65,6 +67,13 @@ struct ConcatenationDiagnosticsDigest
 /// the concatenation info.
 diagnostic_msgs::msg::DiagnosticStatus build_diagnostic_status(
   const ConcatenationDiagnosticsDigest & digest, const std::vector<std::string> & input_topics,
+  const ConcatenationDiagnosticsOptions & options = {});
+
+/// Convenience overload building the digest from an emitted frame (the offline path).
+/// @throws std::invalid_argument when the frame carries no concatenated cloud.
+diagnostic_msgs::msg::DiagnosticStatus build_diagnostic_status(
+  const ConcatenatedFrame<sensor_msgs::msg::PointCloud2> & frame,
+  const std::vector<std::string> & input_topics,
   const ConcatenationDiagnosticsOptions & options = {});
 
 }  // namespace autoware::pointcloud_preprocessor

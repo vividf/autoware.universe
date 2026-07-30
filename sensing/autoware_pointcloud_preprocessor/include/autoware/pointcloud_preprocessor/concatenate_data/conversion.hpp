@@ -22,11 +22,10 @@
 
 #include <cstdint>
 
-// Package-internal ROS-message conversion helpers that depend only on message types and header-only
-// math (no rclcpp, no tf2_ros). They let the concatenation core keep header stamps and transforms
-// without pulling in the ROS runtime, so the consuming logic can stay ROS-runtime-free and
-// deterministic. This header is intentionally not exported (it lives under src/, not include/): it
-// is an implementation detail of the concatenation core, not a public API.
+// ROS-message conversion helpers that depend only on message types and header-only math (no
+// rclcpp, no tf2_ros). They let the concatenation core keep header stamps and transforms without
+// pulling in the ROS runtime, so the consuming logic stays ROS-runtime-free and deterministic.
+// Exported because the templated concatenator's implementation ships in headers and needs them.
 namespace autoware::pointcloud_preprocessor::utils
 {
 

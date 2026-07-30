@@ -14,11 +14,14 @@
 
 #include "autoware/pointcloud_preprocessor/concatenate_data/concatenation_diagnostics.hpp"
 
+#include "autoware/pointcloud_preprocessor/concatenate_data/conversion.hpp"
 #include "autoware/pointcloud_preprocessor/diagnostics/format_utils.hpp"
 
+#include <autoware_sensing_msgs/msg/concatenated_point_cloud_info.hpp>
 #include <diagnostic_msgs/msg/key_value.hpp>
 
 #include <algorithm>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -133,6 +136,30 @@ diagnostic_msgs::msg::DiagnosticStatus build_diagnostic_status(
   status.message = level == diagnostic_msgs::msg::DiagnosticStatus::OK ? "OK" : message;
   status.values = values;
   return status;
+}
+
+diagnostic_msgs::msg::DiagnosticStatus build_diagnostic_status(
+  const ConcatenatedFrame<sensor_msgs::msg::PointCloud2> & frame,
+  const std::vector<std::string> & input_topics, const ConcatenationDiagnosticsOptions & options)
+{
+  if (!frame.result.concatenate_cloud_ptr) {
+    throw std::invalid_argument("frame carries no concatenated cloud");
+  }
+  const auto & cloud = *frame.result.concatenate_cloud_ptr;
+  const auto & info_ptr = frame.result.concatenation_info_ptr;
+
+  ConcatenationDiagnosticsDigest digest;
+  digest.concatenated_cloud_timestamp_sec = utils::to_seconds(cloud.header.stamp);
+  digest.is_concatenated_cloud_empty = cloud.width * cloud.height == 0;
+  digest.is_advanced =
+    info_ptr && info_ptr->matching_strategy ==
+                  autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo::STRATEGY_ADVANCED;
+  digest.reference_time = frame.reference_time;
+  digest.noise_window = frame.noise_window;
+  digest.first_arrival_time = frame.first_arrival_time;
+  digest.topic_to_original_stamp = frame.result.topic_to_original_stamp_map;
+
+  return build_diagnostic_status(digest, input_topics, options);
 }
 
 }  // namespace autoware::pointcloud_preprocessor
