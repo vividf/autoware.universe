@@ -68,10 +68,10 @@ CloudConcatenator<PointCloudMsgT>::CloudConcatenator(
 }
 
 template <typename PointCloudMsgT>
-void CloudConcatenator<PointCloudMsgT>::set_transform(
+bool CloudConcatenator<PointCloudMsgT>::set_transform(
   const geometry_msgs::msg::TransformStamped & sensor_to_output_frame)
 {
-  handler_.set_transform(sensor_to_output_frame);
+  return handler_.set_transform(sensor_to_output_frame);
 }
 
 template <typename PointCloudMsgT>

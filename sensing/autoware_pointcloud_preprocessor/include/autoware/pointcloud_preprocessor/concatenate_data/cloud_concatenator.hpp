@@ -97,7 +97,8 @@ public:
 
   /// Inject one sensor->output extrinsic (header.frame_id = output frame, child_frame_id = sensor
   /// frame), as provided by TF.
-  void set_transform(const geometry_msgs::msg::TransformStamped & sensor_to_output_frame);
+  [[nodiscard]] bool set_transform(
+    const geometry_msgs::msg::TransformStamped & sensor_to_output_frame);
 
   /// Feed twist/odometry (in timestamp order) for motion compensation.
   void process_twist(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr & twist);
