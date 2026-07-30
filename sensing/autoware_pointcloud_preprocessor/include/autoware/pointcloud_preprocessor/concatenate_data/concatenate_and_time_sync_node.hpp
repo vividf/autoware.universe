@@ -25,6 +25,7 @@
 #include "cloud_collector.hpp"
 #include "collector_matcher.hpp"
 #include "combine_cloud_handler.hpp"
+#include "concatenation_diagnostics.hpp"
 #include "matching_strategy_type.hpp"
 #include "traits.hpp"
 
@@ -106,9 +107,10 @@ private:
     bool is_concatenated_cloud_empty{false};
     std::shared_ptr<CollectorInfoBase> collector_info;
     std::unordered_map<std::string, double> topic_to_original_stamp_map;
-    std::unordered_map<std::string, double> topic_to_pipeline_latency_map;
     double processing_time{0.0};
-    double pipeline_latency{0.0};
+    // Publish-time wall clock (seconds); the diagnostics builder derives the pipeline latencies
+    // from it, exactly as the debug publisher's map is derived.
+    double now_sec{0.0};
   };
 
   std::shared_ptr<CombineCloudHandler<typename MsgTraits::PointCloudMessage>>
