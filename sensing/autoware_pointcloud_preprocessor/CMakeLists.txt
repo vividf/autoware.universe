@@ -83,6 +83,7 @@ ament_target_dependencies(concatenate_data
   SYSTEM
   autoware_point_types
   autoware_sensing_msgs
+  diagnostic_msgs
   autoware_utils
   autoware_vehicle_msgs
   managed_transform_buffer
@@ -305,17 +306,23 @@ install(
 
 ament_export_targets(export_${PROJECT_NAME})
 
+find_package(ament_cmake_python REQUIRED)
+find_package(python_cmake_module REQUIRED)
+find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+find_package(pybind11_vendor REQUIRED)
+find_package(pybind11 REQUIRED)
 find_package(autoware_utils_math REQUIRED)
 
-# ---- Concatenation core (ROS-runtime-free) ----
+# ---- Concatenation core (ROS-runtime-free) + Python bindings ----
 # Same approach as the distortion corrector core: the combine + matching logic is built as a
 # standalone shared library that links only ROS message types and header-only math (no rclcpp, no
 # tf, no pcl_ros). It is parameterized by the point cloud *message* type (not the node-level traits),
 # so its headers never pull in the trait's rclcpp publisher/subscriber types. It is built separately
-# from the full `concatenate_data` so consumers of the core do not drag in the node / legacy-node
-# sources (and their utils::is_data_layout_* dependency). Dependencies are linked via
-# target_link_libraries with the exported message targets (not ament_target_dependencies, which
-# would over-declare the package closure and re-pull rclcpp).
+# from the full `concatenate_data` so the binding does not drag in the node / legacy-node sources
+# (and their utils::is_data_layout_* dependency). Only the pybind module links rclcpp, for message
+# (de)serialization. Dependencies are linked via target_link_libraries with the exported message
+# targets (not ament_target_dependencies, which would over-declare the package closure and re-pull
+# rclcpp).
 add_library(concatenate_core SHARED
   src/concatenate_data/combine_cloud_handler.cpp
   src/concatenate_data/combine_cloud_handler_base.cpp
@@ -344,12 +351,30 @@ target_link_libraries(concatenate_core PUBLIC
   ${diagnostic_msgs_TARGETS}
 )
 
+pybind11_add_module(_concatenate_pointclouds_pybind
+  src/concatenate_data/concatenate_pointclouds_pybind.cpp
+)
+target_include_directories(_concatenate_pointclouds_pybind PRIVATE ${rclcpp_INCLUDE_DIRS})
+target_link_libraries(_concatenate_pointclouds_pybind PRIVATE
+  concatenate_core
+  ${rclcpp_LIBRARIES}
+)
+
 install(TARGETS concatenate_core
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
+# Install the extension next to the Python package. Use ament_get_python_install_dir() rather than
+# the raw PYTHON_INSTALL_DIR variable: the latter is only populated later (by
+# ament_python_install_package / ament_package), so on a clean configure it is empty and the
+# DESTINATION would resolve to an absolute "/<project>" path.
+ament_get_python_install_dir(python_install_dir)
+install(TARGETS _concatenate_pointclouds_pybind
+  DESTINATION "${python_install_dir}/${PROJECT_NAME}")
 
+ament_python_install_package(${PROJECT_NAME}
+  PACKAGE_DIR python/${PROJECT_NAME})
 ament_auto_package(INSTALL_TO_SHARE
   launch
   config
@@ -392,7 +417,6 @@ if(BUILD_TESTING)
   ament_add_gtest(test_cloud_concatenator
     test/test_cloud_concatenator.cpp
   )
-  target_include_directories(test_matching_policy PRIVATE include)
 
   ament_add_gtest(test_polar_voxel_outlier_filter_node
     test/test_polar_voxel_outlier_filter_node.cpp
@@ -448,4 +472,8 @@ if(BUILD_TESTING)
     TIMEOUT "50"
   )
 
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_concatenate_pointclouds_py
+    test/test_concatenate_pointclouds_py.py
+  )
 endif()
