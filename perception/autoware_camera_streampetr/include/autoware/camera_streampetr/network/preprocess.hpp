@@ -21,12 +21,15 @@ namespace autoware::camera_streampetr
 {
 cudaError_t resizeAndExtractRoi_launch(
   const std::uint8_t * input_img, float * output_img,
-  int camera_offset,         // Camera offset in the input image
-  int H, int W,              // Original image dimensions
-  int H2, int W2,            // Resized image dimensions
-  int H3, int W3,            // ROI dimensions
-  int y_start, int x_start,  // ROI top-left coordinates in resized image
-  const float * channel_wise_mean, const float * channel_wise_std, cudaStream_t stream);
+  int camera_offset,                // Camera offset in the input image
+  int H, int W,                     // Original image dimensions
+  int H2, int W2,                   // Resized image dimensions
+  int H3, int W3,                   // ROI dimensions
+  int y_start, int x_start,         // ROI top-left coordinates in resized image
+  const float * channel_wise_mean,  // 3 floats, RGB order (model channel order)
+  const float * channel_wise_std,   // 3 floats, RGB order (model channel order)
+  bool swap_rb,                     // Source buffer is BGR: exchange channels 0 and 2
+  cudaStream_t stream);
 
 cudaError_t remap_launch(
   const std::uint8_t * input_img, std::uint8_t * output_img, int output_height,

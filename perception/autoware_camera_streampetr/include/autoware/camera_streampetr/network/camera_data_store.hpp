@@ -54,6 +54,7 @@ public:
   bool check_if_all_camera_image_received() const;
   bool check_if_all_camera_info_received() const;
   float check_if_all_images_synced() const;
+  std::string get_missing_camera_status() const;
   float get_preprocess_time_ms() const;
   std::vector<float> get_camera_info_vector() const;
   std::shared_ptr<cuda::Tensor> get_image_input() const;
@@ -83,12 +84,14 @@ private:
   // Helper methods for update_camera_image
   ImageProcessingParams calculate_image_processing_params(
     const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg) const;
+  // swap_rb tells both of these that the source buffer is BGR, which the ego mask needs in order
+  // to paint its configured fill colour in the right channel order.
   std::unique_ptr<Tensor> process_distorted_image(
     const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg,
-    ImageProcessingParams & params);
+    ImageProcessingParams & params, const bool swap_rb);
   std::unique_ptr<Tensor> process_regular_image(
     const Image::ConstSharedPtr & input_camera_image_msg, const ImageProcessingParams & params,
-    const int camera_id);
+    const int camera_id, const bool swap_rb);
   void update_metadata_and_timing(
     const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg,
     const std::chrono::high_resolution_clock::time_point & start_time);
@@ -99,6 +102,11 @@ private:
   void copy_ego_mask_gpu(
     const int camera_id, const std::vector<std::uint8_t> & raster, const int width,
     const int height);
+
+  // Validates that the message can be fed to the model and reports whether the preprocessing
+  // kernel has to swap R/B. Returns false if the frame must be dropped.
+  bool resolve_channel_order(
+    const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg, bool & swap_rb);
 
   const size_t rois_number_;
   const int image_height_;
@@ -127,6 +135,10 @@ private:
   std::vector<int> ego_mask_width_;
   std::vector<int> ego_mask_height_;
   std::vector<bool> ego_mask_built_;
+
+  // Drives the throttled errors for images the model cannot consume, which would otherwise be
+  // logged at frame rate. Steady time so throttling is unaffected by simulated or jumping clocks.
+  rclcpp::Clock throttle_clock_{RCL_STEADY_TIME};
 
   // multithreading variables
   mutable std::mutex freeze_mutex_;
