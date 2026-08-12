@@ -47,20 +47,16 @@ algebra operations. */
 namespace autoware::camera_streampetr
 {
 
-// A camera publishing images the model cannot consume does so on every frame, so the errors are
-// throttled to this period.
-static constexpr int kInvalidInputLogPeriodMs = 5000;
-
 // The ego mask is painted into the raw camera buffer, whose channel order follows the input
-// encoding, while the configured fill colour is always BGR. Reorder it for an RGB source so the
+// encoding, while the configured fill colour is always RGB. Reorder it for a BGR source so the
 // masked region ends up the colour that was actually configured.
 static std::array<std::uint8_t, 3> fill_in_source_order(
-  const std::array<std::uint8_t, 3> & fill_bgr, const bool source_is_bgr)
+  const std::array<std::uint8_t, 3> & fill_rgb, const bool source_is_bgr)
 {
   if (source_is_bgr) {
-    return fill_bgr;
+    return {fill_rgb[2], fill_rgb[1], fill_rgb[0]};
   }
-  return {fill_bgr[2], fill_bgr[1], fill_bgr[0]};
+  return fill_rgb;
 }
 
 // Helper struct for camera matrices (local to this file)
@@ -132,7 +128,8 @@ CameraDataStore::CameraDataStore(
   anchor_camera_id_(anchor_camera_id),
   preprocess_time_ms_(0.0f),
   is_distorted_image_(is_distorted_image),
-  logger_(node->get_logger())
+  logger_(node->get_logger()),
+  clock_(node->get_clock())
 {
   image_input_ = std::make_shared<Tensor>(
     "image_input", nvinfer1::Dims{5, {1, rois_number, 3, image_height, image_width}},
@@ -187,7 +184,7 @@ void CameraDataStore::update_camera_image(
 {
   // Keep this above ++active_updates_ below, so an early return here has no counter to decrement.
   bool swap_rb = false;
-  if (!resolve_channel_order(camera_id, input_camera_image_msg, swap_rb)) {
+  if (!validate_channel_order(camera_id, input_camera_image_msg, swap_rb)) {
     return;
   }
 
@@ -253,7 +250,7 @@ void CameraDataStore::update_camera_image(
   }
 }
 
-bool CameraDataStore::resolve_channel_order(
+bool CameraDataStore::validate_channel_order(
   const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg, bool & swap_rb)
 {
   const std::string & encoding = input_camera_image_msg->encoding;
@@ -266,7 +263,7 @@ bool CameraDataStore::resolve_channel_order(
     // Anything else (mono, bayer, 16-bit, alpha) has a different channel count or stride, so the
     // fixed 3-byte-per-pixel upload below would misread the buffer.
     RCLCPP_ERROR_THROTTLE(
-      logger_, throttle_clock_, kInvalidInputLogPeriodMs,
+      logger_, *clock_, 10000 /* ms */,
       "Camera %d publishes unsupported encoding '%s'. Only 'rgb8' and 'bgr8' can be fed to the "
       "model; dropping frames from this camera.",
       camera_id, encoding.c_str());
@@ -281,7 +278,7 @@ bool CameraDataStore::resolve_channel_order(
     input_camera_image_msg->step != row_bytes ||
     input_camera_image_msg->data.size() < expected_size) {
     RCLCPP_ERROR_THROTTLE(
-      logger_, throttle_clock_, kInvalidInputLogPeriodMs,
+      logger_, *clock_, 10000 /* ms */,
       "Camera %d publishes %ux%u '%s' with step %u and %zu bytes, but a densely packed buffer of "
       "step %zu and %zu bytes is required; dropping frames from this camera.",
       camera_id, input_camera_image_msg->width, input_camera_image_msg->height, encoding.c_str(),
@@ -376,7 +373,7 @@ std::unique_ptr<CameraDataStore::Tensor> CameraDataStore::process_distorted_imag
 
   if (ego_mask_built_[camera_id] && ego_mask_gpu_[camera_id]) {
     const auto & cfg = ego_mask_roi_configs_[camera_id].value();
-    const auto fill = fill_in_source_order(cfg.fill_bgr, swap_rb);
+    const auto fill = fill_in_source_order(cfg.fill_rgb, swap_rb);
     auto err_mask = applyEgoMask_launch(
       static_cast<std::uint8_t *>(image_input_tensor->ptr),
       static_cast<const std::uint8_t *>(ego_mask_gpu_[camera_id]->ptr), original_height,
@@ -405,7 +402,7 @@ std::unique_ptr<CameraDataStore::Tensor> CameraDataStore::process_regular_image(
 
   if (ego_mask_built_[camera_id] && ego_mask_gpu_[camera_id]) {
     const auto & cfg = ego_mask_roi_configs_[camera_id].value();
-    const auto fill = fill_in_source_order(cfg.fill_bgr, swap_rb);
+    const auto fill = fill_in_source_order(cfg.fill_rgb, swap_rb);
     auto err_mask = applyEgoMask_launch(
       static_cast<std::uint8_t *>(image_input_tensor->ptr),
       static_cast<const std::uint8_t *>(ego_mask_gpu_[camera_id]->ptr), params.original_height,

@@ -113,7 +113,7 @@ The `autoware_camera_streampetr` node has various parameters for configuration:
 Masking the area of the ego vehicle in order to reduce FP caused by reflection. Configure via **launch** or `camera_streampetr.param.yaml`, not `tensorrt_stream_petr.param.yaml` (model/post-process only).
 
 - `ego_mask.enabled`: Enable masking (default: `false`)
-- `ego_mask.fill_value_bgr`: BGR fill inside polygons, 0–255 (default: `[0, 0, 0]`)
+- `ego_mask.fill_value_rgb`: RGB fill inside polygons, 0–255 (default: `[0, 0, 0]`)
 - `ego_mask.roi_polygons_yaml`: One YAML path per model ROI index; empty string disables that ROI.
 
 Example polygon files: `config/camera9_polygons.yaml`, `config/camera10_polygons.yaml`.

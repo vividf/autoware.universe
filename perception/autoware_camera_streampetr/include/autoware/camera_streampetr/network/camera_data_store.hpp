@@ -84,8 +84,6 @@ private:
   // Helper methods for update_camera_image
   ImageProcessingParams calculate_image_processing_params(
     const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg) const;
-  // swap_rb tells both of these that the source buffer is BGR, which the ego mask needs in order
-  // to paint its configured fill colour in the right channel order.
   std::unique_ptr<Tensor> process_distorted_image(
     const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg,
     ImageProcessingParams & params, const bool swap_rb);
@@ -105,7 +103,7 @@ private:
 
   // Validates that the message can be fed to the model and reports whether the preprocessing
   // kernel has to swap R/B. Returns false if the frame must be dropped.
-  bool resolve_channel_order(
+  bool validate_channel_order(
     const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg, bool & swap_rb);
 
   const size_t rois_number_;
@@ -117,6 +115,7 @@ private:
   const bool is_distorted_image_;
 
   rclcpp::Logger logger_;
+  rclcpp::Clock::SharedPtr clock_;
   std::vector<CameraInfo::ConstSharedPtr> camera_info_list_;
   std::shared_ptr<Tensor> image_input_;
   std::shared_ptr<Tensor> image_input_mean_;
@@ -135,10 +134,6 @@ private:
   std::vector<int> ego_mask_width_;
   std::vector<int> ego_mask_height_;
   std::vector<bool> ego_mask_built_;
-
-  // Drives the throttled errors for images the model cannot consume, which would otherwise be
-  // logged at frame rate. Steady time so throttling is unaffected by simulated or jumping clocks.
-  rclcpp::Clock throttle_clock_{RCL_STEADY_TIME};
 
   // multithreading variables
   mutable std::mutex freeze_mutex_;

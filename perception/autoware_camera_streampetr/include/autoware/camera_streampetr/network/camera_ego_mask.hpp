@@ -35,13 +35,13 @@ struct EgoMaskPolygon
 struct EgoMaskRoiConfig
 {
   std::vector<EgoMaskPolygon> polygons;
-  std::array<std::uint8_t, 3> fill_bgr{0, 0, 0};
+  std::array<std::uint8_t, 3> fill_rgb{0, 0, 0};
 };
 
 struct EgoMaskParams
 {
   bool enabled{false};
-  std::array<std::uint8_t, 3> fill_bgr{0, 0, 0};
+  std::array<std::uint8_t, 3> fill_rgb{0, 0, 0};
   std::vector<std::string> roi_polygons_yaml;
   std::vector<std::optional<EgoMaskRoiConfig>> roi_mask_configs;
 };
@@ -57,9 +57,11 @@ std::vector<EgoMaskPolygon> parsePolygonsYamlText(const std::string & yaml_text)
 std::vector<std::uint8_t> buildEgoMaskRaster(
   const std::vector<EgoMaskPolygon> & polygons, int width, int height);
 
+// The fill is written channel by channel, so it must already be in the same order as the image
+// buffer; see fill_in_source_order() in camera_data_store.cpp.
 cudaError_t applyEgoMask_launch(
-  std::uint8_t * image_bgr, const std::uint8_t * mask, int height, int width, std::uint8_t fill_b,
-  std::uint8_t fill_g, std::uint8_t fill_r, cudaStream_t stream);
+  std::uint8_t * image, const std::uint8_t * mask, int height, int width, std::uint8_t fill_c0,
+  std::uint8_t fill_c1, std::uint8_t fill_c2, cudaStream_t stream);
 
 }  // namespace autoware::camera_streampetr
 
