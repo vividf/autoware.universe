@@ -54,7 +54,7 @@ CHECK_OFFSET(
 namespace autoware::pointcloud_preprocessor
 {
 
-CombineCloudHandler<CudaPointCloud2Traits>::CombineCloudHandler(
+CombineCloudHandler<cuda_blackboard::CudaPointCloud2>::CombineCloudHandler(
   rclcpp::Node & node, const std::vector<std::string> & input_topics, std::string output_frame,
   bool is_motion_compensated, bool publish_synchronized_pointcloud,
   bool keep_input_frame_in_synchronized_pointcloud)
@@ -69,7 +69,7 @@ CombineCloudHandler<CudaPointCloud2Traits>::CombineCloudHandler(
   }
 }
 
-void CombineCloudHandler<CudaPointCloud2Traits>::allocate_pointclouds()
+void CombineCloudHandler<cuda_blackboard::CudaPointCloud2>::allocate_pointclouds()
 {
   std::lock_guard<std::mutex> lock(mutex_);
 
@@ -85,14 +85,14 @@ void CombineCloudHandler<CudaPointCloud2Traits>::allocate_pointclouds()
     max_concat_pointcloud_size_ * input_topics_.size());
 }
 
-ConcatenatedCloudResult<CudaPointCloud2Traits>
-CombineCloudHandler<CudaPointCloud2Traits>::combine_pointclouds(
+ConcatenatedCloudResult<cuda_blackboard::CudaPointCloud2>
+CombineCloudHandler<cuda_blackboard::CudaPointCloud2>::combine_pointclouds(
   std::unordered_map<
     std::string, typename CudaPointCloud2Traits::PointCloudMessage::ConstSharedPtr> &
     topic_to_cloud_map,
   const std::shared_ptr<CollectorInfoBase> & collector_info)
 {
-  ConcatenatedCloudResult<CudaPointCloud2Traits> concatenate_cloud_result;
+  ConcatenatedCloudResult<cuda_blackboard::CudaPointCloud2> concatenate_cloud_result;
   std::lock_guard<std::mutex> lock(mutex_);
 
   if (topic_to_cloud_map.empty()) return concatenate_cloud_result;
@@ -313,4 +313,4 @@ CombineCloudHandler<CudaPointCloud2Traits>::combine_pointclouds(
 }  // namespace autoware::pointcloud_preprocessor
 
 template class autoware::pointcloud_preprocessor::CombineCloudHandler<
-  autoware::pointcloud_preprocessor::CudaPointCloud2Traits>;
+  cuda_blackboard::CudaPointCloud2>;

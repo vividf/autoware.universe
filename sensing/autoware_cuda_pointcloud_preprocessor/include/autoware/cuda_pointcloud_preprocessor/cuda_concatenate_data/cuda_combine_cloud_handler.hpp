@@ -26,7 +26,7 @@ namespace autoware::pointcloud_preprocessor
 {
 
 template <>
-class CombineCloudHandler<CudaPointCloud2Traits> : public CombineCloudHandlerBase
+class CombineCloudHandler<cuda_blackboard::CudaPointCloud2> : public CombineCloudHandlerBase
 {
 protected:
   struct CudaConcatStruct
@@ -47,7 +47,7 @@ public:
     bool is_motion_compensated, bool publish_synchronized_pointcloud,
     bool keep_input_frame_in_synchronized_pointcloud);
 
-  ConcatenatedCloudResult<CudaPointCloud2Traits> combine_pointclouds(
+  ConcatenatedCloudResult<cuda_blackboard::CudaPointCloud2> combine_pointclouds(
     std::unordered_map<
       std::string, typename CudaPointCloud2Traits::PointCloudMessage::ConstSharedPtr> &
       topic_to_cloud_map,

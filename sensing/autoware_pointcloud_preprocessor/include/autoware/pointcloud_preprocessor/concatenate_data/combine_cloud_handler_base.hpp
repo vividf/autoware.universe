@@ -16,7 +16,8 @@
 
 #include "concatenation_info_manager.hpp"
 #include "matching_strategy_type.hpp"
-#include "traits.hpp"
+
+#include <Eigen/Core>
 
 #include <deque>
 #include <memory>
@@ -27,6 +28,7 @@
 
 // ROS includes
 #include <managed_transform_buffer/managed_transform_buffer.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <autoware_sensing_msgs/msg/concatenated_point_cloud_info.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
@@ -36,12 +38,12 @@
 namespace autoware::pointcloud_preprocessor
 {
 
-template <typename MsgTraits>
+template <typename PointCloudMsgT>
 struct ConcatenatedCloudResult
 {
-  typename MsgTraits::PointCloudMessage::UniquePtr concatenate_cloud_ptr{nullptr};
+  typename PointCloudMsgT::UniquePtr concatenate_cloud_ptr{nullptr};
   autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo::UniquePtr concatenation_info_ptr;
-  std::optional<std::unordered_map<std::string, typename MsgTraits::PointCloudMessage::UniquePtr>>
+  std::optional<std::unordered_map<std::string, typename PointCloudMsgT::UniquePtr>>
     topic_to_transformed_cloud_map;
   std::unordered_map<std::string, double> topic_to_original_stamp_map;
 };

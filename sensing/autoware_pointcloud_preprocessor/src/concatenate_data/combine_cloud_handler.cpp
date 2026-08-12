@@ -33,9 +33,9 @@
 namespace autoware::pointcloud_preprocessor
 {
 
-void CombineCloudHandler<PointCloud2Traits>::convert_to_xyzirc_cloud(
-  const typename PointCloud2Traits::PointCloudMessage::ConstSharedPtr & input_cloud,
-  typename PointCloud2Traits::PointCloudMessage::UniquePtr & xyzirc_cloud)
+void CombineCloudHandler<sensor_msgs::msg::PointCloud2>::convert_to_xyzirc_cloud(
+  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_cloud,
+  sensor_msgs::msg::PointCloud2::UniquePtr & xyzirc_cloud)
 {
   xyzirc_cloud->header = input_cloud->header;
 
@@ -88,11 +88,11 @@ void CombineCloudHandler<PointCloud2Traits>::convert_to_xyzirc_cloud(
   }
 }
 
-void CombineCloudHandler<PointCloud2Traits>::correct_pointcloud_motion(
-  const std::unique_ptr<PointCloud2Traits::PointCloudMessage> & transformed_cloud_ptr,
+void CombineCloudHandler<sensor_msgs::msg::PointCloud2>::correct_pointcloud_motion(
+  const std::unique_ptr<sensor_msgs::msg::PointCloud2> & transformed_cloud_ptr,
   const std::vector<rclcpp::Time> & pc_stamps,
   std::unordered_map<rclcpp::Time, Eigen::Matrix4f, RclcppTimeHash> & transform_memo,
-  std::unique_ptr<PointCloud2Traits::PointCloudMessage> & transformed_delay_compensated_cloud_ptr)
+  std::unique_ptr<sensor_msgs::msg::PointCloud2> & transformed_delay_compensated_cloud_ptr)
 {
   Eigen::Matrix4f adjust_to_old_data_transform = Eigen::Matrix4f::Identity();
   rclcpp::Time current_cloud_stamp = rclcpp::Time(transformed_cloud_ptr->header.stamp);
@@ -115,13 +115,13 @@ void CombineCloudHandler<PointCloud2Traits>::correct_pointcloud_motion(
 }
 
 // TODO(vividf): refactor this function for readability
-ConcatenatedCloudResult<PointCloud2Traits>
-CombineCloudHandler<PointCloud2Traits>::combine_pointclouds(
-  std::unordered_map<std::string, PointCloud2Traits::PointCloudMessage::ConstSharedPtr> &
+ConcatenatedCloudResult<sensor_msgs::msg::PointCloud2>
+CombineCloudHandler<sensor_msgs::msg::PointCloud2>::combine_pointclouds(
+  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::ConstSharedPtr> &
     topic_to_cloud_map,
   const std::shared_ptr<CollectorInfoBase> & collector_info)
 {
-  ConcatenatedCloudResult<PointCloud2Traits> concatenate_cloud_result;
+  ConcatenatedCloudResult<sensor_msgs::msg::PointCloud2> concatenate_cloud_result;
 
   if (topic_to_cloud_map.empty()) return concatenate_cloud_result;
 
