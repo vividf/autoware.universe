@@ -43,9 +43,9 @@ protected:
 
 public:
   CombineCloudHandler(
-    rclcpp::Node & node, const std::vector<std::string> & input_topics, std::string output_frame,
+    const std::vector<std::string> & input_topics, std::string output_frame,
     bool is_motion_compensated, bool publish_synchronized_pointcloud,
-    bool keep_input_frame_in_synchronized_pointcloud);
+    bool keep_input_frame_in_synchronized_pointcloud, MatchingStrategyType matching_strategy);
 
   ConcatenatedCloudResult<cuda_blackboard::CudaPointCloud2> combine_pointclouds(
     std::unordered_map<

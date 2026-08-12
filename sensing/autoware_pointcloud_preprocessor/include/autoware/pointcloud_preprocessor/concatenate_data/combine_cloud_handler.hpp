@@ -42,16 +42,16 @@ class CombineCloudHandler<sensor_msgs::msg::PointCloud2> : public CombineCloudHa
 {
 public:
   CombineCloudHandler(
-    rclcpp::Node & node, const std::vector<std::string> & input_topics, std::string output_frame,
+    const std::vector<std::string> & input_topics, std::string output_frame,
     bool is_motion_compensated, bool publish_synchronized_pointcloud,
-    bool keep_input_frame_in_synchronized_pointcloud)
+    bool keep_input_frame_in_synchronized_pointcloud, MatchingStrategyType matching_strategy)
   : CombineCloudHandlerBase(
-      node, input_topics, output_frame, is_motion_compensated, publish_synchronized_pointcloud,
-      keep_input_frame_in_synchronized_pointcloud)
+      input_topics, output_frame, is_motion_compensated, publish_synchronized_pointcloud,
+      keep_input_frame_in_synchronized_pointcloud, matching_strategy)
   {
   }
 
-  virtual ~CombineCloudHandler() = default;
+  ~CombineCloudHandler() override = default;
 
   ConcatenatedCloudResult<sensor_msgs::msg::PointCloud2> combine_pointclouds(
     std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::ConstSharedPtr> &
@@ -89,7 +89,55 @@ protected:
     const std::unique_ptr<sensor_msgs::msg::PointCloud2> & transformed_cloud_ptr,
     const std::vector<builtin_interfaces::msg::Time> & pc_stamps,
     std::unordered_map<builtin_interfaces::msg::Time, Eigen::Matrix4f, TimeHash> & transform_memo,
-    std::unique_ptr<sensor_msgs::msg::PointCloud2> & transformed_delay_compensated_cloud_ptr);
+    std::unique_ptr<sensor_msgs::msg::PointCloud2> & transformed_delay_compensated_cloud_ptr,
+    MotionCompensationStatus * status);
+
+private:
+  // Collects each input cloud's timestamp, records the per-topic original stamp into `result`,
+  // and returns the timestamps sorted in descending order (newest first). The descending order is
+  // required by correct_pointcloud_motion().
+  static std::vector<builtin_interfaces::msg::Time> collect_input_timestamps(
+    const std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::ConstSharedPtr> &
+      topic_to_cloud_map,
+    ConcatenatedCloudResult<sensor_msgs::msg::PointCloud2> & result);
+
+  // Allocates the output cloud and its concatenation info, forces the XYZIRC field layout (so the
+  // output stays XYZIRC even when every input is empty), and reserves space for all input data.
+  void initialize_concatenated_cloud(
+    const std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::ConstSharedPtr> &
+      topic_to_cloud_map,
+    ConcatenatedCloudResult<sensor_msgs::msg::PointCloud2> & result);
+
+  // When `collector_info` is an AdvancedCollectorInfo, serializes its reference-timestamp window
+  // into the concatenation info's strategy config.
+  static void set_matching_strategy_config(
+    const std::shared_ptr<CollectorInfoBase> & collector_info,
+    ConcatenatedCloudResult<sensor_msgs::msg::PointCloud2> & result);
+
+  // Stores the per-sensor synchronized cloud for `topic`, optionally transforming it back into the
+  // input sensor frame. Takes ownership of motion-compensation.
+  void store_synchronized_cloud(
+    const std::string & topic, const std::string & input_frame_id,
+    const Eigen::Matrix4f & sensor_to_output, const builtin_interfaces::msg::Time & oldest_stamp,
+    std::unique_ptr<sensor_msgs::msg::PointCloud2> compensated_cloud,
+    ConcatenatedCloudResult<sensor_msgs::msg::PointCloud2> & result);
+
+  // Converts one input cloud to XYZIRC, transforms it into the output frame, motion-compensates it,
+  // appends it to the output cloud (folding the source's is_dense into the output's), records its
+  // source info, and (when enabled) stores the synchronized per-sensor cloud. Clouds without an
+  // available transform are dropped and recorded.
+  void process_input_cloud(
+    const std::string & topic, const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
+    const std::vector<builtin_interfaces::msg::Time> & pc_stamps,
+    const builtin_interfaces::msg::Time & oldest_stamp,
+    std::unordered_map<builtin_interfaces::msg::Time, Eigen::Matrix4f, TimeHash> & transform_memo,
+    ConcatenatedCloudResult<sensor_msgs::msg::PointCloud2> & result);
+
+  // Stamps the output cloud and recomputes width/height/row_step now that the concatenated cloud is
+  // unstructured. Throws if the data size is not a multiple of point_step.
+  static void finalize_concatenated_cloud(
+    const builtin_interfaces::msg::Time & oldest_stamp,
+    sensor_msgs::msg::PointCloud2 & concatenate_cloud);
 };
 
 }  // namespace autoware::pointcloud_preprocessor
