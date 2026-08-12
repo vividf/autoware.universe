@@ -227,14 +227,6 @@ StreamPetrNode::StreamPetrNode(const rclcpp::NodeOptions & node_options)
       rclcpp::SensorDataQoS{}.keep_last(1), [this, roi_i](const CameraInfo::ConstSharedPtr msg) {
         this->camera_info_callback(msg, static_cast<int>(roi_i));
       });
-    // Both branches subscribe plainly instead of going through image_transport, whose only value
-    // here would be picking the transport at run time -- something this parameter already does.
-    // Its compressed plugin is also unusable for us: CompressedSubscriber::subscribeImpl calls
-    // substr(node_namespace.size()) on the *unresolved* base topic, so it throws
-    // std::out_of_range whenever strlen(base_topic) < strlen(node_namespace). With
-    // "~/input/cameraN/image" (21 chars) under the X2 namespace
-    // "/perception/object_recognition/detection" (40 chars) the node dies at construction.
-    // Reproduced against ros-humble-compressed-image-transport 2.5.5.
     if (is_compressed_image) {
       compressed_image_subs_.at(roi_i) = this->create_subscription<CompressedImage>(
         "~/input/camera" + std::to_string(roi_i) + "/image/compressed", rclcpp::SensorDataQoS(),
@@ -337,10 +329,8 @@ void StreamPetrNode::compressed_image_callback(
 {
   cv_bridge::CvImagePtr cv_ptr;
   try {
-    // Always ask for bgr8, which is exactly what cv::imdecode produces, so cv_bridge hands back
-    // the decoded buffer untouched. Requesting rgb8 would add a full-image CPU cvtColor per
-    // camera per frame on top of the JPEG decode, while the fused preprocessing kernel does the
-    // R/B swap on the GPU for free -- the model still receives RGB either way.
+    // bgr8 is what cv::imdecode already produces; rgb8 would cost a CPU cvtColor per frame while
+    // the preprocessing kernel swaps R/B on the GPU for free.
     cv_ptr = cv_bridge::toCvCopy(input_compressed_image_msg, sensor_msgs::image_encodings::BGR8);
   } catch (const std::exception & e) {
     RCLCPP_ERROR(
