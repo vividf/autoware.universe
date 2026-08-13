@@ -14,9 +14,9 @@
 
 #include "autoware/pointcloud_preprocessor/concatenate_data/combine_cloud_handler_base.hpp"
 
-#include "conversion.hpp"
+#include "time_utils.hpp"
 
-#include <cstdint>
+#include <chrono>
 #include <deque>
 
 namespace autoware::pointcloud_preprocessor
@@ -31,18 +31,14 @@ void CombineCloudHandlerBase::process_twist(
 
   // If time jumps backwards (e.g. when a rosbag restarts), clear buffer
   if (!twist_queue_.empty()) {
-    if (
-      utils::to_nanoseconds(twist_queue_.front().header.stamp) >
-      utils::to_nanoseconds(msg.header.stamp)) {
+    if (twist_queue_.front().header.stamp > msg.header.stamp) {
       twist_queue_.clear();
     }
   }
 
   // Twist data in the queue that is older than the current twist by 1 second will be cleared.
-  const int64_t cutoff_nanoseconds = utils::to_nanoseconds(msg.header.stamp) - 1'000'000'000LL;
-
   while (!twist_queue_.empty()) {
-    if (utils::to_nanoseconds(twist_queue_.front().header.stamp) > cutoff_nanoseconds) {
+    if (twist_queue_.front().header.stamp + std::chrono::seconds(1) > msg.header.stamp) {
       break;
     }
     twist_queue_.pop_front();
@@ -60,18 +56,14 @@ void CombineCloudHandlerBase::process_odometry(
 
   // If time jumps backwards (e.g. when a rosbag restarts), clear buffer
   if (!twist_queue_.empty()) {
-    if (
-      utils::to_nanoseconds(twist_queue_.front().header.stamp) >
-      utils::to_nanoseconds(msg.header.stamp)) {
+    if (twist_queue_.front().header.stamp > msg.header.stamp) {
       twist_queue_.clear();
     }
   }
 
   // Twist data in the queue that is older than the current twist by 1 second will be cleared.
-  const int64_t cutoff_nanoseconds = utils::to_nanoseconds(msg.header.stamp) - 1'000'000'000LL;
-
   while (!twist_queue_.empty()) {
-    if (utils::to_nanoseconds(twist_queue_.front().header.stamp) > cutoff_nanoseconds) {
+    if (twist_queue_.front().header.stamp + std::chrono::seconds(1) > msg.header.stamp) {
       break;
     }
     twist_queue_.pop_front();
@@ -97,35 +89,31 @@ Eigen::Matrix4f CombineCloudHandlerBase::compute_transform_to_adjust_for_old_tim
     return Eigen::Matrix4f::Identity();
   }
 
-  const int64_t old_nanoseconds = utils::to_nanoseconds(old_stamp);
-  const int64_t new_nanoseconds = utils::to_nanoseconds(new_stamp);
-
   auto old_twist_it = std::lower_bound(
-    std::begin(twist_queue_), std::end(twist_queue_), old_nanoseconds,
-    [](const geometry_msgs::msg::TwistStamped & x, const int64_t t) {
-      return utils::to_nanoseconds(x.header.stamp) < t;
+    std::begin(twist_queue_), std::end(twist_queue_), old_stamp,
+    [](const geometry_msgs::msg::TwistStamped & x, const builtin_interfaces::msg::Time & t) {
+      return x.header.stamp < t;
     });
   old_twist_it = old_twist_it == twist_queue_.end() ? (twist_queue_.end() - 1) : old_twist_it;
 
   auto new_twist_it = std::lower_bound(
-    std::begin(twist_queue_), std::end(twist_queue_), new_nanoseconds,
-    [](const geometry_msgs::msg::TwistStamped & x, const int64_t t) {
-      return utils::to_nanoseconds(x.header.stamp) < t;
+    std::begin(twist_queue_), std::end(twist_queue_), new_stamp,
+    [](const geometry_msgs::msg::TwistStamped & x, const builtin_interfaces::msg::Time & t) {
+      return x.header.stamp < t;
     });
   new_twist_it = new_twist_it == twist_queue_.end() ? (twist_queue_.end() - 1) : new_twist_it;
 
-  // Accumulate the time delta in integer nanoseconds and only convert each step to seconds, so dt
-  // keeps full nanosecond precision. Subtracting two absolute double-second stamps (~1.7e9) would
-  // lose a few hundred ns to floating-point rounding.
-  int64_t prev_nanoseconds = old_nanoseconds;
+  // operator-(Time, Time) subtracts in integer nanoseconds, so each dt keeps full nanosecond
+  // precision. Subtracting two absolute double-second stamps (~1.7e9) would lose a few hundred ns
+  // to floating-point rounding.
+  builtin_interfaces::msg::Time prev_stamp = old_stamp;
   double x = 0.0;
   double y = 0.0;
   double yaw = 0.0;
   for (auto twist_it = old_twist_it; twist_it != new_twist_it + 1; ++twist_it) {
-    const int64_t current_nanoseconds = (twist_it != new_twist_it)
-                                          ? utils::to_nanoseconds((*twist_it).header.stamp)
-                                          : new_nanoseconds;
-    const double dt = static_cast<double>(current_nanoseconds - prev_nanoseconds) * 1e-9;
+    const builtin_interfaces::msg::Time & current_stamp =
+      (twist_it != new_twist_it) ? (*twist_it).header.stamp : new_stamp;
+    const double dt = std::chrono::duration<double>(current_stamp - prev_stamp).count();
 
     if (std::fabs(dt) > 0.1) {
       RCLCPP_WARN_STREAM_THROTTLE(
@@ -139,7 +127,7 @@ Eigen::Matrix4f CombineCloudHandlerBase::compute_transform_to_adjust_for_old_tim
     yaw += (*twist_it).twist.angular.z * dt;
     x += distance * std::cos(yaw);
     y += distance * std::sin(yaw);
-    prev_nanoseconds = utils::to_nanoseconds((*twist_it).header.stamp);
+    prev_stamp = (*twist_it).header.stamp;
   }
 
   Eigen::Matrix4f transformation_matrix = Eigen::Matrix4f::Identity();

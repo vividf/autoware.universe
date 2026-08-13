@@ -18,6 +18,7 @@
 #include "combine_cloud_handler_base.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -60,6 +61,16 @@ public:
   void allocate_pointclouds() override {};
 
 protected:
+  /// @brief TimeHash defines a custom hash function for builtin_interfaces::msg::Time by using
+  /// its nanoseconds representation as the hash value.
+  struct TimeHash
+  {
+    std::size_t operator()(const builtin_interfaces::msg::Time & t) const
+    {
+      return std::hash<int64_t>()(static_cast<int64_t>(t.sec) * 1'000'000'000LL + t.nanosec);
+    }
+  };
+
   static void convert_to_xyzirc_cloud(
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_cloud,
     sensor_msgs::msg::PointCloud2::UniquePtr & xyzirc_cloud);
@@ -76,8 +87,8 @@ protected:
 
   void correct_pointcloud_motion(
     const std::unique_ptr<sensor_msgs::msg::PointCloud2> & transformed_cloud_ptr,
-    const std::vector<int64_t> & pc_nanoseconds,
-    std::unordered_map<int64_t, Eigen::Matrix4f> & transform_memo,
+    const std::vector<builtin_interfaces::msg::Time> & pc_stamps,
+    std::unordered_map<builtin_interfaces::msg::Time, Eigen::Matrix4f, TimeHash> & transform_memo,
     std::unique_ptr<sensor_msgs::msg::PointCloud2> & transformed_delay_compensated_cloud_ptr);
 };
 

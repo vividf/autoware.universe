@@ -15,7 +15,7 @@
 #include "autoware/pointcloud_preprocessor/concatenate_data/combine_cloud_handler.hpp"
 
 #include "autoware/pointcloud_preprocessor/concatenate_data/concatenation_info_manager.hpp"
-#include "conversion.hpp"
+#include "time_utils.hpp"
 
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
@@ -112,31 +112,30 @@ void CombineCloudHandler<sensor_msgs::msg::PointCloud2>::append_pointcloud(
 {
   // Both clouds share the PointXYZIRC layout (identical fields and point_step), so concatenating is
   // a byte append of the point data. width/height/row_step are recomputed by the caller afterwards.
-  if (src.data.empty()) return;
   dst.data.insert(dst.data.end(), src.data.begin(), src.data.end());
 }
 
 void CombineCloudHandler<sensor_msgs::msg::PointCloud2>::correct_pointcloud_motion(
   const std::unique_ptr<sensor_msgs::msg::PointCloud2> & transformed_cloud_ptr,
-  const std::vector<int64_t> & pc_nanoseconds,
-  std::unordered_map<int64_t, Eigen::Matrix4f> & transform_memo,
+  const std::vector<builtin_interfaces::msg::Time> & pc_stamps,
+  std::unordered_map<builtin_interfaces::msg::Time, Eigen::Matrix4f, TimeHash> & transform_memo,
   std::unique_ptr<sensor_msgs::msg::PointCloud2> & transformed_delay_compensated_cloud_ptr)
 {
   Eigen::Matrix4f adjust_to_old_data_transform = Eigen::Matrix4f::Identity();
-  int64_t current_cloud_nanoseconds = utils::to_nanoseconds(transformed_cloud_ptr->header.stamp);
-  for (const auto & stamp_nanoseconds : pc_nanoseconds) {
-    if (stamp_nanoseconds >= current_cloud_nanoseconds) continue;
+  builtin_interfaces::msg::Time current_cloud_stamp = transformed_cloud_ptr->header.stamp;
+  for (const auto & stamp : pc_stamps) {
+    if (stamp >= current_cloud_stamp) continue;
 
     Eigen::Matrix4f new_to_old_transform;
-    if (transform_memo.find(stamp_nanoseconds) != transform_memo.end()) {
-      new_to_old_transform = transform_memo[stamp_nanoseconds];
+    if (transform_memo.find(stamp) != transform_memo.end()) {
+      new_to_old_transform = transform_memo[stamp];
     } else {
-      new_to_old_transform = compute_transform_to_adjust_for_old_timestamp(
-        utils::to_ros_time(stamp_nanoseconds), utils::to_ros_time(current_cloud_nanoseconds));
-      transform_memo[stamp_nanoseconds] = new_to_old_transform;
+      new_to_old_transform =
+        compute_transform_to_adjust_for_old_timestamp(stamp, current_cloud_stamp);
+      transform_memo[stamp] = new_to_old_transform;
     }
     adjust_to_old_data_transform = new_to_old_transform * adjust_to_old_data_transform;
-    current_cloud_nanoseconds = stamp_nanoseconds;
+    current_cloud_stamp = stamp;
   }
   transform_pointcloud(
     adjust_to_old_data_transform, *transformed_cloud_ptr, *transformed_delay_compensated_cloud_ptr);
@@ -153,19 +152,19 @@ CombineCloudHandler<sensor_msgs::msg::PointCloud2>::combine_pointclouds(
 
   if (topic_to_cloud_map.empty()) return concatenate_cloud_result;
 
-  std::vector<int64_t> pc_nanoseconds;
-  pc_nanoseconds.reserve(topic_to_cloud_map.size());
+  std::vector<builtin_interfaces::msg::Time> pc_stamps;
+  pc_stamps.reserve(topic_to_cloud_map.size());
 
   for (const auto & [topic, cloud] : topic_to_cloud_map) {
-    pc_nanoseconds.emplace_back(utils::to_nanoseconds(cloud->header.stamp));
-    concatenate_cloud_result.topic_to_original_stamp_map[topic] =
-      utils::to_seconds(cloud->header.stamp);
+    pc_stamps.emplace_back(cloud->header.stamp);
+    concatenate_cloud_result.topic_to_original_stamp_map[topic] = to_seconds(cloud->header.stamp);
   }
   // Descending order (newest first) is required by correct_pointcloud_motion().
-  std::sort(pc_nanoseconds.begin(), pc_nanoseconds.end(), std::greater<int64_t>());
-  const builtin_interfaces::msg::Time oldest_stamp = utils::to_ros_time(pc_nanoseconds.back());
+  std::sort(
+    pc_stamps.begin(), pc_stamps.end(), [](const auto & a, const auto & b) { return b < a; });
+  const builtin_interfaces::msg::Time oldest_stamp = pc_stamps.back();
 
-  std::unordered_map<int64_t, Eigen::Matrix4f> transform_memo;
+  std::unordered_map<builtin_interfaces::msg::Time, Eigen::Matrix4f, TimeHash> transform_memo;
 
   // Before combining the pointclouds, initialize and reserve space for the concatenated pointcloud
   concatenate_cloud_result.concatenate_cloud_ptr =
@@ -206,8 +205,7 @@ CombineCloudHandler<sensor_msgs::msg::PointCloud2>::combine_pointclouds(
     if (is_motion_compensated_) {
       transformed_delay_compensated_cloud_ptr = std::make_unique<sensor_msgs::msg::PointCloud2>();
       correct_pointcloud_motion(
-        transformed_cloud_ptr, pc_nanoseconds, transform_memo,
-        transformed_delay_compensated_cloud_ptr);
+        transformed_cloud_ptr, pc_stamps, transform_memo, transformed_delay_compensated_cloud_ptr);
     } else {
       transformed_delay_compensated_cloud_ptr = std::move(transformed_cloud_ptr);
     }
