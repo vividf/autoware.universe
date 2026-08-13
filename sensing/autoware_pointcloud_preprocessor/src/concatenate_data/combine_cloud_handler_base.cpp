@@ -31,14 +31,16 @@ void CombineCloudHandlerBase::process_twist(
 
   // If time jumps backwards (e.g. when a rosbag restarts), clear buffer
   if (!twist_queue_.empty()) {
-    if (twist_queue_.front().header.stamp > msg.header.stamp) {
+    if (is_earlier(msg.header.stamp, twist_queue_.front().header.stamp)) {
       twist_queue_.clear();
     }
   }
 
   // Twist data in the queue that is older than the current twist by 1 second will be cleared.
+  const auto cutoff_time = add(msg.header.stamp, -std::chrono::seconds(1));
+
   while (!twist_queue_.empty()) {
-    if (twist_queue_.front().header.stamp + std::chrono::seconds(1) > msg.header.stamp) {
+    if (is_earlier(cutoff_time, twist_queue_.front().header.stamp)) {
       break;
     }
     twist_queue_.pop_front();
@@ -56,14 +58,16 @@ void CombineCloudHandlerBase::process_odometry(
 
   // If time jumps backwards (e.g. when a rosbag restarts), clear buffer
   if (!twist_queue_.empty()) {
-    if (twist_queue_.front().header.stamp > msg.header.stamp) {
+    if (is_earlier(msg.header.stamp, twist_queue_.front().header.stamp)) {
       twist_queue_.clear();
     }
   }
 
   // Twist data in the queue that is older than the current twist by 1 second will be cleared.
+  const auto cutoff_time = add(msg.header.stamp, -std::chrono::seconds(1));
+
   while (!twist_queue_.empty()) {
-    if (twist_queue_.front().header.stamp + std::chrono::seconds(1) > msg.header.stamp) {
+    if (is_earlier(cutoff_time, twist_queue_.front().header.stamp)) {
       break;
     }
     twist_queue_.pop_front();
@@ -92,28 +96,24 @@ Eigen::Matrix4f CombineCloudHandlerBase::compute_transform_to_adjust_for_old_tim
   auto old_twist_it = std::lower_bound(
     std::begin(twist_queue_), std::end(twist_queue_), old_stamp,
     [](const geometry_msgs::msg::TwistStamped & x, const builtin_interfaces::msg::Time & t) {
-      return x.header.stamp < t;
+      return is_earlier(x.header.stamp, t);
     });
   old_twist_it = old_twist_it == twist_queue_.end() ? (twist_queue_.end() - 1) : old_twist_it;
 
   auto new_twist_it = std::lower_bound(
     std::begin(twist_queue_), std::end(twist_queue_), new_stamp,
     [](const geometry_msgs::msg::TwistStamped & x, const builtin_interfaces::msg::Time & t) {
-      return x.header.stamp < t;
+      return is_earlier(x.header.stamp, t);
     });
   new_twist_it = new_twist_it == twist_queue_.end() ? (twist_queue_.end() - 1) : new_twist_it;
 
-  // operator-(Time, Time) subtracts in integer nanoseconds, so each dt keeps full nanosecond
-  // precision. Subtracting two absolute double-second stamps (~1.7e9) would lose a few hundred ns
-  // to floating-point rounding.
-  builtin_interfaces::msg::Time prev_stamp = old_stamp;
+  auto prev_stamp = old_stamp;
   double x = 0.0;
   double y = 0.0;
   double yaw = 0.0;
   for (auto twist_it = old_twist_it; twist_it != new_twist_it + 1; ++twist_it) {
-    const builtin_interfaces::msg::Time & current_stamp =
-      (twist_it != new_twist_it) ? (*twist_it).header.stamp : new_stamp;
-    const double dt = std::chrono::duration<double>(current_stamp - prev_stamp).count();
+    const auto & current_stamp = (twist_it != new_twist_it) ? (*twist_it).header.stamp : new_stamp;
+    const double dt = std::chrono::duration<double>(subtract(current_stamp, prev_stamp)).count();
 
     if (std::fabs(dt) > 0.1) {
       RCLCPP_WARN_STREAM_THROTTLE(

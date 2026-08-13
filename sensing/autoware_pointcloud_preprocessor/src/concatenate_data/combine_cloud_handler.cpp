@@ -124,7 +124,7 @@ void CombineCloudHandler<sensor_msgs::msg::PointCloud2>::correct_pointcloud_moti
   Eigen::Matrix4f adjust_to_old_data_transform = Eigen::Matrix4f::Identity();
   builtin_interfaces::msg::Time current_cloud_stamp = transformed_cloud_ptr->header.stamp;
   for (const auto & stamp : pc_stamps) {
-    if (stamp >= current_cloud_stamp) continue;
+    if (!is_earlier(stamp, current_cloud_stamp)) continue;
 
     Eigen::Matrix4f new_to_old_transform;
     if (transform_memo.find(stamp) != transform_memo.end()) {
@@ -160,8 +160,9 @@ CombineCloudHandler<sensor_msgs::msg::PointCloud2>::combine_pointclouds(
     concatenate_cloud_result.topic_to_original_stamp_map[topic] = to_seconds(cloud->header.stamp);
   }
   // Descending order (newest first) is required by correct_pointcloud_motion().
-  std::sort(
-    pc_stamps.begin(), pc_stamps.end(), [](const auto & a, const auto & b) { return b < a; });
+  std::sort(pc_stamps.begin(), pc_stamps.end(), [](const auto & a, const auto & b) {
+    return is_earlier(b, a);
+  });
   const builtin_interfaces::msg::Time oldest_stamp = pc_stamps.back();
 
   std::unordered_map<builtin_interfaces::msg::Time, Eigen::Matrix4f, TimeHash> transform_memo;
