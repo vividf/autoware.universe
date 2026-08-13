@@ -69,7 +69,7 @@ protected:
 
     concatenate_node_ =
       std::make_shared<PointCloudConcatenateDataSynchronizerComponent>(node_options);
-    combine_cloud_handler_ = std::make_shared<CombineCloudHandler<PointCloud2Traits>>(
+    combine_cloud_handler_ = std::make_shared<CombineCloudHandler<sensor_msgs::msg::PointCloud2>>(
       *concatenate_node_, input_topics, "base_link", true, true, true);
 
     collector_ = std::make_shared<CloudCollector<PointCloud2Traits>>(
@@ -172,7 +172,7 @@ protected:
   }
 
   std::shared_ptr<PointCloudConcatenateDataSynchronizerComponent> concatenate_node_;
-  std::shared_ptr<CombineCloudHandler<PointCloud2Traits>> combine_cloud_handler_;
+  std::shared_ptr<CombineCloudHandler<sensor_msgs::msg::PointCloud2>> combine_cloud_handler_;
   std::shared_ptr<CloudCollector<PointCloud2Traits>> collector_;
   std::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_broadcaster_;
 

@@ -16,7 +16,6 @@
 
 #include "collector_info.hpp"
 #include "combine_cloud_handler_base.hpp"
-#include "traits.hpp"
 
 #include <memory>
 #include <string>
@@ -26,16 +25,18 @@
 // ROS includes
 #include "autoware/point_types/types.hpp"
 
+#include <sensor_msgs/msg/point_cloud2.hpp>
+
 namespace autoware::pointcloud_preprocessor
 {
 using autoware::point_types::PointXYZIRC;
 using point_cloud_msg_wrapper::PointCloud2Modifier;
 
-template <typename MsgTraits>
+template <typename PointCloudMsgT>
 class CombineCloudHandler;
 
 template <>
-class CombineCloudHandler<PointCloud2Traits> : public CombineCloudHandlerBase
+class CombineCloudHandler<sensor_msgs::msg::PointCloud2> : public CombineCloudHandlerBase
 {
 public:
   CombineCloudHandler(
@@ -50,8 +51,8 @@ public:
 
   virtual ~CombineCloudHandler() = default;
 
-  ConcatenatedCloudResult<PointCloud2Traits> combine_pointclouds(
-    std::unordered_map<std::string, typename PointCloud2Traits::PointCloudMessage::ConstSharedPtr> &
+  ConcatenatedCloudResult<sensor_msgs::msg::PointCloud2> combine_pointclouds(
+    std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::ConstSharedPtr> &
       topic_to_cloud_map,
     const std::shared_ptr<CollectorInfoBase> & collector_info);
 
@@ -69,15 +70,14 @@ protected:
   };
 
   static void convert_to_xyzirc_cloud(
-    const typename PointCloud2Traits::PointCloudMessage::ConstSharedPtr & input_cloud,
-    typename PointCloud2Traits::PointCloudMessage::UniquePtr & xyzirc_cloud);
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_cloud,
+    sensor_msgs::msg::PointCloud2::UniquePtr & xyzirc_cloud);
 
   void correct_pointcloud_motion(
-    const std::unique_ptr<PointCloud2Traits::PointCloudMessage> & transformed_cloud_ptr,
+    const std::unique_ptr<sensor_msgs::msg::PointCloud2> & transformed_cloud_ptr,
     const std::vector<rclcpp::Time> & pc_stamps,
     std::unordered_map<rclcpp::Time, Eigen::Matrix4f, RclcppTimeHash> & transform_memo,
-    std::unique_ptr<PointCloud2Traits::PointCloudMessage> &
-      transformed_delay_compensated_cloud_ptr);
+    std::unique_ptr<sensor_msgs::msg::PointCloud2> & transformed_delay_compensated_cloud_ptr);
 };
 
 }  // namespace autoware::pointcloud_preprocessor

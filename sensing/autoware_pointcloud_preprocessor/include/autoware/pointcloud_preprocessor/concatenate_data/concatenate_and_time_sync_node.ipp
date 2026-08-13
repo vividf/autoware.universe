@@ -105,9 +105,10 @@ PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::
   }
 
   // Combine cloud handler
-  combine_cloud_handler_ = std::make_shared<CombineCloudHandler<MsgTraits>>(
-    *this, params_.input_topics, params_.output_frame, params_.is_motion_compensated,
-    params_.publish_synchronized_pointcloud, params_.keep_input_frame_in_synchronized_pointcloud);
+  combine_cloud_handler_ =
+    std::make_shared<CombineCloudHandler<typename MsgTraits::PointCloudMessage>>(
+      *this, params_.input_topics, params_.output_frame, params_.is_motion_compensated,
+      params_.publish_synchronized_pointcloud, params_.keep_input_frame_in_synchronized_pointcloud);
 
   // Diagnostic Updater
   diagnostics_interface_ =
@@ -265,7 +266,7 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::odom_ca
 
 template <typename MsgTraits>
 void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::publish_clouds(
-  ConcatenatedCloudResult<MsgTraits> && concatenated_cloud_result,
+  ConcatenatedCloudResult<typename MsgTraits::PointCloudMessage> && concatenated_cloud_result,
   std::shared_ptr<CollectorInfoBase> collector_info)
 {
   DiagnosticInfo diagnostic_info;
