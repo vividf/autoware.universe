@@ -17,6 +17,8 @@
 #include "collector_info.hpp"
 #include "combine_cloud_handler_base.hpp"
 
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -59,13 +61,13 @@ public:
   void allocate_pointclouds() override {};
 
 protected:
-  /// @brief RclcppTimeHash structure defines a custom hash function for the rclcpp::Time type by
-  /// using its nanoseconds representation as the hash value.
-  struct RclcppTimeHash
+  /// @brief TimeHash defines a custom hash function for builtin_interfaces::msg::Time by using
+  /// its nanoseconds representation as the hash value.
+  struct TimeHash
   {
-    std::size_t operator()(const rclcpp::Time & t) const
+    std::size_t operator()(const builtin_interfaces::msg::Time & t) const
     {
-      return std::hash<int64_t>()(t.nanoseconds());
+      return std::hash<int64_t>()(static_cast<int64_t>(t.sec) * 1'000'000'000LL + t.nanosec);
     }
   };
 
@@ -73,10 +75,20 @@ protected:
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_cloud,
     sensor_msgs::msg::PointCloud2::UniquePtr & xyzirc_cloud);
 
+  // ROS-runtime-free replacement for pcl_ros::transformPointCloud(Eigen::Matrix4f, in, out):
+  static void transform_pointcloud(
+    const Eigen::Matrix4f & transform, const sensor_msgs::msg::PointCloud2 & in,
+    sensor_msgs::msg::PointCloud2 & out);
+
+  // Appends src's point data onto dst in place (both must share the PointXYZIRC layout). Replaces
+  // pcl::concatenatePointCloud, whose sensor_msgs overload lives in rclcpp-pulling pcl_conversions.
+  static void append_pointcloud(
+    const sensor_msgs::msg::PointCloud2 & src, sensor_msgs::msg::PointCloud2 & dst);
+
   void correct_pointcloud_motion(
     const std::unique_ptr<sensor_msgs::msg::PointCloud2> & transformed_cloud_ptr,
-    const std::vector<rclcpp::Time> & pc_stamps,
-    std::unordered_map<rclcpp::Time, Eigen::Matrix4f, RclcppTimeHash> & transform_memo,
+    const std::vector<builtin_interfaces::msg::Time> & pc_stamps,
+    std::unordered_map<builtin_interfaces::msg::Time, Eigen::Matrix4f, TimeHash> & transform_memo,
     std::unique_ptr<sensor_msgs::msg::PointCloud2> & transformed_delay_compensated_cloud_ptr);
 };
 

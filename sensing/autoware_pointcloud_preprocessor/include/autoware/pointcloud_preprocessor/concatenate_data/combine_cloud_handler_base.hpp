@@ -18,6 +18,7 @@
 #include "matching_strategy_type.hpp"
 
 #include <Eigen/Core>
+#include <builtin_interfaces/msg/time.hpp>
 
 #include <deque>
 #include <memory>
@@ -76,7 +77,8 @@ public:
   std::deque<geometry_msgs::msg::TwistStamped> get_twist_queue();
 
   Eigen::Matrix4f compute_transform_to_adjust_for_old_timestamp(
-    const rclcpp::Time & old_stamp, const rclcpp::Time & new_stamp);
+    const builtin_interfaces::msg::Time & old_stamp,
+    const builtin_interfaces::msg::Time & new_stamp);
 
   virtual void allocate_pointclouds() = 0;
 

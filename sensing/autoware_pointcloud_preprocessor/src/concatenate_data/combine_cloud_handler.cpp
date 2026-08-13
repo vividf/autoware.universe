@@ -15,14 +15,12 @@
 #include "autoware/pointcloud_preprocessor/concatenate_data/combine_cloud_handler.hpp"
 
 #include "autoware/pointcloud_preprocessor/concatenate_data/concatenation_info_manager.hpp"
-
-#include <pcl_ros/transforms.hpp>
+#include "time_utils.hpp"
 
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
-#include <pcl_conversions/pcl_conversions.h>
-
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -88,16 +86,45 @@ void CombineCloudHandler<sensor_msgs::msg::PointCloud2>::convert_to_xyzirc_cloud
   }
 }
 
+void CombineCloudHandler<sensor_msgs::msg::PointCloud2>::transform_pointcloud(
+  const Eigen::Matrix4f & transform, const sensor_msgs::msg::PointCloud2 & in,
+  sensor_msgs::msg::PointCloud2 & out)
+{
+  // Same implementation as pcl::transformPointCloud
+  out = in;
+
+  if (out.data.empty()) return;
+
+  sensor_msgs::PointCloud2Iterator<float> it_x(out, "x");
+  sensor_msgs::PointCloud2Iterator<float> it_y(out, "y");
+  sensor_msgs::PointCloud2Iterator<float> it_z(out, "z");
+  for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z) {
+    const Eigen::Vector4f point(*it_x, *it_y, *it_z, 1.0f);
+    const Eigen::Vector4f transformed = transform * point;
+    *it_x = transformed.x();
+    *it_y = transformed.y();
+    *it_z = transformed.z();
+  }
+}
+
+void CombineCloudHandler<sensor_msgs::msg::PointCloud2>::append_pointcloud(
+  const sensor_msgs::msg::PointCloud2 & src, sensor_msgs::msg::PointCloud2 & dst)
+{
+  // Both clouds share the PointXYZIRC layout (identical fields and point_step), so concatenating is
+  // a byte append of the point data. width/height/row_step are recomputed by the caller afterwards.
+  dst.data.insert(dst.data.end(), src.data.begin(), src.data.end());
+}
+
 void CombineCloudHandler<sensor_msgs::msg::PointCloud2>::correct_pointcloud_motion(
   const std::unique_ptr<sensor_msgs::msg::PointCloud2> & transformed_cloud_ptr,
-  const std::vector<rclcpp::Time> & pc_stamps,
-  std::unordered_map<rclcpp::Time, Eigen::Matrix4f, RclcppTimeHash> & transform_memo,
+  const std::vector<builtin_interfaces::msg::Time> & pc_stamps,
+  std::unordered_map<builtin_interfaces::msg::Time, Eigen::Matrix4f, TimeHash> & transform_memo,
   std::unique_ptr<sensor_msgs::msg::PointCloud2> & transformed_delay_compensated_cloud_ptr)
 {
   Eigen::Matrix4f adjust_to_old_data_transform = Eigen::Matrix4f::Identity();
-  rclcpp::Time current_cloud_stamp = rclcpp::Time(transformed_cloud_ptr->header.stamp);
+  builtin_interfaces::msg::Time current_cloud_stamp = transformed_cloud_ptr->header.stamp;
   for (const auto & stamp : pc_stamps) {
-    if (stamp >= current_cloud_stamp) continue;
+    if (!is_earlier(stamp, current_cloud_stamp)) continue;
 
     Eigen::Matrix4f new_to_old_transform;
     if (transform_memo.find(stamp) != transform_memo.end()) {
@@ -110,7 +137,7 @@ void CombineCloudHandler<sensor_msgs::msg::PointCloud2>::correct_pointcloud_moti
     adjust_to_old_data_transform = new_to_old_transform * adjust_to_old_data_transform;
     current_cloud_stamp = stamp;
   }
-  pcl_ros::transformPointCloud(
+  transform_pointcloud(
     adjust_to_old_data_transform, *transformed_cloud_ptr, *transformed_delay_compensated_cloud_ptr);
 }
 
@@ -125,18 +152,20 @@ CombineCloudHandler<sensor_msgs::msg::PointCloud2>::combine_pointclouds(
 
   if (topic_to_cloud_map.empty()) return concatenate_cloud_result;
 
-  std::vector<rclcpp::Time> pc_stamps;
+  std::vector<builtin_interfaces::msg::Time> pc_stamps;
   pc_stamps.reserve(topic_to_cloud_map.size());
 
   for (const auto & [topic, cloud] : topic_to_cloud_map) {
     pc_stamps.emplace_back(cloud->header.stamp);
-    concatenate_cloud_result.topic_to_original_stamp_map[topic] =
-      rclcpp::Time(cloud->header.stamp).seconds();
+    concatenate_cloud_result.topic_to_original_stamp_map[topic] = to_seconds(cloud->header.stamp);
   }
-  std::sort(pc_stamps.begin(), pc_stamps.end(), std::greater<rclcpp::Time>());
-  const auto oldest_stamp = pc_stamps.back();
+  // Descending order (newest first) is required by correct_pointcloud_motion().
+  std::sort(pc_stamps.begin(), pc_stamps.end(), [](const auto & a, const auto & b) {
+    return is_earlier(b, a);
+  });
+  const builtin_interfaces::msg::Time oldest_stamp = pc_stamps.back();
 
-  std::unordered_map<rclcpp::Time, Eigen::Matrix4f, RclcppTimeHash> transform_memo;
+  std::unordered_map<builtin_interfaces::msg::Time, Eigen::Matrix4f, TimeHash> transform_memo;
 
   // Before combining the pointclouds, initialize and reserve space for the concatenated pointcloud
   concatenate_cloud_result.concatenate_cloud_ptr =
@@ -145,14 +174,10 @@ CombineCloudHandler<sensor_msgs::msg::PointCloud2>::combine_pointclouds(
     std::make_unique<autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo>(
       concatenation_info_manager_.reset_and_get_base_info());
   {
-    // Normally, pcl::concatenatePointCloud() copies the field layout (e.g., XYZIRC)
-    // from the non-empty point cloud when given one empty and one non-empty input.
-    //
-    // However, if all input clouds in topic_to_cloud_map are empty,
-    // the function receives two empty point clouds and does nothing,
-    // resulting in concatenate_cloud_ptr not being compatible with the XYZIRC format.
-    //
-    // To avoid this, we explicitly set the fields of concatenate_cloud_ptr to XYZIRC here.
+    // append_pointcloud() is a raw byte append and never creates or copies a field layout, so the
+    // output cloud's XYZIRC layout (fields, point_step, frame_id) must be established here up
+    // front. This also keeps the output XYZIRC-compatible when every input cloud is empty and
+    // nothing is ever appended.
     PointCloud2Modifier<PointXYZIRC, autoware::point_types::PointXYZIRCGenerator>
       concatenate_cloud_modifier{*concatenate_cloud_result.concatenate_cloud_ptr, output_frame_};
   }
@@ -190,9 +215,8 @@ CombineCloudHandler<sensor_msgs::msg::PointCloud2>::combine_pointclouds(
       transformed_delay_compensated_cloud_ptr->width *
         transformed_delay_compensated_cloud_ptr->height >
       0) {
-      pcl::concatenatePointCloud(
-        *concatenate_cloud_result.concatenate_cloud_ptr, *transformed_delay_compensated_cloud_ptr,
-        *concatenate_cloud_result.concatenate_cloud_ptr);
+      append_pointcloud(
+        *transformed_delay_compensated_cloud_ptr, *concatenate_cloud_result.concatenate_cloud_ptr);
       is_concatenated_cloud_dense = is_concatenated_cloud_dense && cloud->is_dense;
     }
 
