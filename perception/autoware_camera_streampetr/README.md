@@ -62,10 +62,10 @@ No                  Yes                                                         
 
 ### Input
 
-| Name                          | Type                                                             | Description                                                     |
-| ----------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------- |
-| `~/input/camera*/image`       | `sensor_msgs::msg::Image` or `sensor_msgs::msg::CompressedImage` | Input image topics (supports both compressed and uncompressed). |
-| `~/input/camera*/camera_info` | `sensor_msgs::msg::CameraInfo`                                   | Input camera info topics, for camera parameters.                |
+| Name                          | Type                           | Description                                                                                                                |
+| ----------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `~/input/camera*/image`       | `sensor_msgs::msg::Image`      | Input image topics, subscribed via `image_transport` (`raw` or `compressed` transport, selected by `is_compressed_image`). |
+| `~/input/camera*/camera_info` | `sensor_msgs::msg::CameraInfo` | Input camera info topics, for camera parameters.                                                                           |
 
 ### Output
 
@@ -124,7 +124,7 @@ Example polygon files: `config/camera9_polygons.yaml`, `config/camera10_polygons
 
 - `max_camera_time_diff`: Maximum allowed time difference between cameras (seconds)
 - `rois_number`: Number of camera ROIs/cameras (default: 6)
-- `is_compressed_image`: Whether input images are compressed
+- `is_compressed_image`: Whether to subscribe with the `compressed` image transport instead of `raw`
 - `is_distorted_image`: Whether input images are distorted
 - `multithreading`: Whether to use multithreading for handling image callbacks
 - `anchor_camera_id`: ID of the anchor camera for synchronization (default: 0)

@@ -21,10 +21,6 @@
 #include <tf2/LinearMath/Transform.hpp>
 #include <tf2/convert.hpp>
 
-#include <sensor_msgs/image_encodings.hpp>
-
-#include <cv_bridge/cv_bridge.h>
-
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -212,8 +208,8 @@ StreamPetrNode::StreamPetrNode(const rclcpp::NodeOptions & node_options)
     camera_callback_groups_.resize(rois_number_);
   }
   const bool is_compressed_image = declare_parameter<bool>("is_compressed_image");
+  const std::string image_transport_type = is_compressed_image ? "compressed" : "raw";
   camera_image_subs_.resize(rois_number_);
-  compressed_image_subs_.resize(rois_number_);
   for (size_t roi_i = 0; roi_i < rois_number_; ++roi_i) {
     auto sub_options = rclcpp::SubscriptionOptions();
     if (multithreading_) {
@@ -227,21 +223,18 @@ StreamPetrNode::StreamPetrNode(const rclcpp::NodeOptions & node_options)
       rclcpp::SensorDataQoS{}.keep_last(1), [this, roi_i](const CameraInfo::ConstSharedPtr msg) {
         this->camera_info_callback(msg, static_cast<int>(roi_i));
       });
-    if (is_compressed_image) {
-      compressed_image_subs_.at(roi_i) = this->create_subscription<CompressedImage>(
-        "~/input/camera" + std::to_string(roi_i) + "/image/compressed", rclcpp::SensorDataQoS(),
-        [this, roi_i](const CompressedImage::ConstSharedPtr msg) {
-          this->compressed_image_callback(msg, static_cast<int>(roi_i));
-        },
-        sub_options);
-    } else {
-      camera_image_subs_.at(roi_i) = this->create_subscription<Image>(
-        "~/input/camera" + std::to_string(roi_i) + "/image", rclcpp::SensorDataQoS(),
-        [this, roi_i](const Image::ConstSharedPtr msg) {
-          this->camera_image_callback(msg, static_cast<int>(roi_i));
-        },
-        sub_options);
-    }
+
+    // Explicitly resolve the topic name so remapping applies to the base topic before
+    // image_transport appends the transport suffix, please check
+    // https://github.com/ros-perception/image_transport_plugins/issues/155
+    const std::string base_topic = this->get_node_topics_interface()->resolve_topic_name(
+      "~/input/camera" + std::to_string(roi_i) + "/image");
+    camera_image_subs_.at(roi_i) = image_transport::create_subscription(
+      this, base_topic,
+      [this, roi_i](const Image::ConstSharedPtr & msg) {
+        this->camera_image_callback(msg, static_cast<int>(roi_i));
+      },
+      image_transport_type, rmw_qos_profile_sensor_data, sub_options);
   }
 
   // Publishers
@@ -322,23 +315,6 @@ void StreamPetrNode::camera_image_callback(
   if (camera_id == anchor_camera_id_) {
     step(input_camera_image_msg->header.stamp);
   }
-}
-
-void StreamPetrNode::compressed_image_callback(
-  CompressedImage::ConstSharedPtr input_compressed_image_msg, const int camera_id)
-{
-  cv_bridge::CvImagePtr cv_ptr;
-  try {
-    // bgr8 is what cv::imdecode already produces; rgb8 would cost a CPU cvtColor per frame while
-    // the preprocessing kernel swaps R/B on the GPU for free.
-    cv_ptr = cv_bridge::toCvCopy(input_compressed_image_msg, sensor_msgs::image_encodings::BGR8);
-  } catch (const std::exception & e) {
-    RCLCPP_ERROR(
-      rclcpp::get_logger(logger_name_.c_str()),
-      "Failed to decode compressed image of camera %d: %s", camera_id, e.what());
-    return;
-  }
-  camera_image_callback(cv_ptr->toImageMsg(), camera_id);
 }
 
 void StreamPetrNode::step(const rclcpp::Time & stamp)

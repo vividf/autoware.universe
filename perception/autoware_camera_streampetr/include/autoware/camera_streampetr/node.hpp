@@ -22,13 +22,13 @@
 #include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
+#include <image_transport/image_transport.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
-#include <sensor_msgs/msg/compressed_image.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_msgs/msg/tf_message.hpp>
@@ -58,7 +58,6 @@ namespace autoware::camera_streampetr
 class StreamPetrNode : public rclcpp::Node
 {
   using Image = sensor_msgs::msg::Image;
-  using CompressedImage = sensor_msgs::msg::CompressedImage;
   using CameraInfo = sensor_msgs::msg::CameraInfo;
   using DetectedObjects = autoware_perception_msgs::msg::DetectedObjects;
   using DetectedObject = autoware_perception_msgs::msg::DetectedObject;
@@ -69,8 +68,6 @@ public:
 private:
   void camera_info_callback(CameraInfo::ConstSharedPtr input_camera_info_msg, const int camera_id);
   void camera_image_callback(Image::ConstSharedPtr input_camera_image_msg, const int camera_id);
-  void compressed_image_callback(
-    CompressedImage::ConstSharedPtr input_compressed_image_msg, const int camera_id);
 
   void step(const rclcpp::Time & stamp);
 
@@ -115,8 +112,7 @@ private:
   const bool multithreading_;
   std::vector<rclcpp::CallbackGroup::SharedPtr> camera_callback_groups_;
 
-  std::vector<rclcpp::Subscription<Image>::SharedPtr> camera_image_subs_;
-  std::vector<rclcpp::Subscription<CompressedImage>::SharedPtr> compressed_image_subs_;
+  std::vector<image_transport::Subscriber> camera_image_subs_;
   rclcpp::Publisher<DetectedObjects>::SharedPtr pub_objects_;
 
   tf2_ros::Buffer tf_buffer_;
