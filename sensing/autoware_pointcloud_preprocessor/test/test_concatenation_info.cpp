@@ -39,7 +39,6 @@ protected:
   {
     // Setup test data
     input_topics_ = {"/topic1", "/topic2", "/topic3"};
-    strategy_ = autoware::pointcloud_preprocessor::MatchingStrategyType::advanced;
 
     // Create test header
     test_header_.frame_id = "base_link";
@@ -83,7 +82,8 @@ protected:
   }
 
   std::vector<std::string> input_topics_;
-  autoware::pointcloud_preprocessor::MatchingStrategyType strategy_{};
+  autoware::pointcloud_preprocessor::MatchingStrategyType strategy_{
+    autoware::pointcloud_preprocessor::MatchingStrategyType::advanced};
   sensor_msgs::msg::PointCloud2 test_cloud_1_;
   sensor_msgs::msg::PointCloud2 test_cloud_2_;
   sensor_msgs::msg::PointCloud2 test_cloud_3_;
