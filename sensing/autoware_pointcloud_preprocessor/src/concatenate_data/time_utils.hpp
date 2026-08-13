@@ -19,17 +19,11 @@
 #include <chrono>
 #include <cstdint>
 
-// Package-internal arithmetic for builtin_interfaces::msg::Time. Message types are plain structs
-// and fine to keep in the ROS-runtime-free core; what the core must not touch is rclcpp, so these
-// minimal helpers replace the rclcpp::Time ones. Named functions and a comparator on purpose, not
-// operator overloads: operators on a foreign type are only found by unqualified lookup from this
-// namespace (std::greater etc. instantiated inside std would not see them) and risk ODR clashes
-// with other packages doing the same. This header is intentionally not exported (it lives under
-// src/, not include/): it is an implementation detail of the concatenation core, not a public API.
+/// Package-internal stamp arithmetic for builtin_interfaces::msg::Time, replacing rclcpp::Time.
 namespace autoware::pointcloud_preprocessor
 {
 
-/// Strict weak ordering for stamps, usable as a Compare with the std algorithms.
+/// Strict weak ordering for stamps.
 struct TimeLess
 {
   bool operator()(
@@ -40,12 +34,10 @@ struct TimeLess
   }
 };
 
-/// Named instance so direct comparisons read like a predicate: is_earlier(a, b) means "a < b".
+/// is_earlier(a, b) means "a is before b".
 inline constexpr TimeLess is_earlier{};
 
-/// Advance a stamp by a (possibly negative) duration, e.g. add(stamp, -1s). The result is floor-
-/// normalized so nanosec stays in [0, 1e9) even when the result is negative (negative sec), per
-/// the ROS Time convention.
+/// stamp + duration. Floor-normalized, so nanosec stays in [0, 1e9) even for negative results.
 inline builtin_interfaces::msg::Time add(
   const builtin_interfaces::msg::Time & stamp, const std::chrono::nanoseconds & duration)
 {
@@ -63,9 +55,7 @@ inline builtin_interfaces::msg::Time add(
   return result;
 }
 
-/// Difference between two stamps, in integer nanoseconds. Converting a small difference to double
-/// seconds afterwards keeps full nanosecond precision; subtracting two absolute double-second
-/// stamps (~1.7e9) would lose a few hundred ns to floating-point rounding.
+/// a - b in integer nanoseconds (exact, unlike subtracting double-second stamps).
 inline std::chrono::nanoseconds subtract(
   const builtin_interfaces::msg::Time & a, const builtin_interfaces::msg::Time & b)
 {
@@ -74,10 +64,7 @@ inline std::chrono::nanoseconds subtract(
     (static_cast<int64_t>(a.nanosec) - b.nanosec));
 }
 
-/// Absolute stamp in double seconds. Computed as sec + nanosec * 1e-9 so the value is rounded only
-/// once (at the final addition); converting a total int64 nanosecond count (~1.7e18, beyond
-/// double's 2^53 integer range) to double first would round twice and can be off by a few hundred
-/// nanoseconds more.
+/// Stamp in double seconds. Rounds once; double(total nanoseconds) * 1e-9 would round twice.
 inline double to_seconds(const builtin_interfaces::msg::Time & stamp)
 {
   return static_cast<double>(stamp.sec) + static_cast<double>(stamp.nanosec) * 1e-9;
