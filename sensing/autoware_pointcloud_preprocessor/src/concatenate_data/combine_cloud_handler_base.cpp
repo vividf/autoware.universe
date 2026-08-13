@@ -113,7 +113,7 @@ Eigen::Matrix4f CombineCloudHandlerBase::compute_transform_to_adjust_for_old_tim
   double yaw = 0.0;
   for (auto twist_it = old_twist_it; twist_it != new_twist_it + 1; ++twist_it) {
     const auto & current_stamp = (twist_it != new_twist_it) ? (*twist_it).header.stamp : new_stamp;
-    const double dt = std::chrono::duration<double>(subtract(current_stamp, prev_stamp)).count();
+    const auto dt = std::chrono::duration<double>(subtract(current_stamp, prev_stamp)).count();
 
     if (std::fabs(dt) > 0.1) {
       RCLCPP_WARN_STREAM_THROTTLE(
