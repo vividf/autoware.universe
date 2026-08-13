@@ -54,7 +54,6 @@ public:
   bool check_if_all_camera_image_received() const;
   bool check_if_all_camera_info_received() const;
   float check_if_all_images_synced() const;
-  std::string get_missing_camera_status() const;
   float get_preprocess_time_ms() const;
   std::vector<float> get_camera_info_vector() const;
   std::shared_ptr<cuda::Tensor> get_image_input() const;
@@ -101,9 +100,12 @@ private:
     const int camera_id, const std::vector<std::uint8_t> & raster, const int width,
     const int height);
 
-  // Validates that the message can be fed to the model and reports whether the preprocessing
-  // kernel has to swap R/B. Returns false if the frame must be dropped.
-  bool validate_channel_order(
+  // Entrance check for every incoming frame: validates the encoding (rgb8/bgr8, reporting via
+  // swap_rb whether the preprocessing kernel has to swap R/B) and the buffer geometry. Both
+  // upload paths cudaMemcpyAsync exactly height * width * 3 densely packed bytes out of the
+  // message, so a padded row stride would silently shear the image and a truncated buffer would
+  // be a host-side out-of-bounds read. Returns false if the frame must be dropped.
+  bool validate_image_message(
     const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg, bool & swap_rb);
 
   const size_t rois_number_;

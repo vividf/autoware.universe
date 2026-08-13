@@ -184,7 +184,7 @@ void CameraDataStore::update_camera_image(
 {
   // Keep this above ++active_updates_ below, so an early return here has no counter to decrement.
   bool swap_rb = false;
-  if (!validate_channel_order(camera_id, input_camera_image_msg, swap_rb)) {
+  if (!validate_image_message(camera_id, input_camera_image_msg, swap_rb)) {
     return;
   }
 
@@ -250,7 +250,7 @@ void CameraDataStore::update_camera_image(
   }
 }
 
-bool CameraDataStore::validate_channel_order(
+bool CameraDataStore::validate_image_message(
   const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg, bool & swap_rb)
 {
   const std::string & encoding = input_camera_image_msg->encoding;
@@ -270,8 +270,11 @@ bool CameraDataStore::validate_channel_order(
     return false;
   }
 
-  // Both upload paths copy height * width * 3 densely packed bytes straight out of the message,
-  // so a padded row stride would shear the image and a truncated buffer would read out of bounds.
+  // Both upload paths cudaMemcpyAsync exactly height * width * 3 densely packed bytes out of the
+  // message without looking at step, but sensor_msgs/Image permits a padded row stride
+  // (step > width * 3) and does not guarantee data is large enough. A padded stride would
+  // silently shear every row of the model input; a truncated buffer would make the copy a
+  // host-side out-of-bounds read.
   const size_t row_bytes = static_cast<size_t>(input_camera_image_msg->width) * 3;
   const size_t expected_size = static_cast<size_t>(input_camera_image_msg->height) * row_bytes;
   if (
@@ -516,36 +519,6 @@ bool CameraDataStore::check_if_all_camera_image_received() const
     }
   }
   return true;
-}
-
-std::string CameraDataStore::get_missing_camera_status() const
-{
-  std::string missing_camera_info;
-  std::string missing_camera_image;
-  const auto append = [](std::string & list, const std::string & item) {
-    if (!list.empty()) {
-      list += ", ";
-    }
-    list += item;
-  };
-
-  for (size_t camera_id = 0; camera_id < camera_info_list_.size(); ++camera_id) {
-    if (!camera_info_list_[camera_id]) {
-      append(missing_camera_info, std::to_string(camera_id));
-    }
-    if (camera_image_timestamp_[camera_id] < 0) {
-      append(missing_camera_image, std::to_string(camera_id));
-    }
-  }
-
-  std::string status;
-  if (!missing_camera_info.empty()) {
-    append(status, "camera_info not received: [" + missing_camera_info + "]");
-  }
-  if (!missing_camera_image.empty()) {
-    append(status, "image not received: [" + missing_camera_image + "]");
-  }
-  return status.empty() ? "all received" : status;
 }
 
 float CameraDataStore::check_if_all_images_synced() const

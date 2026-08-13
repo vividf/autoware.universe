@@ -367,9 +367,7 @@ bool StreamPetrNode::validate_camera_sync()
   const float prediction_timestamp = data_store_->get_timestamp();
 
   if (tdiff < 0) {
-    RCLCPP_WARN(
-      rclcpp::get_logger(logger_name_.c_str()), "Not all camera info or image received: %s",
-      data_store_->get_missing_camera_status().c_str());
+    RCLCPP_WARN(rclcpp::get_logger(logger_name_.c_str()), "Not all camera info or image received");
     return false;
   }
 
