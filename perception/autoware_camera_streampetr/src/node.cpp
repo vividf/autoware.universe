@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -37,6 +38,15 @@ namespace autoware::camera_streampetr
 
 namespace
 {
+
+// DiagnosticStatusWrapper's double overload prints large values in scientific notation,
+// so format them as fixed-point strings instead.
+std::string format_milliseconds(const double milliseconds)
+{
+  char buffer[32];
+  std::snprintf(buffer, sizeof(buffer), "%.3f", milliseconds);
+  return std::string(buffer);
+}
 
 constexpr std::size_t kMaxCameraMaskId = 10;
 
@@ -229,6 +239,7 @@ StreamPetrNode::StreamPetrNode(const rclcpp::NodeOptions & node_options)
     // https://github.com/ros-perception/image_transport_plugins/issues/155
     const std::string base_topic = this->get_node_topics_interface()->resolve_topic_name(
       "~/input/camera" + std::to_string(roi_i) + "/image");
+    camera_image_topics_.push_back(base_topic);
     camera_image_subs_.at(roi_i) = image_transport::create_subscription(
       this, base_topic,
       [this, roi_i](const Image::ConstSharedPtr & msg) {
@@ -286,6 +297,14 @@ StreamPetrNode::StreamPetrNode(const rclcpp::NodeOptions & node_options)
     debug_publisher_ptr_ = std::make_unique<DebugPublisher>(this, this->get_name());
     stop_watch_ptr_->tic("latency/cycle_time_ms");
   }
+
+  max_image_age_ms_ = declare_parameter<double>("diagnostics.max_image_age_ms");
+  const double validation_callback_interval_ms =
+    declare_parameter<double>("diagnostics.validation_callback_interval_ms");
+
+  diagnostic_updater_.setHardwareID(this->get_name());
+  diagnostic_updater_.add("camera_status", this, &StreamPetrNode::diagnose_camera_status);
+  diagnostic_updater_.setPeriod(validation_callback_interval_ms / 1000.0);
 }
 
 void StreamPetrNode::camera_info_callback(
@@ -473,6 +492,98 @@ void StreamPetrNode::publish_debug_metrics(
   debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "latency/cycle_time_ms", stop_watch_ptr_->toc("latency/cycle_time_ms", true));
   stop_watch_ptr_->tic("latency/cycle_time_ms");
+}
+
+void StreamPetrNode::diagnose_camera_status(diagnostic_updater::DiagnosticStatusWrapper & stat)
+{
+  const rclcpp::Time now = this->get_clock()->now();
+  const auto camera_status = data_store_->get_camera_status();
+
+  std::size_t num_waiting = 0;
+  std::size_t num_stale = 0;
+  std::size_t num_rejected = 0;
+  int stalest_camera_id = -1;
+  double stalest_image_age_ms = 0.0;
+
+  for (std::size_t camera_id = 0; camera_id < camera_status.size(); ++camera_id) {
+    const auto & status = camera_status[camera_id];
+    const std::string prefix = "camera" + std::to_string(camera_id) + "/";
+
+    double age_ms = 0.0;
+    if (status.image_received) {
+      // Clamp at zero: header stamps run ahead of the node clock right after a rosbag loop.
+      age_ms = std::max(0.0, (now.seconds() - status.last_image_timestamp) * 1000.0);
+      if (age_ms > stalest_image_age_ms) {
+        stalest_image_age_ms = age_ms;
+        stalest_camera_id = static_cast<int>(camera_id);
+      }
+    }
+
+    std::string state;
+    if (status.input_rejected) {
+      state = "rejected";
+      ++num_rejected;
+    } else if (!status.camera_info_received) {
+      state = "waiting_camera_info";
+      ++num_waiting;
+    } else if (!status.image_received) {
+      state = "waiting_image";
+      ++num_waiting;
+    } else if (age_ms > max_image_age_ms_) {
+      state = "stale";
+      ++num_stale;
+    } else {
+      state = "active";
+    }
+
+    stat.add(prefix + "topic", camera_image_topics_[camera_id]);
+    stat.add(prefix + "state", state);
+    stat.add(prefix + "image_age_ms", status.image_received ? format_milliseconds(age_ms) : "n/a");
+  }
+
+  stat.add("num_cameras", static_cast<int>(camera_status.size()));
+  stat.add("num_waiting", static_cast<int>(num_waiting));
+  stat.add("num_stale", static_cast<int>(num_stale));
+  stat.add("num_rejected", static_cast<int>(num_rejected));
+  stat.add("stalest_camera_id", stalest_camera_id);
+  stat.add(
+    "stalest_image_age_ms",
+    stalest_camera_id >= 0 ? format_milliseconds(stalest_image_age_ms) : "n/a");
+
+  const float inter_camera_diff_s = data_store_->check_if_all_images_synced();
+  stat.add(
+    "max_inter_camera_time_diff_ms",
+    inter_camera_diff_s >= 0.0f ? format_milliseconds(inter_camera_diff_s * 1000.0) : "n/a");
+
+  auto level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+  std::stringstream message;
+
+  if (num_rejected > 0) {
+    level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+    message << num_rejected
+            << " camera(s) publish an encoding or buffer geometry the preprocessing cannot "
+               "consume.";
+  }
+  if (num_stale > 0) {
+    level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+    message << (message.tellp() > 0 ? " " : "") << num_stale << " camera(s) stale; camera"
+            << stalest_camera_id << " stopped publishing "
+            << format_milliseconds(stalest_image_age_ms) << " ms ago.";
+  }
+  if (level == diagnostic_msgs::msg::DiagnosticStatus::OK) {
+    if (num_waiting > 0) {
+      level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+      message << num_waiting << " camera(s) waiting for camera_info or a first image.";
+    } else if (inter_camera_diff_s > max_camera_time_diff_) {
+      level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+      message << "Inter-camera timestamp spread "
+              << format_milliseconds(inter_camera_diff_s * 1000.0)
+              << " ms exceeds max_camera_time_diff; prediction cycles are being skipped.";
+    }
+  }
+
+  const std::string summary = message.str();
+  stat.summary(level, summary.empty() ? "OK" : summary);
 }
 
 std::optional<std::vector<float>> StreamPetrNode::get_camera_extrinsics_vector()
