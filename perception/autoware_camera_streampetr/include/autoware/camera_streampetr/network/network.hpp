@@ -196,10 +196,12 @@ public:
   explicit StreamPetrNetwork(const NetworkConfig & config);
 
   ~StreamPetrNetwork();
-  void inference_detector(
-    const InferenceInputs & inputs,
-    std::vector<autoware_perception_msgs::msg::DetectedObject> & output_objects,
-    std::vector<float> & forward_time_ms);
+
+  // Runs the model only; returns with the stream synchronized.
+  void inference_detector(const InferenceInputs & inputs, std::vector<float> & forward_time_ms);
+
+  // Reads only the head's output bindings, so the camera store may be unfrozen before calling.
+  void postprocess(std::vector<autoware_perception_msgs::msg::DetectedObject> & output_objects);
 
   void wipe_memory();
 
@@ -217,8 +219,6 @@ private:
   void initializePositionEmbedding(const InferenceInputs & inputs);
   void executeBackbone(const InferenceInputs & inputs);
   void executePtsHead(const InferenceInputs & inputs);
-  void executePostprocessing(
-    std::vector<autoware_perception_msgs::msg::DetectedObject> & output_objects);
 
   NetworkConfig config_;
   std::shared_ptr<Logger> logger_;
@@ -230,7 +230,6 @@ private:
   std::unique_ptr<Duration> dur_backbone_;
   std::unique_ptr<Duration> dur_ptshead_;
   std::unique_ptr<Duration> dur_pos_embed_;
-  std::unique_ptr<Duration> dur_postprocess_;
 
   std::unique_ptr<PostprocessCuda> postprocess_cuda_;
   NonMaximumSuppression iou_bev_nms_;

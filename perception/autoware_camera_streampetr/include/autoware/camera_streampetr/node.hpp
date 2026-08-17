@@ -79,14 +79,22 @@ private:
   void reset_system_state();
   bool prepare_inference_data(const rclcpp::Time & stamp);
   void cleanup_on_failure();
-  std::optional<std::tuple<
-    std::vector<autoware_perception_msgs::msg::DetectedObject>, std::vector<float>, double>>
-  perform_inference();
+  // One cycle's detections and timing.
+  struct InferenceResult
+  {
+    std::vector<autoware_perception_msgs::msg::DetectedObject> objects;
+    std::vector<float> forward_time_ms;  // per subnetwork: backbone, ptshead, pos_embed
+    double inference_time_ms;
+    double postprocess_time_ms;
+  };
+  std::optional<InferenceResult> perform_inference();
   InferenceInputs create_inference_inputs();
   void publish_detection_results(
     const rclcpp::Time & stamp,
     const std::vector<autoware_perception_msgs::msg::DetectedObject> & output_objects);
-  void publish_debug_metrics(const std::vector<float> & forward_time_ms, double inference_time_ms);
+  void publish_debug_metrics(
+    const std::vector<float> & forward_time_ms, double inference_time_ms,
+    double postprocess_time_ms);
 
   // Timer driven so a dead camera cannot silence its own diagnostic.
   void diagnose_camera_status(diagnostic_updater::DiagnosticStatusWrapper & stat);
