@@ -142,11 +142,47 @@ PostprocessCuda::PostprocessCuda(const PostProcessingConfig & config, cudaStream
   boxes3d_d_ = autoware::cuda_utils::make_unique<Box3D[]>(config_.num_proposals_);
   filtered_boxes3d_d_ = autoware::cuda_utils::make_unique<Box3D[]>(config_.num_proposals_);
 
+  // 4x the box array plus slack covers the sort's radix passes and the scan storage.
+  thrust_arena_.initialize(
+    4 * static_cast<std::size_t>(config_.num_proposals_) * sizeof(Box3D) + (1u << 20));
+
   if (config_.circle_nms_dist_threshold_ > 0.0) {
     nms_boxes3d_d_ = autoware::cuda_utils::make_unique<Box3D[]>(config_.num_proposals_);
     keep_mask_d_ = autoware::cuda_utils::make_unique<bool[]>(config_.num_proposals_);
     nms_workspace_d_ = autoware::cuda_utils::make_unique<std::uint64_t[]>(
       circle_nms_workspace_size(config_.num_proposals_));
+  }
+}
+
+void ThrustTempArena::initialize(const std::size_t capacity_bytes)
+{
+  pool_ = autoware::cuda_utils::make_unique<char[]>(capacity_bytes);
+  capacity_ = capacity_bytes;
+  offset_ = 0;
+}
+
+char * ThrustTempArena::allocate(const std::ptrdiff_t num_bytes)
+{
+  constexpr std::size_t alignment = 256;
+  const std::size_t aligned =
+    (static_cast<std::size_t>(num_bytes) + alignment - 1) & ~(alignment - 1);
+  if (offset_ + aligned <= capacity_) {
+    char * result = pool_.get() + offset_;
+    offset_ += aligned;
+    return result;
+  }
+  // A frame that outgrows the arena falls back to cudaMalloc.
+  char * fallback = nullptr;
+  CHECK_CUDA_ERROR(cudaMalloc(&fallback, static_cast<std::size_t>(num_bytes)));
+  return fallback;
+}
+
+void ThrustTempArena::deallocate(char * ptr, std::size_t /*num_bytes*/)
+{
+  const bool from_pool =
+    pool_.get() != nullptr && ptr >= pool_.get() && ptr < pool_.get() + capacity_;
+  if (!from_pool) {
+    cudaFree(ptr);
   }
 }
 
@@ -164,8 +200,9 @@ cudaError_t PostprocessCuda::generate_detected_boxes3d_launch(
     boxes3d_d_.get());
   CHECK_CUDA_ERROR(cudaGetLastError());
 
-  // Thrust on the caller's stream keeps everything ordered without a device-wide sync.
-  const auto policy = autoware::cuda_utils::thrust_on_stream(stream);
+  // The arena supplies thrust's temporary storage so no algorithm below touches cudaMalloc.
+  thrust_arena_.reset();
+  const auto policy = thrust::cuda::par(thrust_arena_).on(stream);
 
   // Wrap raw pointer with thrust device pointer for thrust algorithms
   auto boxes3d_ptr = thrust::device_pointer_cast(boxes3d_d_.get());

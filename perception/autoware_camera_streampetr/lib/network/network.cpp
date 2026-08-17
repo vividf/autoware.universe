@@ -354,8 +354,10 @@ void StreamPetrNetwork::execute_backbone(const InferenceInputs & inputs)
 
 void StreamPetrNetwork::execute_pts_head(const InferenceInputs & inputs)
 {
-  pts_head_->binding("data_ego_pose")->load_from_vector(inputs.ego_pose);
-  pts_head_->binding("data_ego_pose_inv")->load_from_vector(inputs.ego_pose_inv);
+  // Async on stream_: the synchronous overload's legacy-default-stream copy would wait for the
+  // camera streams to drain. Stream ordering keeps these visible to the enqueueV3 below.
+  pts_head_->binding("data_ego_pose")->load_from_vector_async(inputs.ego_pose, stream_);
+  pts_head_->binding("data_ego_pose_inv")->load_from_vector_async(inputs.ego_pose_inv, stream_);
 
   dur_ptshead_->mark_begin(stream_);
 
