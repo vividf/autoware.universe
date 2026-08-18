@@ -47,18 +47,6 @@ algebra operations. */
 namespace autoware::camera_streampetr
 {
 
-// The ego mask is painted into the raw camera buffer, whose channel order follows the input
-// encoding, while the configured fill colour is always RGB. Reorder it for a BGR source so the
-// masked region ends up the colour that was actually configured.
-static std::array<std::uint8_t, 3> fill_in_source_order(
-  const std::array<std::uint8_t, 3> & fill_rgb, const bool source_is_bgr)
-{
-  if (source_is_bgr) {
-    return {fill_rgb[2], fill_rgb[1], fill_rgb[0]};
-  }
-  return fill_rgb;
-}
-
 // Helper struct for camera matrices (local to this file)
 struct CameraMatrices
 {
@@ -231,7 +219,7 @@ void CameraDataStore::update_camera_image(
     params.camera_offset, params.original_height, params.original_width, params.newH, params.newW,
     image_height_, image_width_, params.start_y, params.start_x,
     static_cast<const float *>(image_input_mean_->ptr),
-    static_cast<const float *>(image_input_std_->ptr), swap_rb, streams_.at(camera_id));
+    static_cast<const float *>(image_input_std_->ptr), streams_.at(camera_id));
 
   if (err != cudaSuccess) {
     RCLCPP_ERROR(
@@ -353,6 +341,20 @@ std::unique_ptr<CameraDataStore::Tensor> CameraDataStore::process_distorted_imag
     input_tensor->ptr, input_camera_image_msg->data.data(), input_tensor->nbytes(),
     cudaMemcpyHostToDevice, streams_[camera_id]);
 
+  // Convert to RGB immediately after the upload so every later stage (remap, ego mask, resize)
+  // sees the model's channel order regardless of the source encoding.
+  if (swap_rb) {
+    auto err_convert = convertBGRToRGB_launch(
+      static_cast<std::uint8_t *>(input_tensor->ptr), original_height, original_width,
+      streams_[camera_id]);
+    if (err_convert != cudaSuccess) {
+      RCLCPP_ERROR(
+        logger_, "convertBGRToRGB_launch failed for camera %d: %s", camera_id,
+        cudaGetErrorString(err_convert));
+      return nullptr;
+    }
+  }
+
   // Allocate GPU memory for undistorted image (same size as input - full resolution)
   auto image_input_tensor = std::make_unique<Tensor>(
     "camera_img", nvinfer1::Dims{3, {original_height, original_width, 3}},
@@ -376,7 +378,7 @@ std::unique_ptr<CameraDataStore::Tensor> CameraDataStore::process_distorted_imag
 
   if (ego_mask_built_[camera_id] && ego_mask_gpu_[camera_id]) {
     const auto & cfg = ego_mask_roi_configs_[camera_id].value();
-    const auto fill = fill_in_source_order(cfg.fill_rgb, swap_rb);
+    const auto & fill = cfg.fill_rgb;
     auto err_mask = applyEgoMask_launch(
       static_cast<std::uint8_t *>(image_input_tensor->ptr),
       static_cast<const std::uint8_t *>(ego_mask_gpu_[camera_id]->ptr), original_height,
@@ -403,9 +405,23 @@ std::unique_ptr<CameraDataStore::Tensor> CameraDataStore::process_regular_image(
     image_input_tensor->ptr, input_camera_image_msg->data.data(), image_input_tensor->nbytes(),
     cudaMemcpyHostToDevice, streams_.at(camera_id));
 
+  // Convert to RGB immediately after the upload so every later stage (ego mask, resize) sees the
+  // model's channel order regardless of the source encoding.
+  if (swap_rb) {
+    auto err_convert = convertBGRToRGB_launch(
+      static_cast<std::uint8_t *>(image_input_tensor->ptr), params.original_height,
+      params.original_width, streams_.at(camera_id));
+    if (err_convert != cudaSuccess) {
+      RCLCPP_ERROR(
+        logger_, "convertBGRToRGB_launch failed for camera %d: %s", camera_id,
+        cudaGetErrorString(err_convert));
+      return nullptr;
+    }
+  }
+
   if (ego_mask_built_[camera_id] && ego_mask_gpu_[camera_id]) {
     const auto & cfg = ego_mask_roi_configs_[camera_id].value();
-    const auto fill = fill_in_source_order(cfg.fill_rgb, swap_rb);
+    const auto & fill = cfg.fill_rgb;
     auto err_mask = applyEgoMask_launch(
       static_cast<std::uint8_t *>(image_input_tensor->ptr),
       static_cast<const std::uint8_t *>(ego_mask_gpu_[camera_id]->ptr), params.original_height,

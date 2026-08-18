@@ -101,10 +101,8 @@ private:
     const int height);
 
   // Entrance check for every incoming frame: validates the encoding (rgb8/bgr8, reporting via
-  // swap_rb whether the preprocessing kernel has to swap R/B) and the buffer geometry. Both
-  // upload paths cudaMemcpyAsync exactly height * width * 3 densely packed bytes out of the
-  // message, so a padded row stride would silently shear the image and a truncated buffer would
-  // be a host-side out-of-bounds read. Returns false if the frame must be dropped.
+  // swap_rb whether the buffer needs a BGR -> RGB conversion right after upload) and the buffer
+  // geometry.
   bool validate_image_message(
     const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg, bool & swap_rb);
 

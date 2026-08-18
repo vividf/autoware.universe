@@ -37,16 +37,38 @@
 
 namespace autoware::camera_streampetr
 {
+// In-place BGR -> RGB conversion: each thread swaps bytes 0 and 2 of one packed HWC pixel.
+__global__ void convertBGRToRGB_kernel(std::uint8_t * __restrict__ img, int num_pixels)
+{
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= num_pixels) return;
+
+  std::uint8_t * pixel = img + static_cast<size_t>(idx) * 3;
+  const std::uint8_t b = pixel[0];
+  pixel[0] = pixel[2];
+  pixel[2] = b;
+}
+
+cudaError_t convertBGRToRGB_launch(std::uint8_t * img, int height, int width, cudaStream_t stream)
+{
+  const int num_pixels = height * width;
+  const int threads = 256;
+  const int blocks = divup(num_pixels, threads);
+
+  convertBGRToRGB_kernel<<<blocks, threads, 0, stream>>>(img, num_pixels);
+
+  return cudaGetLastError();
+}
+
 // -------------------------------------------------------------------------
-// Fused Kernel: Anti-Aliased Resize -> Crop -> R/B Swap -> Normalize -> CHW Layout
+// Fused Kernel: Anti-Aliased Resize -> Crop -> Normalize -> CHW Layout
 // -------------------------------------------------------------------------
 // This kernel mimics PIL's resize (Bilinear/Triangle filter with adaptive support).
 // For downscaling, it expands the kernel window to cover all contributing pixels
 // (Anti-aliasing). For upscaling, it acts as standard bilinear interpolation.
 //
-// The model consumes RGB, so the output planes and `mean`/`std` are in RGB order. A BGR source is
-// handled by `swap_rb`, which exchanges channels 0 and 2 while writing the planar output -- free,
-// because that write is scattered per channel anyway.
+// The input buffer is always RGB here: a BGR source has already been converted in place right
+// after the host-to-device copy (see convertBGRToRGB_launch).
 __global__ void resizeAndExtractRoi_kernel(
   const std::uint8_t * __restrict__ input_img, float * __restrict__ output_img,
   int camera_offset,                 // Offset in output buffer (for multi-camera batching)
@@ -55,8 +77,7 @@ __global__ void resizeAndExtractRoi_kernel(
   int roi_h, int roi_w,              // Output ROI dimensions
   int roi_y_start, int roi_x_start,  // Top-left of ROI in the resized coordinate space
   const float * __restrict__ mean,   // Device pointer to 3 floats, RGB order
-  const float * __restrict__ std,    // Device pointer to 3 floats, RGB order
-  bool swap_rb                       // Source buffer is BGR: exchange channels 0 and 2
+  const float * __restrict__ std     // Device pointer to 3 floats, RGB order
 )
 {
   // 1. Calculate thread target pixel in the ROI (Output Image)
@@ -99,8 +120,7 @@ __global__ void resizeAndExtractRoi_kernel(
   y_min = max(0, y_min);
   y_max = min(in_h - 1, y_max);
 
-  // Accumulators, indexed by *source* channel. Which colour each one holds depends on the
-  // input encoding (RGB or BGR); the mapping to model channels happens at write time.
+  // Accumulators, one per RGB channel.
   float sum_c0 = 0.0f;
   float sum_c1 = 0.0f;
   float sum_c2 = 0.0f;
@@ -144,19 +164,14 @@ __global__ void resizeAndExtractRoi_kernel(
     sum_c2 /= sum_weight;
   }
 
-  // 9. Swap R/B if needed, normalize (Mean/Std) and write to output (Planar CHW)
-  //    Output layout: [Batch/Camera, Channel, Height, Width], always RGB.
-  //    Source channel i lands on model channel (swap_rb ? 2 - i : i); mean/std are indexed
-  //    by the *model* channel so they need no reordering here.
+  // 9. Normalize (Mean/Std) and write to output (Planar CHW)
+  //    Output layout: [Batch/Camera, Channel, Height, Width], RGB order.
   int area = roi_h * roi_w;
   int out_idx = out_y * roi_w + out_x;
 
-  const int dst_c0 = swap_rb ? 2 : 0;
-  const int dst_c2 = swap_rb ? 0 : 2;
-
-  output_img[camera_offset + (dst_c0 * area + out_idx)] = (sum_c0 - mean[dst_c0]) / std[dst_c0];
+  output_img[camera_offset + (0 * area + out_idx)] = (sum_c0 - mean[0]) / std[0];
   output_img[camera_offset + (1 * area + out_idx)] = (sum_c1 - mean[1]) / std[1];
-  output_img[camera_offset + (dst_c2 * area + out_idx)] = (sum_c2 - mean[dst_c2]) / std[dst_c2];
+  output_img[camera_offset + (2 * area + out_idx)] = (sum_c2 - mean[2]) / std[2];
 }
 
 cudaError_t resizeAndExtractRoi_launch(
@@ -166,8 +181,7 @@ cudaError_t resizeAndExtractRoi_launch(
   int H2, int W2,            // Resized image dimensions
   int H3, int W3,            // ROI dimensions
   int y_start, int x_start,  // ROI top-left coordinates in resized image
-  const float * channel_wise_mean, const float * channel_wise_std, bool swap_rb,
-  cudaStream_t stream)
+  const float * channel_wise_mean, const float * channel_wise_std, cudaStream_t stream)
 {
   // Define the block and grid dimensions
   dim3 threads(16, 16);
@@ -176,7 +190,7 @@ cudaError_t resizeAndExtractRoi_launch(
   // Launch the kernel
   resizeAndExtractRoi_kernel<<<blocks, threads, 0, stream>>>(
     input_img, output_img, camera_offset, H, W, H2, W2, H3, W3, y_start, x_start, channel_wise_mean,
-    channel_wise_std, swap_rb);
+    channel_wise_std);
 
   // Check for errors
   return cudaGetLastError();

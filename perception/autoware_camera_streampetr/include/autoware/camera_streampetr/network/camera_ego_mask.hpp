@@ -57,8 +57,8 @@ std::vector<EgoMaskPolygon> parsePolygonsYamlText(const std::string & yaml_text)
 std::vector<std::uint8_t> buildEgoMaskRaster(
   const std::vector<EgoMaskPolygon> & polygons, int width, int height);
 
-// The fill is written channel by channel, so it must already be in the same order as the image
-// buffer; see fill_in_source_order() in camera_data_store.cpp.
+// The fill is written channel by channel in the same order as the image buffer, which is always
+// RGB by the time the mask is applied (a BGR source is converted right after upload).
 cudaError_t applyEgoMask_launch(
   std::uint8_t * image, const std::uint8_t * mask, int height, int width, std::uint8_t fill_c0,
   std::uint8_t fill_c1, std::uint8_t fill_c2, cudaStream_t stream);
