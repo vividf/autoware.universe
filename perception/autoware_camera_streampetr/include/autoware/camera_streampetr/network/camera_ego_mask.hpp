@@ -57,11 +57,11 @@ std::vector<EgoMaskPolygon> parsePolygonsYamlText(const std::string & yaml_text)
 std::vector<std::uint8_t> buildEgoMaskRaster(
   const std::vector<EgoMaskPolygon> & polygons, int width, int height);
 
-// The fill is written channel by channel in the same order as the image buffer, which is always
-// RGB by the time the mask is applied (a BGR source is converted right after upload).
+// The image buffer is always RGB by the time the mask is applied (a BGR source is converted
+// right after upload).
 cudaError_t applyEgoMask_launch(
-  std::uint8_t * image, const std::uint8_t * mask, int height, int width, std::uint8_t fill_c0,
-  std::uint8_t fill_c1, std::uint8_t fill_c2, cudaStream_t stream);
+  std::uint8_t * image, const std::uint8_t * mask, int height, int width, std::uint8_t fill_r,
+  std::uint8_t fill_g, std::uint8_t fill_b, cudaStream_t stream);
 
 }  // namespace autoware::camera_streampetr
 

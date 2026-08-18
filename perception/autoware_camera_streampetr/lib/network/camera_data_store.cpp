@@ -378,11 +378,10 @@ std::unique_ptr<CameraDataStore::Tensor> CameraDataStore::process_distorted_imag
 
   if (ego_mask_built_[camera_id] && ego_mask_gpu_[camera_id]) {
     const auto & cfg = ego_mask_roi_configs_[camera_id].value();
-    const auto & fill = cfg.fill_rgb;
     auto err_mask = applyEgoMask_launch(
       static_cast<std::uint8_t *>(image_input_tensor->ptr),
       static_cast<const std::uint8_t *>(ego_mask_gpu_[camera_id]->ptr), original_height,
-      original_width, fill[0], fill[1], fill[2], streams_[camera_id]);
+      original_width, cfg.fill_rgb[0], cfg.fill_rgb[1], cfg.fill_rgb[2], streams_[camera_id]);
     if (err_mask != cudaSuccess) {
       RCLCPP_ERROR(
         logger_, "applyEgoMask_launch failed for camera %d: %s", camera_id,
@@ -421,11 +420,11 @@ std::unique_ptr<CameraDataStore::Tensor> CameraDataStore::process_regular_image(
 
   if (ego_mask_built_[camera_id] && ego_mask_gpu_[camera_id]) {
     const auto & cfg = ego_mask_roi_configs_[camera_id].value();
-    const auto & fill = cfg.fill_rgb;
     auto err_mask = applyEgoMask_launch(
       static_cast<std::uint8_t *>(image_input_tensor->ptr),
       static_cast<const std::uint8_t *>(ego_mask_gpu_[camera_id]->ptr), params.original_height,
-      params.original_width, fill[0], fill[1], fill[2], streams_.at(camera_id));
+      params.original_width, cfg.fill_rgb[0], cfg.fill_rgb[1], cfg.fill_rgb[2],
+      streams_.at(camera_id));
     if (err_mask != cudaSuccess) {
       RCLCPP_ERROR(
         logger_, "applyEgoMask_launch failed for camera %d: %s", camera_id,
