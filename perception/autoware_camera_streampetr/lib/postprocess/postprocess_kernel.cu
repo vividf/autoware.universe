@@ -28,16 +28,6 @@ namespace autoware::camera_streampetr
 {
 const size_t THREADS_PER_BLOCK = 256;
 
-struct is_score_greater_classwise
-{
-  explicit is_score_greater_classwise(const float * t) : t_(t) {}
-
-  __device__ bool operator()(const Box3D & b) { return b.score > t_[b.label]; }
-
-private:
-  const float * t_;
-};
-
 struct is_kept
 {
   __device__ bool operator()(const bool keep) { return keep; }
@@ -58,11 +48,13 @@ __device__ inline float sigmoid(float x)
     return 1.0f / (1.0f + expf(-x));
 }
 
+// Decode and filter in one pass via an atomic counter. Output order is nondeterministic; the
+// caller sorts by score, so only exact ties can change order.
 __global__ void generate_boxes3d_kernel(
   const float * __restrict__ cls_output, const float * __restrict__ box_output,
   const int num_proposals, const int num_classes, const float * __restrict__ yaw_norm_thresholds,
   const float * __restrict__ score_thresholds, const float * __restrict__ detection_range,
-  Box3D * __restrict__ det_boxes3d)
+  Box3D * __restrict__ out_boxes3d, int * __restrict__ out_count)
 {
   int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (point_idx >= num_proposals) {
@@ -81,10 +73,7 @@ __global__ void generate_boxes3d_kernel(
     }
   }
 
-  // Early exit if score is below threshold
   if (max_score <= score_thresholds[class_id]) {
-    det_boxes3d[point_idx].score = 0.f;
-    det_boxes3d[point_idx].label = class_id;
     return;
   }
 
@@ -92,27 +81,29 @@ __global__ void generate_boxes3d_kernel(
   const float yaw_sin = box_output[point_idx + 6 * num_proposals];
   const float yaw_cos = box_output[point_idx + 7 * num_proposals];
   const float yaw_norm = sqrtf(yaw_sin * yaw_sin + yaw_cos * yaw_cos);
+  if (yaw_norm < yaw_norm_thresholds[class_id]) {
+    return;
+  }
 
-  det_boxes3d[point_idx].label = class_id;
-  det_boxes3d[point_idx].score = yaw_norm >= yaw_norm_thresholds[class_id] ? max_score : 0.f;
-  det_boxes3d[point_idx].x = box_output[point_idx];
-  det_boxes3d[point_idx].y = box_output[point_idx + 1 * num_proposals];
-  det_boxes3d[point_idx].z = box_output[point_idx + 2 * num_proposals];
+  Box3D box;
+  box.label = class_id;
+  box.score = max_score;
+  box.x = box_output[point_idx];
+  box.y = box_output[point_idx + 1 * num_proposals];
+  box.z = box_output[point_idx + 2 * num_proposals];
 
   if (
-    det_boxes3d[point_idx].x > detection_range[3] || det_boxes3d[point_idx].x < detection_range[0])
-    det_boxes3d[point_idx].score = 0.f;
-  if (
-    det_boxes3d[point_idx].y > detection_range[4] || det_boxes3d[point_idx].y < detection_range[1])
-    det_boxes3d[point_idx].score = 0.f;
-  if (
-    det_boxes3d[point_idx].z > detection_range[5] || det_boxes3d[point_idx].z < detection_range[2])
-    det_boxes3d[point_idx].score = 0.f;
+    box.x < detection_range[0] || box.x > detection_range[3] || box.y < detection_range[1] ||
+    box.y > detection_range[4] || box.z < detection_range[2] || box.z > detection_range[5]) {
+    return;
+  }
 
-  det_boxes3d[point_idx].width = expf(box_output[point_idx + 3 * num_proposals]);
-  det_boxes3d[point_idx].length = expf(box_output[point_idx + 4 * num_proposals]);
-  det_boxes3d[point_idx].height = expf(box_output[point_idx + 5 * num_proposals]);
-  det_boxes3d[point_idx].yaw = atan2f(yaw_sin, yaw_cos);
+  box.width = expf(box_output[point_idx + 3 * num_proposals]);
+  box.length = expf(box_output[point_idx + 4 * num_proposals]);
+  box.height = expf(box_output[point_idx + 5 * num_proposals]);
+  box.yaw = atan2f(yaw_sin, yaw_cos);
+
+  out_boxes3d[atomicAdd(out_count, 1)] = box;
 }
 
 PostprocessCuda::PostprocessCuda(const PostProcessingConfig & config, cudaStream_t & stream)
@@ -139,8 +130,9 @@ PostprocessCuda::PostprocessCuda(const PostProcessingConfig & config, cudaStream
     config_.detection_range_.size() * sizeof(float), cudaMemcpyHostToDevice));
 
   // Worst-case sizes, so nothing allocates or frees while a frame is in flight.
-  boxes3d_d_ = autoware::cuda_utils::make_unique<Box3D[]>(config_.num_proposals_);
   filtered_boxes3d_d_ = autoware::cuda_utils::make_unique<Box3D[]>(config_.num_proposals_);
+  num_filtered_d_ = autoware::cuda_utils::make_unique<int>();
+  CHECK_CUDA_ERROR(cudaMallocHost(reinterpret_cast<void **>(&num_filtered_host_), sizeof(int)));
 
   // 4x the box array plus slack covers the sort's radix passes and the scan storage.
   thrust_arena_.initialize(
@@ -186,6 +178,14 @@ void ThrustTempArena::deallocate(char * ptr, std::size_t /*num_bytes*/)
   }
 }
 
+PostprocessCuda::~PostprocessCuda()
+{
+  if (num_filtered_host_) {
+    cudaFreeHost(num_filtered_host_);
+    num_filtered_host_ = nullptr;
+  }
+}
+
 // cspell: ignore divup
 cudaError_t PostprocessCuda::generate_detected_boxes3d_launch(
   const float * cls_output, const float * box_output, std::vector<Box3D> & det_boxes3d,
@@ -194,31 +194,28 @@ cudaError_t PostprocessCuda::generate_detected_boxes3d_launch(
   dim3 threads = {THREADS_PER_BLOCK};
   dim3 blocks = {divup(config_.num_proposals_, threads.x)};
 
+  CHECK_CUDA_ERROR(cudaMemsetAsync(num_filtered_d_.get(), 0, sizeof(int), stream));
   generate_boxes3d_kernel<<<blocks, threads, 0, stream>>>(
     cls_output, box_output, config_.num_proposals_, config_.num_classes_,
     yaw_norm_thresholds_d_.get(), score_thresholds_d_.get(), detection_range_d_.get(),
-    boxes3d_d_.get());
+    filtered_boxes3d_d_.get(), num_filtered_d_.get());
   CHECK_CUDA_ERROR(cudaGetLastError());
+
+  // Survivor count read through pinned memory: one small DMA plus a stream sync.
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    num_filtered_host_, num_filtered_d_.get(), sizeof(int), cudaMemcpyDeviceToHost, stream));
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
+  const int num_det_boxes3d = *num_filtered_host_;
+  if (num_det_boxes3d == 0) {
+    det_boxes3d.clear();
+    return cudaGetLastError();
+  }
 
   // The arena supplies thrust's temporary storage so no algorithm below touches cudaMalloc.
   thrust_arena_.reset();
   const auto policy = thrust::cuda::par(thrust_arena_).on(stream);
 
-  // Wrap raw pointer with thrust device pointer for thrust algorithms
-  auto boxes3d_ptr = thrust::device_pointer_cast(boxes3d_d_.get());
   auto filtered_ptr = thrust::device_pointer_cast(filtered_boxes3d_d_.get());
-
-  // suppress by score
-  const auto num_det_boxes3d = thrust::count_if(
-    policy, boxes3d_ptr, boxes3d_ptr + config_.num_proposals_,
-    is_score_greater_classwise(score_thresholds_d_.get()));
-  if (num_det_boxes3d == 0) {
-    det_boxes3d.clear();
-    return cudaGetLastError();
-  }
-  thrust::copy_if(
-    policy, boxes3d_ptr, boxes3d_ptr + config_.num_proposals_, filtered_ptr,
-    is_score_greater_classwise(score_thresholds_d_.get()));
 
   // sort by score
   thrust::sort(policy, filtered_ptr, filtered_ptr + num_det_boxes3d, score_greater());
