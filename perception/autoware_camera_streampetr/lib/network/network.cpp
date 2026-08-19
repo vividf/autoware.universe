@@ -126,6 +126,7 @@ StreamPetrNetwork::StreamPetrNetwork(const NetworkConfig & config) : config_(con
   setup_engines();
   setup_bindings();
   validate_bindings();
+  alias_shared_bindings();
   initialize_memory_and_profiling();
   configure_nms_if_needed();
 }
@@ -251,6 +252,17 @@ void StreamPetrNetwork::validate_bindings() const
   }
 }
 
+void StreamPetrNetwork::alias_shared_bindings()
+{
+  // Alias "x" onto "img_feats" so the feature tensor is never copied device-to-device.
+  pts_head_->alias_binding("x", backbone_->binding("img_feats"));
+}
+
+const std::shared_ptr<Tensor> & StreamPetrNetwork::image_input_binding() const
+{
+  return backbone_->binding("img");
+}
+
 void StreamPetrNetwork::initialize_memory_and_profiling()
 {
   mem_.init(stream_, config_.pre_memory_length, config_.post_memory_length);
@@ -329,16 +341,14 @@ void StreamPetrNetwork::initialize_position_embedding(const InferenceInputs & in
 
 void StreamPetrNetwork::execute_backbone(const InferenceInputs & inputs)
 {
-  CHECK_CUDA_ERROR(cudaMemcpyAsync(
-    backbone_->binding("img")->ptr, inputs.imgs->ptr, inputs.imgs->nbytes(),
-    cudaMemcpyDeviceToDevice, stream_));
+  if (inputs.imgs->ptr != backbone_->binding("img")->ptr) {
+    throw std::runtime_error(
+      "The preprocessed image tensor is not the backbone's 'img' binding; the zero-copy path was "
+      "not wired up.");
+  }
 
   dur_backbone_->mark_begin(stream_);
   backbone_->enqueueV3(stream_);
-
-  CHECK_CUDA_ERROR(cudaMemcpyAsync(
-    pts_head_->binding("x")->ptr, backbone_->binding("img_feats")->ptr,
-    backbone_->binding("img_feats")->nbytes(), cudaMemcpyDeviceToDevice, stream_));
   dur_backbone_->mark_end(stream_);
 }
 
@@ -376,7 +386,6 @@ void StreamPetrNetwork::postprocess(
   CHECK_CUDA_ERROR(postprocess_cuda_->generate_detected_boxes3d_launch(
     static_cast<const float *>(pts_head_->binding("all_cls_scores")->ptr),
     static_cast<const float *>(pts_head_->binding("all_bbox_preds")->ptr), det_boxes3d, stream_));
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
   std::vector<autoware_perception_msgs::msg::DetectedObject> raw_objects;
   for (size_t i = 0; i < det_boxes3d.size(); ++i) {

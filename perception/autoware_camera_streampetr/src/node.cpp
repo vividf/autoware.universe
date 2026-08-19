@@ -316,10 +316,11 @@ StreamPetrNode::StreamPetrNode(const rclcpp::NodeOptions & node_options)
       "mask enabled for StreamPETR preprocess (masked camera ids: %s)", masked_camera_ids.c_str());
   }
 
-  // Data store
+  // The data store preprocesses straight into the backbone's own input binding.
   data_store_ = std::make_unique<CameraDataStore>(
     this, rois_number_, roi_height, roi_width, anchor_camera_id_,
-    declare_parameter<bool>("is_distorted_image"), ego_mask_params);
+    declare_parameter<bool>("is_distorted_image"), ego_mask_params,
+    network_->image_input_binding());
 
   stop_watch_.tic("latency/cycle_time_ms");
   if (debug_mode_) {
@@ -398,7 +399,8 @@ void StreamPetrNode::step(const rclcpp::Time & stamp)
 bool StreamPetrNode::validate_camera_sync()
 {
   const float tdiff = data_store_->check_if_all_images_synced();
-  const float prediction_timestamp = data_store_->get_timestamp();
+  // Deliberately side-effect free: the origin is only latched once the frame is going ahead.
+  const float prediction_timestamp = data_store_->peek_timestamp();
 
   if (tdiff < 0) {
     RCLCPP_WARN(rclcpp::get_logger(logger_name_.c_str()), "Not all camera info or image received");
@@ -431,15 +433,23 @@ bool StreamPetrNode::prepare_inference_data(const rclcpp::Time & stamp)
     return false;
   }
 
-  const auto extrinsic_vectors = get_camera_extrinsics_vector();
-  if (!extrinsic_vectors.has_value()) {
+  if (!ensure_camera_geometry_cached()) {
     return false;
   }
 
   // Store the results for inference
   current_ego_pose_ = ego_pose_result.value();
-  current_extrinsics_ = extrinsic_vectors.value();
-  current_prediction_timestamp_ = data_store_->get_timestamp();
+
+  bool timestamp_origin_reset = false;
+  current_prediction_timestamp_ = data_store_->latch_timestamp(timestamp_origin_reset);
+  if (timestamp_origin_reset) {
+    // The memory queue stores timestamps relative to the old origin, so it must be dropped too.
+    RCLCPP_INFO(
+      rclcpp::get_logger(logger_name_.c_str()),
+      "Camera timestamp origin re-latched after %.0f seconds; dropping the temporal memory.",
+      static_cast<double>(MAX_ALLOWED_CAMERA_TIME_DIFF));
+    network_->wipe_memory();
+  }
 
   return true;
 }
@@ -475,12 +485,12 @@ std::optional<StreamPetrNode::InferenceResult> StreamPetrNode::perform_inference
 InferenceInputs StreamPetrNode::create_inference_inputs()
 {
   InferenceInputs inputs;
-  inputs.imgs = data_store_->get_image_input();
+  inputs.imgs = data_store_->get_image_input(network_->stream());
   inputs.ego_pose = current_ego_pose_.first;
   inputs.ego_pose_inv = current_ego_pose_.second;
   inputs.img_metas_pad = data_store_->get_image_shape();
-  inputs.intrinsics = data_store_->get_camera_info_vector();
-  inputs.img2lidar = current_extrinsics_;
+  inputs.intrinsics = cached_intrinsics_;
+  inputs.img2lidar = cached_extrinsics_;
   inputs.stamp = current_prediction_timestamp_;
   return inputs;
 }
@@ -724,28 +734,39 @@ void StreamPetrNode::diagnose_processing_time(diagnostic_updater::DiagnosticStat
   stat.summary(diag_level, summary.empty() ? "OK" : summary);
 }
 
-std::optional<std::vector<float>> StreamPetrNode::get_camera_extrinsics_vector()
+bool StreamPetrNode::ensure_camera_geometry_cached()
 {
+  // Cameras do not move relative to base_link; computed once for the one-off position embedding.
+  if (camera_geometry_cached_) {
+    return true;
+  }
+
   constexpr size_t num_row = 4;
   constexpr size_t num_col = 4;
 
-  std::vector<std::string> camera_links = data_store_->get_camera_link_names();
-  std::vector<float> intrinsics_all = data_store_->get_camera_info_vector();
+  const std::vector<std::string> camera_links = data_store_->get_camera_link_names();
+  const auto intrinsics = data_store_->get_camera_info_vector();
+  if (!intrinsics.has_value()) {
+    return false;
+  }
 
   std::vector<float> res;
   res.reserve(camera_links.size() * num_row * num_col);
 
   for (size_t i = 0; i < camera_links.size(); ++i) {
-    auto camera_transform_result = compute_camera_transform(i, camera_links, intrinsics_all);
+    auto camera_transform_result = compute_camera_transform(i, camera_links, intrinsics.value());
     if (!camera_transform_result.has_value()) {
-      return std::nullopt;
+      return false;
     }
 
     const auto transform_matrix = camera_transform_result.value();
     append_transform_to_result(transform_matrix, res);
   }
 
-  return res;
+  cached_intrinsics_ = intrinsics.value();
+  cached_extrinsics_ = std::move(res);
+  camera_geometry_cached_ = true;
+  return true;
 }
 
 std::optional<Eigen::Matrix4f> StreamPetrNode::compute_camera_transform(

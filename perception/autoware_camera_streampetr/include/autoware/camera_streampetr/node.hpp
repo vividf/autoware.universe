@@ -135,7 +135,8 @@ private:
 
   std::optional<std::pair<std::vector<float>, std::vector<float>>> get_ego_pose_vector(
     const rclcpp::Time & stamp);
-  std::optional<std::vector<float>> get_camera_extrinsics_vector();
+  /// Caches every camera's extrinsics together with the adjusted intrinsics.
+  bool ensure_camera_geometry_cached();
 
   // Helper methods for camera extrinsics computation
   std::optional<Eigen::Matrix4f> compute_camera_transform(
@@ -177,8 +178,12 @@ private:
 
   // State variables for refactored step method
   std::pair<std::vector<float>, std::vector<float>> current_ego_pose_;
-  std::vector<float> current_extrinsics_;
   float current_prediction_timestamp_;
+
+  // Camera geometry is static: computed once, reused.
+  std::vector<float> cached_intrinsics_;
+  std::vector<float> cached_extrinsics_;
+  bool camera_geometry_cached_ = false;
 
   // debugger
   // Always on: the watchdog reads the per-cycle total even with debug topics disabled.
