@@ -43,6 +43,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -198,6 +199,8 @@ struct NetworkConfig
 
   // Engine paths
   std::string onnx_backbone_path;
+  // Non-empty enables the incremental backbone; the batch backbone is then not loaded.
+  std::string onnx_backbone_batch1_path = "";
   std::string onnx_head_path;
   std::string onnx_position_embedding_path;
 
@@ -235,14 +238,21 @@ public:
   // Runs the model only; returns with the stream synchronized.
   void inference_detector(const InferenceInputs & inputs, SubNetworkTimings & subnetwork_timings);
 
+  bool incremental_backbone() const { return incremental_backbone_; }
+
+  // Incremental mode: enqueue the batch-1 backbone for one camera on that camera's stream.
+  // Thread-safe: the shared TensorRT context serializes address setting and enqueue.
+  void extract_features(float * slot_ptr, int camera_id, cudaStream_t stream);
+
+  // In batch mode the backbone's own "img" binding (zero copy); in incremental mode a standalone
+  // tensor whose per-camera slots feed the batch-1 backbone.
+  std::shared_ptr<Tensor> create_image_input_tensor();
+
   // Reads only the head's output bindings, so the camera store may be unfrozen before calling.
   void postprocess(std::vector<autoware_perception_msgs::msg::DetectedObject> & output_objects);
 
   /// Drops the temporal state. Safe to call before the first inference.
   void wipe_memory();
-
-  /// The backbone's own "img" input buffer; preprocessing writes straight into it.
-  const std::shared_ptr<Tensor> & image_input_binding() const;
 
   /// Stream every inference kernel is enqueued on.
   cudaStream_t stream() const { return stream_; }
@@ -282,11 +292,23 @@ private:
   cudaStream_t stream_;
 
   // The head's enqueueV3 is captured into a CUDA graph after a warmup enqueue; any capture
-  // failure falls back to plain enqueueV3 for good. Capturing is safe because every address the
-  // head reads or writes is fixed at construction.
-  cudaGraphExec_t head_graph_{nullptr};
-  bool head_warmed_up_{false};
+  // failure falls back to plain enqueueV3 for good. A captured graph freezes the addresses it
+  // saw, so each feature buffer gets its own graph; batch mode only ever uses slot 0.
+  cudaGraphExec_t head_graphs_[2]{nullptr, nullptr};
+  bool head_warmed_[2]{false, false};
   bool head_graph_unusable_{false};
+  int head_graph_slot_{0};
+
+  // Double-buffered feature tensors; the mutex serializes the shared batch-1 context.
+  bool incremental_backbone_{false};
+  std::shared_ptr<Tensor> feature_buffers_[2];
+  int feature_write_index_{0};
+  std::mutex backbone_mutex_;
+  std::size_t feature_slot_bytes_{0};
+  // Recorded and waited under backbone_mutex_, so an extraction is either ordered before the
+  // head or targets the other buffer.
+  std::vector<cudaEvent_t> extract_done_events_;
+  std::vector<bool> extract_done_valid_;
 };
 
 }  // namespace autoware::camera_streampetr

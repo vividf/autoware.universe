@@ -169,6 +169,9 @@ StreamPetrNode::StreamPetrNode(const rclcpp::NodeOptions & node_options)
   const int roi_height = declare_parameter<int>("model_params.input_image_height");
 
   const std::string backbone_path = declare_parameter<std::string>("model_params.backbone_path");
+  // Non-empty enables the incremental backbone (batch-1 extraction per camera on arrival).
+  const std::string backbone_batch1_path =
+    declare_parameter<std::string>("model_params.backbone_batch1_path", "");
   const std::string head_path = declare_parameter<std::string>("model_params.head_path");
   const std::string position_embedding_path =
     declare_parameter<std::string>("model_params.position_embedding_path");
@@ -221,6 +224,7 @@ StreamPetrNode::StreamPetrNode(const rclcpp::NodeOptions & node_options)
     workspace_size,
     trt_precision,
     backbone_path,
+    backbone_batch1_path,
     head_path,
     position_embedding_path,
     backbone_engine_path,
@@ -321,7 +325,18 @@ StreamPetrNode::StreamPetrNode(const rclcpp::NodeOptions & node_options)
   data_store_ = std::make_unique<CameraDataStore>(
     this, rois_number_, roi_height, roi_width, anchor_camera_id_,
     declare_parameter<bool>("is_distorted_image"), ego_mask_params,
-    network_->image_input_binding());
+    network_->create_image_input_tensor());
+
+  if (network_->incremental_backbone()) {
+    // Extraction rides each camera's stream, so most backbone work is done before the head runs.
+    data_store_->set_slot_ready_callback(
+      [this](const int camera_id, float * slot_ptr, cudaStream_t stream) {
+        network_->extract_features(slot_ptr, camera_id, stream);
+      });
+    RCLCPP_INFO(
+      rclcpp::get_logger(logger_name_.c_str()),
+      "Incremental backbone enabled: per-camera feature extraction on arrival.");
+  }
 
   stop_watch_.tic("latency/cycle_time_ms");
   if (debug_mode_) {
@@ -375,8 +390,9 @@ void StreamPetrNode::camera_image_callback(
 void StreamPetrNode::step(const rclcpp::Time & stamp)
 {
   // Freeze before anything reads the store: a camera callback could otherwise replace an image
-  // between validation and inference.
-  FreezeGuard freeze(*data_store_, multithreading_);
+  // between validation and inference. The incremental backbone consumes the image tensor per
+  // camera and double-buffers the features, so there is nothing left for a freeze to protect.
+  FreezeGuard freeze(*data_store_, multithreading_ && !network_->incremental_backbone());
 
   if (!validate_camera_sync()) {
     return;
