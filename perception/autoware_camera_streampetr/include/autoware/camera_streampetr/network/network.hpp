@@ -43,6 +43,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -68,8 +69,6 @@ using nvinfer1::DataType;
 using nvinfer1::Dims;
 
 // Use tensorrt_common components
-using autoware::tensorrt_common::Logger;
-using autoware::tensorrt_common::Profiler;
 using autoware::tensorrt_common::TrtCommon;
 using autoware::tensorrt_common::TrtCommonConfig;
 
@@ -80,6 +79,22 @@ public:
 
   using TrtCommon::TrtCommon;
   virtual ~SubNetwork() = default;
+
+  /// Named binding lookup; throws on unknown names instead of operator[]'s silent null insert.
+  const std::shared_ptr<Tensor> & binding(const std::string & name) const
+  {
+    const auto it = bindings.find(name);
+    if (it == bindings.end()) {
+      std::string known;
+      for (const auto & [binding_name, tensor] : bindings) {
+        known += (known.empty() ? "" : ", ") + binding_name;
+      }
+      throw std::runtime_error(
+        "TensorRT engine has no binding named '" + name + "'. Available bindings: " + known + ".");
+    }
+    return it->second;
+  }
+
   bool set_bindings(const rclcpp::Logger & logger)
   {
     for (int n = 0; n < getNbIOTensors(); n++) {
@@ -110,14 +125,12 @@ class Duration
   // CUDA events for timing
   cudaEvent_t begin_event_, end_event_;
   std::string layer_name_;
-  std::shared_ptr<Profiler> profiler_;
 
 public:
-  explicit Duration(const std::string & name, std::shared_ptr<Profiler> profiler = nullptr)
-  : layer_name_(name), profiler_(profiler)
+  explicit Duration(const std::string & name) : layer_name_(name)
   {
-    cudaEventCreate(&begin_event_);
-    cudaEventCreate(&end_event_);
+    CHECK_CUDA_ERROR(cudaEventCreate(&begin_event_));
+    CHECK_CUDA_ERROR(cudaEventCreate(&end_event_));
   }
 
   ~Duration()
@@ -126,20 +139,20 @@ public:
     cudaEventDestroy(end_event_);
   }
 
-  void mark_begin(cudaStream_t stream) { cudaEventRecord(begin_event_, stream); }
+  const std::string & name() const { return layer_name_; }
 
-  void mark_end(cudaStream_t stream) { cudaEventRecord(end_event_, stream); }
+  void mark_begin(cudaStream_t stream) { CHECK_CUDA_ERROR(cudaEventRecord(begin_event_, stream)); }
+
+  void mark_end(cudaStream_t stream) { CHECK_CUDA_ERROR(cudaEventRecord(end_event_, stream)); }
 
   float elapsed()
   {
-    float elapsed_ms;
-    cudaEventElapsedTime(&elapsed_ms, begin_event_, end_event_);
+    // Without this wait cudaEventElapsedTime returns cudaErrorNotReady and leaves the output
+    // parameter untouched.
+    CHECK_CUDA_ERROR(cudaEventSynchronize(end_event_));
 
-    // Report to profiler if available
-    if (profiler_) {
-      profiler_->reportLayerTime(layer_name_.c_str(), elapsed_ms);
-    }
-
+    float elapsed_ms = 0.0f;
+    CHECK_CUDA_ERROR(cudaEventElapsedTime(&elapsed_ms, begin_event_, end_event_));
     return elapsed_ms;
   }
 };  // class Duration
@@ -211,6 +224,7 @@ public:
   // Reads only the head's output bindings, so the camera store may be unfrozen before calling.
   void postprocess(std::vector<autoware_perception_msgs::msg::DetectedObject> & output_objects);
 
+  /// Drops the temporal state. Safe to call before the first inference.
   void wipe_memory();
 
 private:
@@ -220,6 +234,7 @@ private:
   void initialize_networks();
   void setup_engines();
   void setup_bindings();
+  void validate_bindings() const;
   void initialize_memory_and_profiling();
   void configure_nms_if_needed();
 
@@ -229,8 +244,6 @@ private:
   void execute_pts_head(const InferenceInputs & inputs);
 
   NetworkConfig config_;
-  std::shared_ptr<Logger> logger_;
-  std::shared_ptr<Profiler> profiler_;
   std::unique_ptr<SubNetwork> backbone_;
   std::unique_ptr<SubNetwork> pts_head_;
   std::unique_ptr<SubNetwork> pos_embed_;
