@@ -190,6 +190,14 @@ struct InferenceInputs
   float stamp;
 };
 
+// GPU execution time of each subnetwork, measured with CUDA events.
+struct SubNetworkTimings
+{
+  float backbone_ms{0.0f};
+  float ptshead_ms{0.0f};
+  float pos_embed_ms{0.0f};
+};
+
 class StreamPetrNetwork
 {
 public:
@@ -198,7 +206,7 @@ public:
   ~StreamPetrNetwork();
 
   // Runs the model only; returns with the stream synchronized.
-  void inference_detector(const InferenceInputs & inputs, std::vector<float> & forward_time_ms);
+  void inference_detector(const InferenceInputs & inputs, SubNetworkTimings & subnetwork_timings);
 
   // Reads only the head's output bindings, so the camera store may be unfrozen before calling.
   void postprocess(std::vector<autoware_perception_msgs::msg::DetectedObject> & output_objects);

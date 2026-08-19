@@ -222,7 +222,7 @@ void StreamPetrNetwork::wipe_memory()
 }
 
 void StreamPetrNetwork::inference_detector(
-  const InferenceInputs & inputs, std::vector<float> & forward_time_ms)
+  const InferenceInputs & inputs, SubNetworkTimings & subnetwork_timings)
 {
   if (!is_inference_initialized_) {
     initializePositionEmbedding(inputs);
@@ -235,9 +235,9 @@ void StreamPetrNetwork::inference_detector(
   // Without this sync the caller's inference time would only measure the enqueueing.
   cudaStreamSynchronize(stream_);
 
-  forward_time_ms.push_back(dur_backbone_->Elapsed());
-  forward_time_ms.push_back(dur_ptshead_->Elapsed());
-  forward_time_ms.push_back(dur_pos_embed_->Elapsed());
+  subnetwork_timings.backbone_ms = dur_backbone_->Elapsed();
+  subnetwork_timings.ptshead_ms = dur_ptshead_->Elapsed();
+  subnetwork_timings.pos_embed_ms = dur_pos_embed_->Elapsed();
 }
 
 void StreamPetrNetwork::initializePositionEmbedding(const InferenceInputs & inputs)

@@ -364,7 +364,7 @@ void StreamPetrNode::step(const rclcpp::Time & stamp)
   const auto & result = inference_result.value();
   publish_detection_results(stamp, result.objects);
   publish_debug_metrics(
-    result.forward_time_ms, result.inference_time_ms, result.postprocess_time_ms);
+    result.subnetwork_timings, result.inference_time_ms, result.postprocess_time_ms);
 }
 
 bool StreamPetrNode::validate_camera_sync()
@@ -435,7 +435,7 @@ std::optional<StreamPetrNode::InferenceResult> StreamPetrNode::perform_inference
 
   stop_watch_.tic("latency/inference");
   InferenceInputs inputs = create_inference_inputs();
-  network_->inference_detector(inputs, result.forward_time_ms);
+  network_->inference_detector(inputs, result.subnetwork_timings);
   result.inference_time_ms = stop_watch_.toc("latency/inference", true);
 
   // The decode only reads the head's output bindings, so the cameras can resume before it.
@@ -477,7 +477,8 @@ void StreamPetrNode::publish_detection_results(
 }
 
 void StreamPetrNode::publish_debug_metrics(
-  const std::vector<float> & forward_time_ms, double inference_time_ms, double postprocess_time_ms)
+  const SubNetworkTimings & subnetwork_timings, double inference_time_ms,
+  double postprocess_time_ms)
 {
   // Latched before the debug_mode_ gate below: the watchdog is active even without debug topics.
   const double processing_time_ms = stop_watch_.toc("latency/total", true);
@@ -497,11 +498,11 @@ void StreamPetrNode::publish_debug_metrics(
   debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "latency/inference", inference_time_ms);
   debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-    "latency/inference/backbone", forward_time_ms[0]);
+    "latency/inference/backbone", subnetwork_timings.backbone_ms);
   debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-    "latency/inference/ptshead", forward_time_ms[1]);
+    "latency/inference/ptshead", subnetwork_timings.ptshead_ms);
   debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-    "latency/inference/pos_embed", forward_time_ms[2]);
+    "latency/inference/pos_embed", subnetwork_timings.pos_embed_ms);
   debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "latency/postprocess", postprocess_time_ms);
   debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(

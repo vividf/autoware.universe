@@ -83,7 +83,7 @@ private:
   struct InferenceResult
   {
     std::vector<autoware_perception_msgs::msg::DetectedObject> objects;
-    std::vector<float> forward_time_ms;  // per subnetwork: backbone, ptshead, pos_embed
+    SubNetworkTimings subnetwork_timings;
     double inference_time_ms;
     double postprocess_time_ms;
   };
@@ -93,7 +93,7 @@ private:
     const rclcpp::Time & stamp,
     const std::vector<autoware_perception_msgs::msg::DetectedObject> & output_objects);
   void publish_debug_metrics(
-    const std::vector<float> & forward_time_ms, double inference_time_ms,
+    const SubNetworkTimings & subnetwork_timings, double inference_time_ms,
     double postprocess_time_ms);
 
   // Timer driven so a dead camera cannot silence its own diagnostic.
