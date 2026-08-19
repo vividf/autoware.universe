@@ -165,16 +165,31 @@ The `autoware_camera_streampetr` node has various parameters for configuration:
 
 #### Model Parameters
 
+These live in `ml_package_camera_streampetr.param.yaml`, which ships with the model artifacts.
+All of them are required -- the node declares them without defaults and fails to construct if one
+is missing.
+
 - `model_params.backbone_path`: Path to the backbone ONNX model
 - `model_params.head_path`: Path to the head ONNX model
 - `model_params.position_embedding_path`: Path to the position embedding ONNX model
-- `model_params.fp16_mode`: Enable FP16 inference mode
+- `model_params.backbone_engine_path`, `model_params.head_engine_path`,
+  `model_params.position_embedding_engine_path`: Where to read/write the built TensorRT engines.
+  Empty means "next to the ONNX file, with a `.engine` extension".
+- `model_params.trt_precision`: `"fp16"` or `"fp32"`
+- `model_params.workspace_size`: TensorRT workspace as a power of two, in bytes (32 means 4 GB)
 - `model_params.use_temporal`: Enable temporal modeling
 - `model_params.input_image_height`: Input image height for preprocessing
 - `model_params.input_image_width`: Input image width for preprocessing
+- `model_params.rois_number`: Number of cameras fed to the model
 - `model_params.class_names`: List of detection class names
 - `model_params.num_proposals`: Number of object proposals
-- `model_params.detection_range`: Detection range for filtering objects
+- `model_params.detection_range`: Detection range for filtering objects, `[-x,-y,-z,x,y,z]`
+- `model_params.pre_memory_length` / `model_params.post_memory_length`: Temporal memory queue
+  lengths of the head
+
+All of these are cross-checked against the engine's actual binding shapes at start-up, so a
+mismatch between the parameter file and the ONNX file is reported instead of producing a segfault
+or an out-of-bounds kernel read.
 
 #### Post-processing Parameters
 
@@ -186,17 +201,43 @@ The `autoware_camera_streampetr` node has various parameters for configuration:
 
 #### Ego vehicle mask
 
-Masking the area of the ego vehicle in order to reduce FP caused by reflection. Configure via **launch** or `camera_streampetr.param.yaml`, not `tensorrt_stream_petr.param.yaml` (model/post-process only).
+Masking the area of the ego vehicle in order to reduce FP caused by reflection. Configure via
+**launch** or `camera_streampetr.param.yaml` (the node parameter file), not
+`ml_package_camera_streampetr.param.yaml`, which holds model/post-process parameters only.
 
-- `ego_mask.enabled`: Enable masking (default: `false`)
+There are two ways to describe the polygons. `ego_mask.enabled` is the master switch for both.
+
+- `ego_mask.enabled`: Enable masking (default: `true`; it only ever disables masks that were
+  explicitly configured)
 - `ego_mask.fill_value_rgb`: RGB fill inside polygons, 0–255 (default: `[0, 0, 0]`)
+
+**Inline polygons** — one polygon per camera, written directly in the parameter file:
+
+- `camera_mask.camera_ids`: Maps model ROI index to camera id, so `camera_mask.camera_ids[i]`
+  names the camera whose `camera_<id>_mask` applies to ROI `i`. Only the first
+  `model_params.rois_number` entries are read.
+- `camera_<id>_mask.enable` / `.mask` / `.normalized`: The polygon itself, as
+  `[x1, y1, x2, y2, ...]` with at least 3 points. `normalized: true` means the coordinates are
+  fractions of the image size. `<id>` ranges from 0 to 10.
+
+A mask that is enabled for a camera id which no ROI maps to is warned about at start-up -- that
+combination silently does nothing, and is easy to produce when `rois_number` is smaller than the
+number of camera ids listed.
+
+**External polygon files** — for more than one polygon per camera:
+
 - `ego_mask.roi_polygons_yaml`: One YAML path per model ROI index; empty string disables that ROI.
+  Each file is a mapping with a `polygons:` sequence, optionally with a parallel
+  `polygons_normalized:` sequence of booleans.
 
-Example polygon files: `config/camera9_polygons.yaml`, `config/camera10_polygons.yaml`.
-
-**X2 five-camera layout** (`tensorrt_stream_petr.x2.launch.xml`): ROI 2 → camera10 (left strip), ROI 4 → camera9 (right strip). Ego mask params are set in that launch file.
+**X2 five-camera layout**: ROI 2 → camera10 (left strip), ROI 4 → camera9 (right strip), which
+needs `camera_mask.camera_ids: [8, 6, 10, 7, 9]` to match the topic remapping of that vehicle.
+The shipped default is the identity mapping `[0, 1, 2, 3, 4]` that goes with
+`streampetr.launch.xml`.
 
 #### Node Parameters
+
+These live in `config/camera_streampetr.param.yaml` and are also required unless noted.
 
 - `max_camera_time_diff`: Maximum allowed time difference between cameras (seconds)
 - `rois_number`: Number of camera ROIs/cameras (default: 6)
@@ -205,7 +246,7 @@ Example polygon files: `config/camera9_polygons.yaml`, `config/camera10_polygons
 - `multithreading`: Whether to use multithreading for handling image callbacks
 - `anchor_camera_id`: ID of the anchor camera for synchronization (default: 0)
 - `debug_mode`: Enable debug mode for timing measurements
-- `build_only`: Build TensorRT engines and exit without running inference
+- `build_only`: Build TensorRT engines and exit without running inference (default: `false`)
 - `diagnostics.max_allowed_processing_time_ms`: Per-cycle processing-time budget; exceeding it raises a `WARN` (default: 200.0)
 - `diagnostics.max_acceptable_consecutive_delay_ms`: How long the processing time may stay over budget before the `WARN` escalates to an `ERROR` (default: 1000.0)
 - `diagnostics.max_image_age_ms`: A camera whose newest frame is older than this is reported as stalled at `ERROR` level (default: 300.0)
@@ -216,7 +257,7 @@ Example polygon files: `config/camera9_polygons.yaml`, `config/camera10_polygons
 The `autoware_camera_streampetr` node has a `build_only` option to build the TensorRT engine files from the specified ONNX files, after which the program exits.
 
 ```bash
-ros2 launch autoware_camera_streampetr tensorrt_stream_petr.launch.xml build_only:=true
+ros2 launch autoware_camera_streampetr streampetr.launch.xml build_only:=true
 ```
 
 ### The `log_level` option
@@ -224,7 +265,7 @@ ros2 launch autoware_camera_streampetr tensorrt_stream_petr.launch.xml build_onl
 The default logging severity level for `autoware_camera_streampetr` is `info`. For debugging purposes, the developer may decrease severity level using `log_level` parameter:
 
 ```bash
-ros2 launch autoware_camera_streampetr tensorrt_stream_petr.launch.xml log_level:=debug
+ros2 launch autoware_camera_streampetr streampetr.launch.xml log_level:=debug
 ```
 
 ## Assumptions / Known limits
@@ -234,9 +275,18 @@ This node is camera-only and does not require pointcloud input. It assumes:
 - All cameras are synchronized within the specified `max_camera_time_diff`
 - Camera calibration information is available and accurate
 - The anchor camera (specified by `anchor_camera_id`) triggers the inference cycle
-- Transform information between camera frames and base_link is available via tf
-- Transform information between map and base_link is available via tf for ego motion compensation
-- **The input images are undistorted**
+- Transform information between camera frames and base_link is available via tf. The camera frame
+  name is taken from the image's `header.frame_id`, not from a parameter.
+- Transform information between map and base_link is available via tf for ego motion compensation,
+  which means localization has to be running
+- The input images are undistorted. Set `is_distorted_image: true` to have the node undistort them
+  itself from `camera_info`, at the cost of one extra full-resolution GPU pass per camera.
+- Images are `rgb8` or `bgr8` and densely packed (`step == width * 3`). Anything else is dropped
+  with a throttled error.
+- `camera_info` and the image report the same width and height. A mismatch is dropped, because the
+  intrinsics are adjusted using the `camera_info` size while the pixels are cropped using the
+  image size.
+- The node does no work at all while `~/output/objects` has no subscriber.
 
 ## Trained Models
 

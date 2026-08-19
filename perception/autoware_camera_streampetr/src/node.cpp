@@ -281,7 +281,8 @@ StreamPetrNode::StreamPetrNode(const rclcpp::NodeOptions & node_options)
   pub_objects_ = this->create_publisher<DetectedObjects>("~/output/objects", rclcpp::QoS{1});
 
   EgoMaskParams ego_mask_params;
-  ego_mask_params.enabled = declare_parameter<bool>("ego_mask.enabled", false);
+  // Master switch for both mask mechanisms (camera_N_mask.* and ego_mask.roi_polygons_yaml).
+  ego_mask_params.enabled = declare_parameter<bool>("ego_mask.enabled", true);
   // RGB order, matching the model's input channel order and the online cameras' rgb8 encoding.
   const auto fill_value_rgb =
     declare_parameter<std::vector<double>>("ego_mask.fill_value_rgb", {0.0, 0.0, 0.0});

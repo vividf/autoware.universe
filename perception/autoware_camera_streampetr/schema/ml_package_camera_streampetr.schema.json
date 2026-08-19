@@ -1,0 +1,170 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Model and post-processing parameters for autoware_camera_streampetr",
+  "type": "object",
+  "definitions": {
+    "model_params": {
+      "type": "object",
+      "description": "Parameters that describe the ONNX/engine files. Every one of them is required: the node declares them without defaults, and the shapes are cross-checked against the engine's bindings at start-up.",
+      "properties": {
+        "class_names": {
+          "type": "array",
+          "description": "Detection classes, in the channel order of the head's all_cls_scores output.",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "detection_range": {
+          "type": "array",
+          "description": "[-x, -y, -z, x, y, z] in base_link. Detections outside this box are dropped, because the model was not trained to predict there.",
+          "items": { "type": "number" },
+          "minItems": 6,
+          "maxItems": 6
+        },
+        "input_image_height": {
+          "type": "integer",
+          "description": "Height the images are resized and cropped to before the backbone.",
+          "exclusiveMinimum": 0
+        },
+        "input_image_width": {
+          "type": "integer",
+          "description": "Width the images are resized and cropped to before the backbone.",
+          "exclusiveMinimum": 0
+        },
+        "num_proposals": {
+          "type": "integer",
+          "description": "Object queries the head emits per frame.",
+          "exclusiveMinimum": 0
+        },
+        "rois_number": {
+          "type": "integer",
+          "description": "Number of cameras the model consumes.",
+          "exclusiveMinimum": 0
+        },
+        "pre_memory_length": {
+          "type": "integer",
+          "description": "Length of the temporal memory queue fed into the head.",
+          "exclusiveMinimum": 0
+        },
+        "post_memory_length": {
+          "type": "integer",
+          "description": "Length of the temporal memory queue the head produces. Not smaller than pre_memory_length.",
+          "exclusiveMinimum": 0
+        },
+        "trt_precision": {
+          "type": "string",
+          "description": "TensorRT precision mode.",
+          "enum": ["fp16", "fp32"]
+        },
+        "use_temporal": {
+          "type": "boolean",
+          "description": "Carry the memory queue across frames. When false the temporal state is wiped after every inference."
+        },
+        "backbone_path": { "type": "string", "description": "Backbone ONNX file." },
+        "head_path": { "type": "string", "description": "Detection head ONNX file." },
+        "position_embedding_path": {
+          "type": "string",
+          "description": "Position embedding ONNX file."
+        },
+        "backbone_engine_path": {
+          "type": "string",
+          "description": "Serialized backbone engine. Empty means backbone_path with a .engine extension, built on demand."
+        },
+        "head_engine_path": {
+          "type": "string",
+          "description": "Serialized head engine. Empty means head_path with a .engine extension, built on demand."
+        },
+        "position_embedding_engine_path": {
+          "type": "string",
+          "description": "Serialized position embedding engine. Empty means position_embedding_path with a .engine extension, built on demand."
+        },
+        "workspace_size": {
+          "type": "integer",
+          "description": "TensorRT workspace as a power of two, in bytes. 32 means 4 GB.",
+          "minimum": 20,
+          "maximum": 40
+        }
+      },
+      "required": [
+        "class_names",
+        "detection_range",
+        "input_image_height",
+        "input_image_width",
+        "num_proposals",
+        "rois_number",
+        "pre_memory_length",
+        "post_memory_length",
+        "trt_precision",
+        "use_temporal",
+        "backbone_path",
+        "head_path",
+        "position_embedding_path",
+        "backbone_engine_path",
+        "head_engine_path",
+        "position_embedding_engine_path",
+        "workspace_size"
+      ],
+      "additionalProperties": false
+    },
+    "post_process_params": {
+      "type": "object",
+      "properties": {
+        "confidence_threshold": {
+          "type": "array",
+          "description": "Per-class score threshold, in the same order as model_params.class_names.",
+          "items": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+          "minItems": 1
+        },
+        "circle_nms_dist_threshold": {
+          "type": "number",
+          "description": "Distance on the xy plane below which the lower-scoring box is suppressed. 0 turns circle NMS off.",
+          "minimum": 0.0
+        },
+        "iou_nms_search_distance_2d": {
+          "type": "number",
+          "description": "Only box pairs closer than this are considered by the IoU NMS.",
+          "minimum": 0.0
+        },
+        "iou_nms_threshold": {
+          "type": "number",
+          "description": "BEV IoU above which the lower-scoring box is suppressed. 0 turns IoU NMS off.",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "yaw_norm_thresholds": {
+          "type": "array",
+          "description": "Per-class minimum norm of the predicted (sin, cos) yaw pair; below it the detection is dropped as unreliable. Same order as model_params.class_names.",
+          "items": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "confidence_threshold",
+        "circle_nms_dist_threshold",
+        "iou_nms_search_distance_2d",
+        "iou_nms_threshold",
+        "yaw_norm_thresholds"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "/**": {
+      "type": "object",
+      "properties": {
+        "ros__parameters": {
+          "type": "object",
+          "properties": {
+            "model_params": { "$ref": "#/definitions/model_params" },
+            "post_process_params": { "$ref": "#/definitions/post_process_params" }
+          },
+          "required": ["model_params", "post_process_params"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["ros__parameters"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["/**"],
+  "additionalProperties": false
+}
