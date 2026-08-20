@@ -55,9 +55,9 @@ std::string format_milliseconds(const double milliseconds)
   return std::string(buffer);
 }
 
-constexpr std::size_t kMaxCameraMaskId = 10;
+constexpr std::size_t MAX_CAMERA_MASK_ID = 10;
 
-std::vector<int64_t> makeDefaultCameraMaskIds(const std::size_t rois_number)
+std::vector<int64_t> make_default_camera_mask_ids(const std::size_t rois_number)
 {
   std::vector<int64_t> camera_ids;
   camera_ids.reserve(rois_number);
@@ -67,7 +67,7 @@ std::vector<int64_t> makeDefaultCameraMaskIds(const std::size_t rois_number)
   return camera_ids;
 }
 
-void validateMaskPoints(const std::vector<double> & mask, const std::string & parameter_name)
+void validate_mask_points(const std::vector<double> & mask, const std::string & parameter_name)
 {
   if (mask.empty()) {
     return;
@@ -78,12 +78,12 @@ void validateMaskPoints(const std::vector<double> & mask, const std::string & pa
   }
 }
 
-std::vector<std::optional<EgoMaskRoiConfig>> declareCameraMaskParams(
+std::vector<std::optional<EgoMaskRoiConfig>> declare_camera_mask_params(
   rclcpp::Node & node, const std::size_t rois_number, const std::array<std::uint8_t, 3> & fill_rgb,
   const std::vector<int64_t> & camera_mask_ids)
 {
-  std::vector<std::optional<EgoMaskRoiConfig>> camera_mask_configs(kMaxCameraMaskId + 1);
-  for (std::size_t camera_id = 0; camera_id <= kMaxCameraMaskId; ++camera_id) {
+  std::vector<std::optional<EgoMaskRoiConfig>> camera_mask_configs(MAX_CAMERA_MASK_ID + 1);
+  for (std::size_t camera_id = 0; camera_id <= MAX_CAMERA_MASK_ID; ++camera_id) {
     const std::string parameter_prefix = "camera_" + std::to_string(camera_id) + "_mask";
     const bool enabled = node.declare_parameter<bool>(parameter_prefix + ".enable", false);
     const auto mask = node.declare_parameter<std::vector<double>>(
@@ -93,7 +93,7 @@ std::vector<std::optional<EgoMaskRoiConfig>> declareCameraMaskParams(
     if (!enabled || mask.empty()) {
       continue;
     }
-    validateMaskPoints(mask, parameter_prefix + ".mask");
+    validate_mask_points(mask, parameter_prefix + ".mask");
 
     EgoMaskRoiConfig config;
     config.polygons.push_back(EgoMaskPolygon{mask, normalized});
@@ -268,9 +268,9 @@ StreamPetrNode::StreamPetrNode(const rclcpp::NodeOptions & node_options)
     ego_mask_params.fill_rgb[i] = static_cast<std::uint8_t>(std::clamp(v, 0.0, 255.0));
   }
   const auto camera_mask_ids = declare_parameter<std::vector<int64_t>>(
-    "camera_mask.camera_ids", makeDefaultCameraMaskIds(rois_number_));
+    "camera_mask.camera_ids", make_default_camera_mask_ids(rois_number_));
   ego_mask_params.roi_mask_configs =
-    declareCameraMaskParams(*this, rois_number_, ego_mask_params.fill_rgb, camera_mask_ids);
+    declare_camera_mask_params(*this, rois_number_, ego_mask_params.fill_rgb, camera_mask_ids);
   ego_mask_params.roi_polygons_yaml = declare_parameter<std::vector<std::string>>(
     "ego_mask.roi_polygons_yaml", std::vector<std::string>());
 
@@ -361,9 +361,10 @@ void StreamPetrNode::step(const rclcpp::Time & stamp)
     return;
   }
 
-  const auto [output_objects, forward_time_ms, inference_time_ms] = inference_result.value();
-  publish_detection_results(stamp, output_objects);
-  publish_debug_metrics(forward_time_ms, inference_time_ms);
+  const auto & result = inference_result.value();
+  publish_detection_results(stamp, result.objects);
+  publish_debug_metrics(
+    result.subnetwork_timings, result.inference_time_ms, result.postprocess_time_ms);
 }
 
 bool StreamPetrNode::validate_camera_sync()
@@ -428,25 +429,25 @@ void StreamPetrNode::cleanup_on_failure()
   }
 }
 
-std::optional<std::tuple<
-  std::vector<autoware_perception_msgs::msg::DetectedObject>, std::vector<float>, double>>
-StreamPetrNode::perform_inference()
+std::optional<StreamPetrNode::InferenceResult> StreamPetrNode::perform_inference()
 {
+  InferenceResult result;
+
   stop_watch_.tic("latency/inference");
-
-  std::vector<float> forward_time_ms;
-  std::vector<autoware_perception_msgs::msg::DetectedObject> output_objects;
-
   InferenceInputs inputs = create_inference_inputs();
-  network_->inference_detector(inputs, output_objects, forward_time_ms);
+  network_->inference_detector(inputs, result.subnetwork_timings);
+  result.inference_time_ms = stop_watch_.toc("latency/inference", true);
 
+  // The decode only reads the head's output bindings, so the cameras can resume before it.
   if (multithreading_) {
     data_store_->unfreeze_updates();
   }
 
-  const double inference_time_ms = stop_watch_.toc("latency/inference", true);
+  stop_watch_.tic("latency/postprocess");
+  network_->postprocess(result.objects);
+  result.postprocess_time_ms = stop_watch_.toc("latency/postprocess", true);
 
-  return std::make_tuple(output_objects, forward_time_ms, inference_time_ms);
+  return result;
 }
 
 InferenceInputs StreamPetrNode::create_inference_inputs()
@@ -476,14 +477,15 @@ void StreamPetrNode::publish_detection_results(
 }
 
 void StreamPetrNode::publish_debug_metrics(
-  const std::vector<float> & forward_time_ms, double inference_time_ms)
+  const SubNetworkTimings & subnetwork_timings, double inference_time_ms,
+  double postprocess_time_ms)
 {
   // Latched before the debug_mode_ gate below: the watchdog is active even without debug topics.
   const double processing_time_ms = stop_watch_.toc("latency/total", true);
   last_processing_time_ms_ = processing_time_ms;
   last_preprocess_time_ms_ = data_store_->get_preprocess_time_ms();
   last_inference_time_ms_ = inference_time_ms;
-  last_postprocess_time_ms_ = forward_time_ms[3];
+  last_postprocess_time_ms_ = postprocess_time_ms;
 
   if (!debug_publisher_ptr_) {
     return;
@@ -496,13 +498,13 @@ void StreamPetrNode::publish_debug_metrics(
   debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "latency/inference", inference_time_ms);
   debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-    "latency/inference/backbone", forward_time_ms[0]);
+    "latency/inference/backbone", subnetwork_timings.backbone_ms);
   debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-    "latency/inference/ptshead", forward_time_ms[1]);
+    "latency/inference/ptshead", subnetwork_timings.ptshead_ms);
   debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-    "latency/inference/pos_embed", forward_time_ms[2]);
+    "latency/inference/pos_embed", subnetwork_timings.pos_embed_ms);
   debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-    "latency/inference/postprocess", forward_time_ms[3]);
+    "latency/postprocess", postprocess_time_ms);
   debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "latency/cycle_time_ms", stop_watch_.toc("latency/cycle_time_ms", true));
   stop_watch_.tic("latency/cycle_time_ms");
