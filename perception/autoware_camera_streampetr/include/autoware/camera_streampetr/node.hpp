@@ -79,17 +79,37 @@ private:
   void reset_system_state();
   bool prepare_inference_data(const rclcpp::Time & stamp);
   void cleanup_on_failure();
-  std::optional<std::tuple<
-    std::vector<autoware_perception_msgs::msg::DetectedObject>, std::vector<float>, double>>
-  perform_inference();
+  // One cycle's detections and timing.
+  struct InferenceResult
+  {
+    std::vector<autoware_perception_msgs::msg::DetectedObject> objects;
+    SubNetworkTimings subnetwork_timings;
+    double inference_time_ms;
+    double postprocess_time_ms;
+  };
+  std::optional<InferenceResult> perform_inference();
   InferenceInputs create_inference_inputs();
   void publish_detection_results(
     const rclcpp::Time & stamp,
     const std::vector<autoware_perception_msgs::msg::DetectedObject> & output_objects);
-  void publish_debug_metrics(const std::vector<float> & forward_time_ms, double inference_time_ms);
+  void publish_debug_metrics(
+    const SubNetworkTimings & subnetwork_timings, double inference_time_ms,
+    double postprocess_time_ms);
 
   // Timer driven so a dead camera cannot silence its own diagnostic.
   void diagnose_camera_status(diagnostic_updater::DiagnosticStatusWrapper & stat);
+
+  // WARN once a cycle exceeds the budget, ERROR if it stays over budget continuously.
+  void diagnose_processing_time(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  void add_no_inference_diagnostics(
+    diagnostic_updater::DiagnosticStatusWrapper & stat, std::stringstream & message);
+  diagnostic_msgs::msg::DiagnosticStatus::_level_type check_processing_time_status(
+    diagnostic_updater::DiagnosticStatusWrapper & stat, std::stringstream & message,
+    const rclcpp::Time & timestamp_now);
+  diagnostic_msgs::msg::DiagnosticStatus::_level_type check_consecutive_delays(
+    diagnostic_updater::DiagnosticStatusWrapper & stat, std::stringstream & message,
+    const rclcpp::Time & timestamp_now,
+    diagnostic_msgs::msg::DiagnosticStatus::_level_type current_level);
 
   std::optional<std::pair<std::vector<float>, std::vector<float>>> get_ego_pose_vector(
     const rclcpp::Time & stamp);
@@ -139,13 +159,26 @@ private:
   float current_prediction_timestamp_;
 
   // debugger
-  std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_{nullptr};
+  // Always on: the watchdog reads the per-cycle total even with debug topics disabled.
+  autoware_utils::StopWatch<std::chrono::milliseconds> stop_watch_;
   std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_ptr_{nullptr};
   const bool debug_mode_;
 
   diagnostic_updater::Updater diagnostic_updater_{this};
+  double max_allowed_processing_time_ms_;
+  double max_acceptable_consecutive_delay_ms_;
   // A camera whose newest frame is older than this is reported as stale.
   double max_image_age_ms_;
+  // Unset until the first successful inference.
+  std::optional<double> last_processing_time_ms_;
+  // Per-stage breakdown of the cycle behind last_processing_time_ms_, latched together with it.
+  double last_preprocess_time_ms_{0.0};
+  double last_inference_time_ms_{0.0};
+  double last_postprocess_time_ms_{0.0};
+  std::optional<rclcpp::Time> last_in_time_processing_timestamp_;
+  // Newest published detection: sensing stamp and node-clock publish instant.
+  std::optional<rclcpp::Time> last_output_frame_stamp_;
+  std::optional<rclcpp::Time> last_publish_stamp_;
 };
 
 }  // namespace autoware::camera_streampetr
