@@ -131,7 +131,7 @@ that is not densely packed, and those frames never reach the model.
 `processing_time_status` reports `WARN` once a cycle exceeds
 `diagnostics.max_allowed_processing_time_ms`, escalating to `ERROR` if it stays over budget for
 longer than `diagnostics.max_acceptable_consecutive_delay_ms`. It reports "waiting" until the
-first inference completes, and carries a per-stage breakdown of the thresholded cycle —
+first inference completes, and carries a per-stage breakdown of the measured cycle —
 `preprocess_time_ms`, `inference_time_ms` and `postprocess_time_ms`, mirroring the
 `latency/preprocess`, `latency/inference` and `latency/postprocess` debug topics — so an
 over-budget `processing_time_ms` can be localized without enabling `debug_mode`.
