@@ -112,12 +112,12 @@ collapses the camera into one state, most-specific-cause first:
 
 plus summary key/values:
 
-| Key                                          | Meaning                                                                        |
-| -------------------------------------------- | ------------------------------------------------------------------------------ |
-| `num_cameras`                                | Expected camera count (`rois_number`)                                          |
-| `num_waiting` / `num_stale` / `num_rejected` | State counts; the summary level falls out of these                             |
-| `stalest_camera_id` / `stalest_image_age_ms` | The camera that has gone longest without a new frame                           |
-| `max_inter_camera_time_diff_ms`              | Subscriber-side stamp spread between cameras (`n/a` while cameras are missing) |
+| Key                                              | Meaning                                                                        |
+| ------------------------------------------------ | ------------------------------------------------------------------------------ |
+| `num_cameras`                                    | Expected camera count (`rois_number`)                                          |
+| `num_waiting` / `num_stale` / `num_rejected`     | State counts; the summary level falls out of these                             |
+| `oldest_image_camera_id` / `oldest_image_age_ms` | The camera that has gone longest without a new frame                           |
+| `max_inter_camera_time_diff_ms`                  | Subscriber-side stamp spread between cameras (`n/a` while cameras are missing) |
 
 Timestamps and ages are formatted as fixed-point strings (never scientific notation), like the
 pointcloud concatenation node's diagnostics.

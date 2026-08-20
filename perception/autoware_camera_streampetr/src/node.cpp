@@ -57,6 +57,14 @@ std::string format_milliseconds(const double milliseconds)
 
 constexpr std::size_t MAX_CAMERA_MASK_ID = 10;
 
+// Per-camera `cameraN/state` values published in the camera-status diagnostics; external
+// monitors match on these strings, so they are part of the node's interface.
+constexpr const char * CAMERA_STATE_REJECTED = "rejected";
+constexpr const char * CAMERA_STATE_WAITING_CAMERA_INFO = "waiting_camera_info";
+constexpr const char * CAMERA_STATE_WAITING_IMAGE = "waiting_image";
+constexpr const char * CAMERA_STATE_STALE = "stale";
+constexpr const char * CAMERA_STATE_ACTIVE = "active";
+
 std::vector<int64_t> make_default_camera_mask_ids(const std::size_t rois_number)
 {
   std::vector<int64_t> camera_ids;
@@ -518,8 +526,8 @@ void StreamPetrNode::diagnose_camera_status(diagnostic_updater::DiagnosticStatus
   std::size_t num_waiting = 0;
   std::size_t num_stale = 0;
   std::size_t num_rejected = 0;
-  int stalest_camera_id = -1;
-  double stalest_image_age_ms = 0.0;
+  int oldest_image_camera_id = -1;
+  double oldest_image_age_ms = 0.0;
 
   for (std::size_t camera_id = 0; camera_id < camera_status.size(); ++camera_id) {
     const auto & status = camera_status[camera_id];
@@ -529,27 +537,27 @@ void StreamPetrNode::diagnose_camera_status(diagnostic_updater::DiagnosticStatus
     if (status.image_received) {
       // Clamp at zero: header stamps run ahead of the node clock right after a rosbag loop.
       age_ms = std::max(0.0, (now.seconds() - status.last_image_timestamp) * 1000.0);
-      if (age_ms > stalest_image_age_ms) {
-        stalest_image_age_ms = age_ms;
-        stalest_camera_id = static_cast<int>(camera_id);
+      if (age_ms > oldest_image_age_ms) {
+        oldest_image_age_ms = age_ms;
+        oldest_image_camera_id = static_cast<int>(camera_id);
       }
     }
 
     std::string state;
     if (status.input_rejected) {
-      state = "rejected";
+      state = CAMERA_STATE_REJECTED;
       ++num_rejected;
     } else if (!status.camera_info_received) {
-      state = "waiting_camera_info";
+      state = CAMERA_STATE_WAITING_CAMERA_INFO;
       ++num_waiting;
     } else if (!status.image_received) {
-      state = "waiting_image";
+      state = CAMERA_STATE_WAITING_IMAGE;
       ++num_waiting;
     } else if (age_ms > max_image_age_ms_) {
-      state = "stale";
+      state = CAMERA_STATE_STALE;
       ++num_stale;
     } else {
-      state = "active";
+      state = CAMERA_STATE_ACTIVE;
     }
 
     stat.add(prefix + "topic", camera_image_topics_[camera_id]);
@@ -561,10 +569,10 @@ void StreamPetrNode::diagnose_camera_status(diagnostic_updater::DiagnosticStatus
   stat.add("num_waiting", static_cast<int>(num_waiting));
   stat.add("num_stale", static_cast<int>(num_stale));
   stat.add("num_rejected", static_cast<int>(num_rejected));
-  stat.add("stalest_camera_id", stalest_camera_id);
+  stat.add("oldest_image_camera_id", oldest_image_camera_id);
   stat.add(
-    "stalest_image_age_ms",
-    stalest_camera_id >= 0 ? format_milliseconds(stalest_image_age_ms) : "n/a");
+    "oldest_image_age_ms",
+    oldest_image_camera_id >= 0 ? format_milliseconds(oldest_image_age_ms) : "n/a");
 
   const float inter_camera_diff_s = data_store_->check_if_all_images_synced();
   stat.add(
@@ -583,8 +591,8 @@ void StreamPetrNode::diagnose_camera_status(diagnostic_updater::DiagnosticStatus
   if (num_stale > 0) {
     level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
     message << (message.tellp() > 0 ? " " : "") << num_stale << " camera(s) stale; camera"
-            << stalest_camera_id << " stopped publishing "
-            << format_milliseconds(stalest_image_age_ms) << " ms ago.";
+            << oldest_image_camera_id << " stopped publishing "
+            << format_milliseconds(oldest_image_age_ms) << " ms ago.";
   }
   if (level == diagnostic_msgs::msg::DiagnosticStatus::OK) {
     if (num_waiting > 0) {
