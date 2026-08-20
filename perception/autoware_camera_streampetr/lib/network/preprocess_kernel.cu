@@ -49,7 +49,8 @@ __global__ void convert_bgr_to_rgb_kernel(std::uint8_t * __restrict__ img, int n
   pixel[2] = b;
 }
 
-cudaError_t convert_bgr_to_rgb_launch(std::uint8_t * img, int height, int width, cudaStream_t stream)
+cudaError_t convert_bgr_to_rgb_launch(
+  std::uint8_t * img, int height, int width, cudaStream_t stream)
 {
   const int num_pixels = height * width;
   const int threads = 256;
