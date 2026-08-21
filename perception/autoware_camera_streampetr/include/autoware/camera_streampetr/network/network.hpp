@@ -240,8 +240,11 @@ public:
 
   bool incremental_backbone() const { return incremental_backbone_; }
 
-  // Incremental mode: enqueue the batch-1 backbone for one camera on that camera's stream.
-  // Thread-safe: the shared TensorRT context serializes address setting and enqueue.
+  // Incremental mode: enqueue the batch-1 backbone for one camera, GPU-ordered after the
+  // camera's preprocessing. All extractions run on one internal stream: a TensorRT execution
+  // context must never have two executions in flight, and only stream order guarantees that --
+  // the mutex alone serializes the enqueues, not the executions (observed as a GPU hang on
+  // Orin, where extraction outlasts the camera arrival gaps).
   void extract_features(float * slot_ptr, int camera_id, cudaStream_t stream);
 
   // In batch mode the backbone's own "img" binding (zero copy); in incremental mode a standalone
@@ -309,6 +312,11 @@ private:
   // head or targets the other buffer.
   std::vector<cudaEvent_t> extract_done_events_;
   std::vector<bool> extract_done_valid_;
+  // The one stream every extraction is enqueued on (see extract_features).
+  cudaStream_t extract_stream_{nullptr};
+  // Bridges camera stream -> extract_stream_: records "this camera's preprocessing is enqueued"
+  // so the extraction can wait for it on the GPU without blocking the callback thread.
+  std::vector<cudaEvent_t> extract_ready_events_;
 };
 
 }  // namespace autoware::camera_streampetr

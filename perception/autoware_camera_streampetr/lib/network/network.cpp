@@ -282,6 +282,14 @@ void StreamPetrNetwork::alias_shared_bindings()
   for (auto & event : extract_done_events_) {
     CHECK_CUDA_ERROR(cudaEventCreateWithFlags(&event, cudaEventDisableTiming));
   }
+
+  // One stream for every extraction: the shared batch-1 context may not have two executions in
+  // flight, and stream order is the only thing that guarantees that.
+  CHECK_CUDA_ERROR(cudaStreamCreate(&extract_stream_));
+  extract_ready_events_.resize(config_.image_num);
+  for (auto & event : extract_ready_events_) {
+    CHECK_CUDA_ERROR(cudaEventCreateWithFlags(&event, cudaEventDisableTiming));
+  }
 }
 
 std::shared_ptr<Tensor> StreamPetrNetwork::create_image_input_tensor()
@@ -300,18 +308,28 @@ void StreamPetrNetwork::extract_features(float * slot_ptr, int camera_id, cudaSt
 {
   // Address setting and enqueue must not interleave across camera callback threads.
   std::lock_guard<std::mutex> lock(backbone_mutex_);
+
+  // GPU-side handover: the extraction waits for this camera's preprocessing (enqueued on the
+  // camera's stream) without the callback thread ever blocking.
+  CHECK_CUDA_ERROR(cudaEventRecord(extract_ready_events_[camera_id], stream));
+  CHECK_CUDA_ERROR(cudaStreamWaitEvent(extract_stream_, extract_ready_events_[camera_id], 0));
+
   backbone_->setTensorAddress("img", slot_ptr);
   backbone_->setTensorAddress(
     "img_feats", static_cast<char *>(feature_buffers_[feature_write_index_]->ptr) +
                    static_cast<std::size_t>(camera_id) * feature_slot_bytes_);
-  if (!backbone_->enqueueV3(stream)) {
+  if (!backbone_->enqueueV3(extract_stream_)) {
     RCLCPP_ERROR(
       rclcpp::get_logger(config_.logger_name.c_str()),
       "Batch-1 backbone enqueue failed for camera %d", camera_id);
     return;
   }
-  CHECK_CUDA_ERROR(cudaEventRecord(extract_done_events_[camera_id], stream));
+  CHECK_CUDA_ERROR(cudaEventRecord(extract_done_events_[camera_id], extract_stream_));
   extract_done_valid_[camera_id] = true;
+
+  // Back-pressure: the camera stream may not overwrite this image slot with the next frame's
+  // preprocessing until the extraction has read it.
+  CHECK_CUDA_ERROR(cudaStreamWaitEvent(stream, extract_done_events_[camera_id], 0));
 }
 
 void StreamPetrNetwork::initialize_memory_and_profiling()
@@ -527,6 +545,13 @@ StreamPetrNetwork::~StreamPetrNetwork()
 {
   for (auto & event : extract_done_events_) {
     cudaEventDestroy(event);
+  }
+  for (auto & event : extract_ready_events_) {
+    cudaEventDestroy(event);
+  }
+  if (extract_stream_) {
+    cudaStreamSynchronize(extract_stream_);
+    cudaStreamDestroy(extract_stream_);
   }
   for (auto & graph : head_graphs_) {
     if (graph != nullptr) {
