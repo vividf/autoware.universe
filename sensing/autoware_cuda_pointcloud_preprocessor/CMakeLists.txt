@@ -187,14 +187,8 @@ if(BUILD_TESTING)
     sensor_msgs
     tf2
   )
-  # libconcatenate_data.so carries undefined references to utils::is_data_layout_compatible_*
-  # (defined in pointcloud_preprocessor_filter_base, which upstream expects to be co-linked).
-  # This test never uses Filter directly, so --as-needed would drop filter_base; force-keep it.
   target_link_libraries(test_cuda_combine_cloud_handler
     cuda_pointcloud_preprocessor_lib
-    -Wl,--no-as-needed
-    autoware_pointcloud_preprocessor::pointcloud_preprocessor_filter_base
-    -Wl,--as-needed
     ${CUDA_LIBRARIES}
   )
   target_include_directories(test_cuda_combine_cloud_handler SYSTEM PRIVATE ${CUDA_INCLUDE_DIRS})
