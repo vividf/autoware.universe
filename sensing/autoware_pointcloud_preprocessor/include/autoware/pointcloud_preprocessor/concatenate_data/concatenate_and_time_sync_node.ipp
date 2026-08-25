@@ -293,13 +293,17 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::publish
     return;
   }
 
-  if (concatenated_cloud_result.motion_compensation_status.no_twist_available) {
+  if (
+    concatenated_cloud_result.motion_compensation_status ==
+    MotionCompensationStatus::kNoTwistAvailable) {
     RCLCPP_WARN_STREAM_THROTTLE(
       this->get_logger(), *this->get_clock(), std::chrono::milliseconds(10000).count(),
       "No twist is available. Please confirm twist topic and timestamp. Leaving point cloud "
       "untransformed.");
   }
-  if (concatenated_cloud_result.motion_compensation_status.twist_time_gap_too_large) {
+  if (
+    concatenated_cloud_result.motion_compensation_status ==
+    MotionCompensationStatus::kTwistTimeGapTooLarge) {
     RCLCPP_WARN_STREAM_THROTTLE(
       this->get_logger(), *this->get_clock(), std::chrono::milliseconds(10000).count(),
       "Time difference is too large. Cloud not interpolate. Please confirm twist topic and "

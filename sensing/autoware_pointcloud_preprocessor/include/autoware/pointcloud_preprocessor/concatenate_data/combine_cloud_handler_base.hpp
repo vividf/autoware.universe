@@ -36,10 +36,10 @@
 namespace autoware::pointcloud_preprocessor
 {
 
-struct MotionCompensationStatus
-{
-  bool no_twist_available{false};
-  bool twist_time_gap_too_large{false};
+enum class MotionCompensationStatus {
+  kValid = 0,
+  kNoTwistAvailable,
+  kTwistTimeGapTooLarge,
 };
 
 template <typename PointCloudMsgT>
@@ -50,7 +50,7 @@ struct ConcatenatedCloudResult
   std::optional<std::unordered_map<std::string, typename PointCloudMsgT::UniquePtr>>
     topic_to_transformed_cloud_map;
   std::unordered_map<std::string, double> topic_to_original_stamp_map;
-  MotionCompensationStatus motion_compensation_status;
+  MotionCompensationStatus motion_compensation_status{MotionCompensationStatus::kValid};
   std::vector<std::string> dropped_frames_missing_transform;
 };
 
