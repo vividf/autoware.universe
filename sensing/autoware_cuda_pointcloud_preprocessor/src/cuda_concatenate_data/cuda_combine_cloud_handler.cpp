@@ -17,7 +17,7 @@
 #include "autoware/cuda_pointcloud_preprocessor/cuda_concatenate_data/cuda_combine_cloud_handler_kernel.hpp"
 #include "autoware/cuda_pointcloud_preprocessor/cuda_concatenate_data/cuda_traits.hpp"
 
-#include <Eigen/Dense>  // for Matrix4f::inverse() (declaration in Core needs the LU definition)
+#include <Eigen/Dense>
 #include <autoware/pointcloud_preprocessor/concatenate_data/concatenation_info_manager.hpp>
 #include <cuda_blackboard/cuda_pointcloud2.hpp>
 
