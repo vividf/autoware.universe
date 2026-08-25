@@ -17,7 +17,7 @@
 #include "autoware/pointcloud_preprocessor/concatenate_data/concatenation_info_manager.hpp"
 #include "time_utils.hpp"
 
-#include <Eigen/Dense>  // for Matrix4f::inverse() (the declaration in Core needs the LU definition)
+#include <Eigen/Dense>
 
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
