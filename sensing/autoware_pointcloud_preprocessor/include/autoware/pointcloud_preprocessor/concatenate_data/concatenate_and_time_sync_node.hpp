@@ -30,6 +30,7 @@
 #include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/ros/diagnostics_interface.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <point_cloud_msg_wrapper/point_cloud_msg_wrapper.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -113,6 +114,7 @@ private:
     combine_cloud_handler_;
   std::list<std::shared_ptr<CloudCollector<MsgTraits>>> cloud_collectors_;
   std::unique_ptr<CollectorMatcher<MsgTraits>> collector_matcher_;
+  std::unique_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer_;
 
   bool init_collector_list_{false};
   static constexpr const int num_of_collectors{3};

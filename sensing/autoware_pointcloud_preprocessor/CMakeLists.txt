@@ -80,6 +80,9 @@ target_include_directories(concatenate_data PUBLIC
   "$<INSTALL_INTERFACE:include/${PROJECT_NAME}>"
 )
 
+# concatenate_data uses utils::is_data_layout_compatible_* from filter_base
+target_link_libraries(concatenate_data pointcloud_preprocessor_filter_base)
+
 ament_target_dependencies(concatenate_data
   SYSTEM
   autoware_point_types
