@@ -70,10 +70,11 @@ autoware_perception_msgs::msg::DetectedObject StreamPetrNetwork::bbox_to_ros_msg
   object.existence_probability = bbox.score;
   object.kinematics.has_position_covariance = false;
   object.kinematics.has_twist = false;
-  object.shape.type = 0;
+  object.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
 
   autoware_perception_msgs::msg::ObjectClassification classification;
-  classification.probability = 1.0f;
+  // The detection score goes here as well, matching the other Autoware detectors.
+  classification.probability = bbox.score;
   classification.label = get_semantic_type(config_.class_names[bbox.label]);
   object.classification.push_back(classification);
   return object;
@@ -119,11 +120,12 @@ void set_sigmoid_and_softmax_layers_to_fp32(std::shared_ptr<nvinfer1::INetworkDe
 
 StreamPetrNetwork::StreamPetrNetwork(const NetworkConfig & config) : config_(config)
 {
-  cudaStreamCreate(&stream_);
+  CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
 
   initialize_networks();
   setup_engines();
   setup_bindings();
+  validate_bindings();
   initialize_memory_and_profiling();
   configure_nms_if_needed();
 }
@@ -142,9 +144,9 @@ void StreamPetrNetwork::initialize_networks()
     config_.engine_position_embedding_path, config_.workspace_size);
 
   // Initialize TrtCommon instances
-  backbone_ = std::make_unique<SubNetwork>(backbone_config, profiler_);
-  pts_head_ = std::make_unique<SubNetwork>(pts_head_config, profiler_);
-  pos_embed_ = std::make_unique<SubNetwork>(pos_embed_config, profiler_);
+  backbone_ = std::make_unique<SubNetwork>(backbone_config);
+  pts_head_ = std::make_unique<SubNetwork>(pts_head_config);
+  pos_embed_ = std::make_unique<SubNetwork>(pos_embed_config);
 
   // Apply FP32 precision for stability if using fp16
   if (config_.trt_precision == "fp16") {
@@ -182,19 +184,86 @@ void StreamPetrNetwork::setup_bindings()
   }
 }
 
+namespace
+{
+void expect_volume(
+  const SubNetwork & network, const std::string & binding_name, const int64_t expected,
+  const std::string & derived_from)
+{
+  const int64_t actual = network.binding(binding_name)->volume;
+  if (actual != expected) {
+    throw std::runtime_error(
+      "Binding '" + binding_name + "' holds " + std::to_string(actual) + " elements but " +
+      derived_from + " implies " + std::to_string(expected) +
+      ". The engine and the parameter file disagree.");
+  }
+}
+}  // namespace
+
+void StreamPetrNetwork::validate_bindings() const
+{
+  // Fail early with a readable error if the engine is missing an expected binding.
+  for (const auto & name : {"img", "img_feats"}) {
+    backbone_->binding(name);
+  }
+  for (const auto & name :
+       {"x", "pos_embed", "cone", "data_ego_pose", "data_ego_pose_inv", "all_cls_scores",
+        "all_bbox_preds", "pre_memory_timestamp", "post_memory_timestamp", "pre_memory_embedding",
+        "post_memory_embedding", "pre_memory_reference_point", "post_memory_reference_point",
+        "pre_memory_egopose", "post_memory_egopose", "pre_memory_velo", "post_memory_velo"}) {
+    pts_head_->binding(name);
+  }
+  for (const auto & name : {"img_metas_pad", "intrinsics", "img2lidar", "pos_embed", "cone"}) {
+    pos_embed_->binding(name);
+  }
+
+  const int64_t num_classes = static_cast<int64_t>(config_.class_names.size());
+  const int64_t num_proposals = config_.num_proposals;
+
+  expect_volume(
+    *backbone_, "img",
+    static_cast<int64_t>(config_.image_num) * 3 * config_.image_height * config_.image_width,
+    "model_params.rois_number x 3 x input_image_height x input_image_width");
+  expect_volume(
+    *pts_head_, "all_cls_scores", num_classes * num_proposals,
+    "model_params.class_names x model_params.num_proposals");
+  expect_volume(
+    *pts_head_, "pre_memory_timestamp", config_.pre_memory_length,
+    "model_params.pre_memory_length");
+  expect_volume(
+    *pts_head_, "post_memory_timestamp", config_.post_memory_length,
+    "model_params.post_memory_length");
+
+  // generate_boxes3d_kernel indexes box_output up to point_idx + 7 * num_proposals.
+  const int64_t bbox_volume = pts_head_->binding("all_bbox_preds")->volume;
+  if (bbox_volume % num_proposals != 0 || bbox_volume / num_proposals < 8) {
+    throw std::runtime_error(
+      "Binding 'all_bbox_preds' holds " + std::to_string(bbox_volume) +
+      " elements, which is not at least 8 channels of model_params.num_proposals (" +
+      std::to_string(num_proposals) + ").");
+  }
+
+  // The postprocessing kernel reads detection_range[0..5] unconditionally.
+  if (config_.detection_range.size() < 6) {
+    throw std::runtime_error(
+      "model_params.detection_range needs 6 values [-x,-y,-z,x,y,z] but has " +
+      std::to_string(config_.detection_range.size()) + ".");
+  }
+}
+
 void StreamPetrNetwork::initialize_memory_and_profiling()
 {
   mem_.init(stream_, config_.pre_memory_length, config_.post_memory_length);
-  mem_.pre_buf = static_cast<float *>(pts_head_->bindings["pre_memory_timestamp"]->ptr);
-  mem_.post_buf = static_cast<float *>(pts_head_->bindings["post_memory_timestamp"]->ptr);
+  mem_.pre_buf = static_cast<float *>(pts_head_->binding("pre_memory_timestamp")->ptr);
+  mem_.post_buf = static_cast<float *>(pts_head_->binding("post_memory_timestamp")->ptr);
 
   // cudaMalloc does not zero: without this the first inference would read garbage temporal state.
   wipe_memory();
 
-  // events for measurement - pass profiler to Duration objects
-  dur_backbone_ = std::make_unique<Duration>("backbone", profiler_);
-  dur_ptshead_ = std::make_unique<Duration>("ptshead", profiler_);
-  dur_pos_embed_ = std::make_unique<Duration>("pos_embed", profiler_);
+  // events for measurement
+  dur_backbone_ = std::make_unique<Duration>("backbone");
+  dur_ptshead_ = std::make_unique<Duration>("ptshead");
+  dur_pos_embed_ = std::make_unique<Duration>("pos_embed");
 
   postprocess_cuda_ = std::make_unique<PostprocessCuda>(
     PostProcessingConfig(
@@ -215,10 +284,10 @@ void StreamPetrNetwork::configure_nms_if_needed()
 
 void StreamPetrNetwork::wipe_memory()
 {
-  pts_head_->bindings["pre_memory_embedding"]->initialize_to_zeros(stream_);
-  pts_head_->bindings["pre_memory_reference_point"]->initialize_to_zeros(stream_);
-  pts_head_->bindings["pre_memory_egopose"]->initialize_to_zeros(stream_);
-  pts_head_->bindings["pre_memory_velo"]->initialize_to_zeros(stream_);
+  pts_head_->binding("pre_memory_embedding")->initialize_to_zeros(stream_);
+  pts_head_->binding("pre_memory_reference_point")->initialize_to_zeros(stream_);
+  pts_head_->binding("pre_memory_egopose")->initialize_to_zeros(stream_);
+  pts_head_->binding("pre_memory_velo")->initialize_to_zeros(stream_);
   // The timestamps in mem_buf are part of the same temporal state and must be dropped with it.
   mem_.clear();
   mem_.step_reset();
@@ -245,41 +314,38 @@ void StreamPetrNetwork::inference_detector(
 
 void StreamPetrNetwork::initialize_position_embedding(const InferenceInputs & inputs)
 {
-  pos_embed_->bindings["img_metas_pad"]->load_from_vector(inputs.img_metas_pad);
-  pos_embed_->bindings["intrinsics"]->load_from_vector(inputs.intrinsics);
-  pos_embed_->bindings["img2lidar"]->load_from_vector(inputs.img2lidar);
+  pos_embed_->binding("img_metas_pad")->load_from_vector(inputs.img_metas_pad);
+  pos_embed_->binding("intrinsics")->load_from_vector(inputs.intrinsics);
+  pos_embed_->binding("img2lidar")->load_from_vector(inputs.img2lidar);
 
   dur_pos_embed_->mark_begin(stream_);
   pos_embed_->enqueueV3(stream_);
   dur_pos_embed_->mark_end(stream_);
 
-  cudaMemcpyAsync(
-    pts_head_->bindings["pos_embed"]->ptr, pos_embed_->bindings["pos_embed"]->ptr,
-    pos_embed_->bindings["pos_embed"]->nbytes(), cudaMemcpyDeviceToDevice, stream_);
-  cudaMemcpyAsync(
-    pts_head_->bindings["cone"]->ptr, pos_embed_->bindings["cone"]->ptr,
-    pos_embed_->bindings["cone"]->nbytes(), cudaMemcpyDeviceToDevice, stream_);
+  // Only ever executed once, so these two copies are not worth aliasing away.
+  pts_head_->binding("pos_embed")->copy(pos_embed_->binding("pos_embed"), stream_);
+  pts_head_->binding("cone")->copy(pos_embed_->binding("cone"), stream_);
 }
 
 void StreamPetrNetwork::execute_backbone(const InferenceInputs & inputs)
 {
-  cudaMemcpyAsync(
-    backbone_->bindings["img"]->ptr, inputs.imgs->ptr, inputs.imgs->nbytes(),
-    cudaMemcpyDeviceToDevice, stream_);
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    backbone_->binding("img")->ptr, inputs.imgs->ptr, inputs.imgs->nbytes(),
+    cudaMemcpyDeviceToDevice, stream_));
 
   dur_backbone_->mark_begin(stream_);
   backbone_->enqueueV3(stream_);
 
-  cudaMemcpyAsync(
-    pts_head_->bindings["x"]->ptr, backbone_->bindings["img_feats"]->ptr,
-    backbone_->bindings["img_feats"]->nbytes(), cudaMemcpyDeviceToDevice, stream_);
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    pts_head_->binding("x")->ptr, backbone_->binding("img_feats")->ptr,
+    backbone_->binding("img_feats")->nbytes(), cudaMemcpyDeviceToDevice, stream_));
   dur_backbone_->mark_end(stream_);
 }
 
 void StreamPetrNetwork::execute_pts_head(const InferenceInputs & inputs)
 {
-  pts_head_->bindings["data_ego_pose"]->load_from_vector(inputs.ego_pose);
-  pts_head_->bindings["data_ego_pose_inv"]->load_from_vector(inputs.ego_pose_inv);
+  pts_head_->binding("data_ego_pose")->load_from_vector(inputs.ego_pose);
+  pts_head_->binding("data_ego_pose_inv")->load_from_vector(inputs.ego_pose_inv);
 
   dur_ptshead_->mark_begin(stream_);
 
@@ -288,13 +354,15 @@ void StreamPetrNetwork::execute_pts_head(const InferenceInputs & inputs)
   mem_.step_post(inputs.stamp);
 
   if (config_.use_temporal) {
-    pts_head_->bindings["pre_memory_embedding"]->copy(
-      pts_head_->bindings["post_memory_embedding"], stream_);
-    pts_head_->bindings["pre_memory_reference_point"]->copy(
-      pts_head_->bindings["post_memory_reference_point"], stream_);
-    pts_head_->bindings["pre_memory_egopose"]->copy(
-      pts_head_->bindings["post_memory_egopose"], stream_);
-    pts_head_->bindings["pre_memory_velo"]->copy(pts_head_->bindings["post_memory_velo"], stream_);
+    // Tensor::copy moves the destination's size, deliberately keeping only pre_memory_length
+    // entries.
+    pts_head_->binding("pre_memory_embedding")
+      ->copy(pts_head_->binding("post_memory_embedding"), stream_);
+    pts_head_->binding("pre_memory_reference_point")
+      ->copy(pts_head_->binding("post_memory_reference_point"), stream_);
+    pts_head_->binding("pre_memory_egopose")
+      ->copy(pts_head_->binding("post_memory_egopose"), stream_);
+    pts_head_->binding("pre_memory_velo")->copy(pts_head_->binding("post_memory_velo"), stream_);
   } else {
     wipe_memory();
   }
@@ -305,10 +373,10 @@ void StreamPetrNetwork::postprocess(
   std::vector<autoware_perception_msgs::msg::DetectedObject> & output_objects)
 {
   std::vector<Box3D> det_boxes3d;
-  postprocess_cuda_->generate_detected_boxes3d_launch(
-    static_cast<const float *>(pts_head_->bindings["all_cls_scores"]->ptr),
-    static_cast<const float *>(pts_head_->bindings["all_bbox_preds"]->ptr), det_boxes3d, stream_);
-  cudaStreamSynchronize(stream_);
+  CHECK_CUDA_ERROR(postprocess_cuda_->generate_detected_boxes3d_launch(
+    static_cast<const float *>(pts_head_->binding("all_cls_scores")->ptr),
+    static_cast<const float *>(pts_head_->binding("all_bbox_preds")->ptr), det_boxes3d, stream_));
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
   std::vector<autoware_perception_msgs::msg::DetectedObject> raw_objects;
   for (size_t i = 0; i < det_boxes3d.size(); ++i) {

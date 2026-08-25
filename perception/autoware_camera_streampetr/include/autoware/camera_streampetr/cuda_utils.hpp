@@ -89,9 +89,10 @@ inline unsigned int get_element_size(DataType t)
 struct Tensor
 {
   std::string name;
-  void * ptr;
+  void * ptr = nullptr;
   Dims dim;
-  int32_t volume = 1;
+  // 64-bit so a tensor larger than 2 GB cannot silently wrap the byte count.
+  int64_t volume = 1;
   DataType dtype;
   TensorIOMode iomode;
 
@@ -105,14 +106,18 @@ struct Tensor
         volume *= dim.d[i];
       }
     }
-    cudaMalloc(&ptr, volume * get_element_size(dtype));
+    CHECK_CUDA_ERROR(::cudaMalloc(&ptr, nbytes()));
   }
 
-  int32_t nbytes() const { return volume * get_element_size(dtype); }
+  Tensor(const Tensor &) = delete;
+  Tensor & operator=(const Tensor &) = delete;
+
+  std::size_t nbytes() const { return static_cast<std::size_t>(volume) * get_element_size(dtype); }
 
   ~Tensor()
   {
     if (ptr) {
+      // Destructors must not throw, so this one call stays unchecked.
       cudaFree(ptr);
       ptr = nullptr;
     }
@@ -121,22 +126,27 @@ struct Tensor
   void copy(std::shared_ptr<Tensor> other, cudaStream_t stream)
   {
     // copy from 'other'
-    cudaMemcpyAsync(ptr, other->ptr, nbytes(), cudaMemcpyDeviceToDevice, stream);
+    CHECK_CUDA_ERROR(
+      ::cudaMemcpyAsync(ptr, other->ptr, nbytes(), cudaMemcpyDeviceToDevice, stream));
   }
 
-  void initialize_to_zeros(cudaStream_t stream) { cudaMemsetAsync(ptr, 0, nbytes(), stream); }
+  void initialize_to_zeros(cudaStream_t stream)
+  {
+    CHECK_CUDA_ERROR(::cudaMemsetAsync(ptr, 0, nbytes(), stream));
+  }
 
   // template<class Htype=float, class Dtype=float>
   template <class Htype = float>
   void load_from_vector(const std::vector<Htype> & data)
   {
+    // A size mismatch has to be fatal: the binding would keep the previous frame's values.
     if (data.size() != static_cast<std::size_t>(volume)) {
-      std::cerr << "Data size mismatch! Expected " << volume << " elements." << std::endl;
-      return;
+      throw std::runtime_error(
+        "Tensor '" + name + "': expected " + std::to_string(volume) + " elements but got " +
+        std::to_string(data.size()) + ".");
     }
 
-    std::size_t dsize = volume * get_element_size(dtype);
-    cudaMemcpy(ptr, data.data(), dsize, cudaMemcpyHostToDevice);
+    CHECK_CUDA_ERROR(::cudaMemcpy(ptr, data.data(), nbytes(), cudaMemcpyHostToDevice));
   }
 
   std::vector<float> copy_tensor_to_host_buffer() const

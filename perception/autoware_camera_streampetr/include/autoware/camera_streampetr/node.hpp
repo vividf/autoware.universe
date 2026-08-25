@@ -20,7 +20,6 @@
 
 #include <Eigen/Dense>
 #include <autoware_utils/ros/debug_publisher.hpp>
-#include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <image_transport/image_transport.hpp>
@@ -39,7 +38,6 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime_api.h>
 #include <tf2_ros/buffer.h>
-#include <tf2_ros/static_transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
 
 #include <chrono>
@@ -73,6 +71,30 @@ private:
   void camera_image_callback(Image::ConstSharedPtr input_camera_image_msg, const int camera_id);
 
   void step(const rclcpp::Time & stamp);
+
+  /// Holds the data store frozen while alive. A no-op when multithreading is off.
+  class FreezeGuard
+  {
+  public:
+    FreezeGuard(CameraDataStore & store, const bool active) : store_(store), active_(active)
+    {
+      if (active_) {
+        store_.freeze_updates();
+      }
+    }
+    ~FreezeGuard()
+    {
+      if (active_) {
+        store_.unfreeze_updates();
+      }
+    }
+    FreezeGuard(const FreezeGuard &) = delete;
+    FreezeGuard & operator=(const FreezeGuard &) = delete;
+
+  private:
+    CameraDataStore & store_;
+    const bool active_;
+  };
 
   // Helper methods for step function
   bool validate_camera_sync();

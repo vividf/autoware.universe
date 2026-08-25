@@ -88,8 +88,9 @@ void validate_mask_points(const std::vector<double> & mask, const std::string & 
 
 std::vector<std::optional<EgoMaskRoiConfig>> declare_camera_mask_params(
   rclcpp::Node & node, const std::size_t rois_number, const std::array<std::uint8_t, 3> & fill_rgb,
-  const std::vector<int64_t> & camera_mask_ids)
+  const std::vector<int64_t> & camera_mask_ids, const rclcpp::Logger & logger)
 {
+  // All ids are declared so an enabled mask that no ROI maps to can be reported below.
   std::vector<std::optional<EgoMaskRoiConfig>> camera_mask_configs(MAX_CAMERA_MASK_ID + 1);
   for (std::size_t camera_id = 0; camera_id <= MAX_CAMERA_MASK_ID; ++camera_id) {
     const std::string parameter_prefix = "camera_" + std::to_string(camera_id) + "_mask";
@@ -110,6 +111,7 @@ std::vector<std::optional<EgoMaskRoiConfig>> declare_camera_mask_params(
   }
 
   std::vector<std::optional<EgoMaskRoiConfig>> roi_mask_configs(rois_number, std::nullopt);
+  std::vector<bool> camera_id_used(camera_mask_configs.size(), false);
   for (std::size_t roi_i = 0; roi_i < rois_number; ++roi_i) {
     if (roi_i >= camera_mask_ids.size()) {
       continue;
@@ -118,7 +120,19 @@ std::vector<std::optional<EgoMaskRoiConfig>> declare_camera_mask_params(
     if (camera_id < 0 || static_cast<std::size_t>(camera_id) >= camera_mask_configs.size()) {
       throw std::runtime_error("camera_mask.camera_ids contains an unsupported camera id.");
     }
+    camera_id_used[static_cast<std::size_t>(camera_id)] = true;
     roi_mask_configs[roi_i] = camera_mask_configs[static_cast<std::size_t>(camera_id)];
+  }
+
+  // A mask enabled for a camera outside the first rois_number entries can never be applied.
+  for (std::size_t camera_id = 0; camera_id < camera_mask_configs.size(); ++camera_id) {
+    if (camera_mask_configs[camera_id].has_value() && !camera_id_used[camera_id]) {
+      RCLCPP_WARN(
+        logger,
+        "camera_%zu_mask is enabled but camera id %zu is not among the first %zu entries of "
+        "camera_mask.camera_ids, so this mask will never be applied.",
+        camera_id, camera_id, rois_number);
+    }
   }
 
   return roi_mask_configs;
@@ -277,8 +291,9 @@ StreamPetrNode::StreamPetrNode(const rclcpp::NodeOptions & node_options)
   }
   const auto camera_mask_ids = declare_parameter<std::vector<int64_t>>(
     "camera_mask.camera_ids", make_default_camera_mask_ids(rois_number_));
-  ego_mask_params.roi_mask_configs =
-    declare_camera_mask_params(*this, rois_number_, ego_mask_params.fill_rgb, camera_mask_ids);
+  ego_mask_params.roi_mask_configs = declare_camera_mask_params(
+    *this, rois_number_, ego_mask_params.fill_rgb, camera_mask_ids,
+    rclcpp::get_logger(logger_name_.c_str()));
   ego_mask_params.roi_polygons_yaml = declare_parameter<std::vector<std::string>>(
     "ego_mask.roi_polygons_yaml", std::vector<std::string>());
 
@@ -294,7 +309,8 @@ StreamPetrNode::StreamPetrNode(const rclcpp::NodeOptions & node_options)
     masked_camera_ids += std::to_string(camera_id);
   }
   masked_camera_ids += "]";
-  if (ego_mask_params.enabled || masked_camera_ids != "[]") {
+  // Only announce masking when a camera is actually masked.
+  if (masked_camera_ids != "[]") {
     RCLCPP_INFO(
       rclcpp::get_logger(logger_name_.c_str()),
       "mask enabled for StreamPETR preprocess (masked camera ids: %s)", masked_camera_ids.c_str());
@@ -356,6 +372,10 @@ void StreamPetrNode::camera_image_callback(
 
 void StreamPetrNode::step(const rclcpp::Time & stamp)
 {
+  // Freeze before anything reads the store: a camera callback could otherwise replace an image
+  // between validation and inference.
+  FreezeGuard freeze(*data_store_, multithreading_);
+
   if (!validate_camera_sync()) {
     return;
   }
@@ -406,19 +426,13 @@ void StreamPetrNode::reset_system_state()
 
 bool StreamPetrNode::prepare_inference_data(const rclcpp::Time & stamp)
 {
-  if (multithreading_) {
-    data_store_->freeze_updates();
-  }
-
   const auto ego_pose_result = get_ego_pose_vector(stamp);
   if (!ego_pose_result.has_value()) {
-    cleanup_on_failure();
     return false;
   }
 
   const auto extrinsic_vectors = get_camera_extrinsics_vector();
   if (!extrinsic_vectors.has_value()) {
-    cleanup_on_failure();
     return false;
   }
 
