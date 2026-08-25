@@ -120,6 +120,7 @@ void set_sigmoid_and_softmax_layers_to_fp32(std::shared_ptr<nvinfer1::INetworkDe
 
 StreamPetrNetwork::StreamPetrNetwork(const NetworkConfig & config) : config_(config)
 {
+  incremental_backbone_ = !config_.onnx_backbone_batch1_path.empty();
   CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
 
   initialize_networks();
@@ -134,9 +135,12 @@ StreamPetrNetwork::StreamPetrNetwork(const NetworkConfig & config) : config_(con
 void StreamPetrNetwork::initialize_networks()
 {
   // Initialize TrtCommon configurations
+  // The batch-1 variant replaces the batch backbone; loading both would double activation memory.
+  const std::string & backbone_onnx =
+    incremental_backbone_ ? config_.onnx_backbone_batch1_path : config_.onnx_backbone_path;
   auto backbone_config = tensorrt_common::TrtCommonConfig(
-    config_.onnx_backbone_path, config_.trt_precision, config_.engine_backbone_path,
-    config_.workspace_size);
+    backbone_onnx, config_.trt_precision,
+    incremental_backbone_ ? std::string("") : config_.engine_backbone_path, config_.workspace_size);
   auto pts_head_config = tensorrt_common::TrtCommonConfig(
     config_.onnx_head_path, config_.trt_precision, config_.engine_head_path,
     config_.workspace_size);
@@ -221,9 +225,9 @@ void StreamPetrNetwork::validate_bindings() const
   const int64_t num_classes = static_cast<int64_t>(config_.class_names.size());
   const int64_t num_proposals = config_.num_proposals;
 
+  const int64_t backbone_cameras = incremental_backbone_ ? 1 : config_.image_num;
   expect_volume(
-    *backbone_, "img",
-    static_cast<int64_t>(config_.image_num) * 3 * config_.image_height * config_.image_width,
+    *backbone_, "img", backbone_cameras * 3 * config_.image_height * config_.image_width,
     "model_params.rois_number x 3 x input_image_height x input_image_width");
   expect_volume(
     *pts_head_, "all_cls_scores", num_classes * num_proposals,
@@ -254,13 +258,78 @@ void StreamPetrNetwork::validate_bindings() const
 
 void StreamPetrNetwork::alias_shared_bindings()
 {
-  // Alias "x" onto "img_feats" so the feature tensor is never copied device-to-device.
-  pts_head_->alias_binding("x", backbone_->binding("img_feats"));
+  if (!incremental_backbone_) {
+    // Alias "x" onto "img_feats" so the feature tensor is never copied device-to-device.
+    pts_head_->alias_binding("x", backbone_->binding("img_feats"));
+    return;
+  }
+
+  // Cameras write one buffer while the head reads the other: the feature tensor is
+  // double-buffered.
+  const auto & x = pts_head_->binding("x");
+  feature_slot_bytes_ = static_cast<std::size_t>(x->nbytes()) / config_.image_num;
+  if (backbone_->binding("img_feats")->nbytes() != feature_slot_bytes_) {
+    throw std::runtime_error(
+      "The batch-1 backbone's img_feats does not match one camera slot of the head's x input.");
+  }
+  for (auto & buffer : feature_buffers_) {
+    buffer = std::make_shared<Tensor>("img_feats_buffer", x->dim, x->dtype);
+  }
+  pts_head_->alias_binding("x", feature_buffers_[1]);  // read buffer before the first swap
+
+  extract_done_events_.resize(config_.image_num);
+  extract_done_valid_.assign(config_.image_num, false);
+  for (auto & event : extract_done_events_) {
+    CHECK_CUDA_ERROR(cudaEventCreateWithFlags(&event, cudaEventDisableTiming));
+  }
+
+  // One stream for every extraction: the shared batch-1 context may not have two executions in
+  // flight, and stream order is the only thing that guarantees that.
+  CHECK_CUDA_ERROR(cudaStreamCreate(&extract_stream_));
+  extract_ready_events_.resize(config_.image_num);
+  for (auto & event : extract_ready_events_) {
+    CHECK_CUDA_ERROR(cudaEventCreateWithFlags(&event, cudaEventDisableTiming));
+  }
 }
 
-const std::shared_ptr<Tensor> & StreamPetrNetwork::image_input_binding() const
+std::shared_ptr<Tensor> StreamPetrNetwork::create_image_input_tensor()
 {
-  return backbone_->binding("img");
+  if (!incremental_backbone_) {
+    return backbone_->binding("img");
+  }
+  // Standalone tensor: the engine's own binding has only a single camera slot.
+  return std::make_shared<Tensor>(
+    "image_input",
+    nvinfer1::Dims{5, {1, config_.image_num, 3, config_.image_height, config_.image_width}},
+    nvinfer1::DataType::kFLOAT);
+}
+
+void StreamPetrNetwork::extract_features(float * slot_ptr, int camera_id, cudaStream_t stream)
+{
+  // Address setting and enqueue must not interleave across camera callback threads.
+  std::lock_guard<std::mutex> lock(backbone_mutex_);
+
+  // GPU-side handover: the extraction waits for this camera's preprocessing (enqueued on the
+  // camera's stream) without the callback thread ever blocking.
+  CHECK_CUDA_ERROR(cudaEventRecord(extract_ready_events_[camera_id], stream));
+  CHECK_CUDA_ERROR(cudaStreamWaitEvent(extract_stream_, extract_ready_events_[camera_id], 0));
+
+  backbone_->setTensorAddress("img", slot_ptr);
+  backbone_->setTensorAddress(
+    "img_feats", static_cast<char *>(feature_buffers_[feature_write_index_]->ptr) +
+                   static_cast<std::size_t>(camera_id) * feature_slot_bytes_);
+  if (!backbone_->enqueueV3(extract_stream_)) {
+    RCLCPP_ERROR(
+      rclcpp::get_logger(config_.logger_name.c_str()),
+      "Batch-1 backbone enqueue failed for camera %d", camera_id);
+    return;
+  }
+  CHECK_CUDA_ERROR(cudaEventRecord(extract_done_events_[camera_id], extract_stream_));
+  extract_done_valid_[camera_id] = true;
+
+  // Back-pressure: the camera stream may not overwrite this image slot with the next frame's
+  // preprocessing until the extraction has read it.
+  CHECK_CUDA_ERROR(cudaStreamWaitEvent(stream, extract_done_events_[camera_id], 0));
 }
 
 void StreamPetrNetwork::initialize_memory_and_profiling()
@@ -313,7 +382,25 @@ void StreamPetrNetwork::inference_detector(
     is_inference_initialized_ = true;
   }
 
-  execute_backbone(inputs);
+  if (incremental_backbone_) {
+    // Swap: the head reads what the cameras just wrote; they start filling the other buffer.
+    {
+      std::lock_guard<std::mutex> lock(backbone_mutex_);
+      head_graph_slot_ = feature_write_index_;
+      feature_write_index_ ^= 1;
+      for (std::size_t camera_id = 0; camera_id < extract_done_events_.size(); ++camera_id) {
+        if (extract_done_valid_[camera_id]) {
+          CHECK_CUDA_ERROR(cudaStreamWaitEvent(stream_, extract_done_events_[camera_id], 0));
+        }
+      }
+    }
+    pts_head_->alias_binding("x", feature_buffers_[head_graph_slot_]);
+    // Backbone time is spent per camera; there is no per-frame batch pass to report.
+    dur_backbone_->mark_begin(stream_);
+    dur_backbone_->mark_end(stream_);
+  } else {
+    execute_backbone(inputs);
+  }
   execute_pts_head(inputs);
 
   // Without this sync the caller's inference time would only measure the enqueueing.
@@ -356,6 +443,9 @@ void StreamPetrNetwork::execute_backbone(const InferenceInputs & inputs)
 // per-frame timestamp argument.
 void StreamPetrNetwork::enqueue_pts_head_graph()
 {
+  cudaGraphExec_t & head_graph_ = head_graphs_[head_graph_slot_];
+  bool & head_warmed_up_ = head_warmed_[head_graph_slot_];
+
   if (head_graph_ != nullptr) {
     CHECK_CUDA_ERROR(cudaGraphLaunch(head_graph_, stream_));
     return;
@@ -453,9 +543,21 @@ void StreamPetrNetwork::postprocess(
 
 StreamPetrNetwork::~StreamPetrNetwork()
 {
-  if (head_graph_ != nullptr) {
-    cudaGraphExecDestroy(head_graph_);
-    head_graph_ = nullptr;
+  for (auto & event : extract_done_events_) {
+    cudaEventDestroy(event);
+  }
+  for (auto & event : extract_ready_events_) {
+    cudaEventDestroy(event);
+  }
+  if (extract_stream_) {
+    cudaStreamSynchronize(extract_stream_);
+    cudaStreamDestroy(extract_stream_);
+  }
+  for (auto & graph : head_graphs_) {
+    if (graph != nullptr) {
+      cudaGraphExecDestroy(graph);
+      graph = nullptr;
+    }
   }
   if (stream_) {
     // Destroying a stream with work still in flight is undefined behaviour.

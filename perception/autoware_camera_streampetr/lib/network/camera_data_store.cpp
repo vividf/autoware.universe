@@ -265,6 +265,14 @@ void CameraDataStore::update_camera_image(
 
   cudaEventRecord(preprocess_end_events_[camera_id], stream);
   preprocess_timing_pending_[camera_id] = true;
+  // Extraction is enqueued on the camera's stream, so the done event below also covers it.
+  if (slot_ready_callback_) {
+    slot_ready_callback_(
+      camera_id,
+      static_cast<float *>(image_input_->ptr) +
+        static_cast<std::ptrdiff_t>(camera_id) * 3 * image_height_ * image_width_,
+      stream);
+  }
   // The inference stream waits on this instead of the host blocking on cudaStreamSynchronize.
   cudaEventRecord(preprocess_done_events_[camera_id], stream);
   preprocess_done_valid_[camera_id] = true;

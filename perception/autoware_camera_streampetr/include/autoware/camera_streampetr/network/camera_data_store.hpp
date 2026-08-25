@@ -26,10 +26,12 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 namespace autoware::camera_streampetr
 {
@@ -69,6 +71,15 @@ public:
   bool check_if_all_camera_info_received() const;
   float check_if_all_images_synced() const;
   std::vector<CameraStatus> get_camera_status() const;
+
+  // Invoked on the camera's stream right after its slot of the image tensor is written, so the
+  // preprocess_done event also covers work enqueued here.
+  using SlotReadyCallback =
+    std::function<void(int camera_id, float * slot_ptr, cudaStream_t stream)>;
+  void set_slot_ready_callback(SlotReadyCallback callback)
+  {
+    slot_ready_callback_ = std::move(callback);
+  }
   float get_preprocess_time_ms() const;
   /// std::nullopt when any camera_info is still missing.
   std::optional<std::vector<float>> get_camera_info_vector() const;
@@ -167,6 +178,7 @@ private:
   // Page-locked host staging, one per camera; makes the device copy a true async DMA.
   std::vector<void *> pinned_upload_buffers_;
   std::vector<std::size_t> pinned_upload_capacity_;
+  SlotReadyCallback slot_ready_callback_;
 
   // Signals "this camera's preprocessing has been enqueued and finished" to the inference stream.
   std::vector<cudaEvent_t> preprocess_done_events_;
