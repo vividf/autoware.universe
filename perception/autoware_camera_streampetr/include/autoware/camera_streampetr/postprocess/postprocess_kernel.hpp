@@ -22,6 +22,9 @@
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 
+#include <cstdint>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace autoware::camera_streampetr
@@ -83,14 +86,17 @@ public:
 private:
   PostProcessingConfig config_;
   cudaStream_t stream_;
-  cudaStream_t stream_event_;
-  cudaEvent_t start_, stop_;
 
-  // Pre-allocated device arrays to avoid repeated allocations
+  // Sized for the worst case so nothing on the per-frame path allocates.
   autoware::cuda_utils::CudaUniquePtr<float[]> yaw_norm_thresholds_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> score_thresholds_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> detection_range_d_;
   autoware::cuda_utils::CudaUniquePtr<Box3D[]> boxes3d_d_;
+  autoware::cuda_utils::CudaUniquePtr<Box3D[]> filtered_boxes3d_d_;
+  // Only allocated when circle NMS is enabled.
+  autoware::cuda_utils::CudaUniquePtr<Box3D[]> nms_boxes3d_d_;
+  autoware::cuda_utils::CudaUniquePtr<bool[]> keep_mask_d_;
+  autoware::cuda_utils::CudaUniquePtr<std::uint64_t[]> nms_workspace_d_;
 };
 
 }  // namespace autoware::camera_streampetr

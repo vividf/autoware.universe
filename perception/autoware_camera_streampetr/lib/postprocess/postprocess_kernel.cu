@@ -15,8 +15,12 @@
 #include "autoware/camera_streampetr/postprocess/circle_nms_kernel.hpp"
 #include "autoware/camera_streampetr/postprocess/postprocess_kernel.hpp"
 
+#include <autoware/cuda_utils/cuda_check_error.hpp>
+#include <autoware/cuda_utils/thrust_utils.hpp>
+
+#include <thrust/copy.h>
 #include <thrust/count.h>
-#include <thrust/device_vector.h>
+#include <thrust/device_ptr.h>
 #include <thrust/execution_policy.h>
 #include <thrust/sort.h>
 
@@ -117,25 +121,33 @@ PostprocessCuda::PostprocessCuda(const PostProcessingConfig & config, cudaStream
   // Allocate and copy yaw_norm_thresholds
   yaw_norm_thresholds_d_ =
     autoware::cuda_utils::make_unique<float[]>(config_.yaw_norm_thresholds_.size());
-  cudaMemcpy(
+  CHECK_CUDA_ERROR(cudaMemcpy(
     yaw_norm_thresholds_d_.get(), config_.yaw_norm_thresholds_.data(),
-    config_.yaw_norm_thresholds_.size() * sizeof(float), cudaMemcpyHostToDevice);
+    config_.yaw_norm_thresholds_.size() * sizeof(float), cudaMemcpyHostToDevice));
 
   // Allocate and copy score_thresholds
   score_thresholds_d_ =
     autoware::cuda_utils::make_unique<float[]>(config_.score_thresholds_.size());
-  cudaMemcpy(
+  CHECK_CUDA_ERROR(cudaMemcpy(
     score_thresholds_d_.get(), config_.score_thresholds_.data(),
-    config_.score_thresholds_.size() * sizeof(float), cudaMemcpyHostToDevice);
+    config_.score_thresholds_.size() * sizeof(float), cudaMemcpyHostToDevice));
 
   // Allocate and copy detection_range
   detection_range_d_ = autoware::cuda_utils::make_unique<float[]>(config_.detection_range_.size());
-  cudaMemcpy(
+  CHECK_CUDA_ERROR(cudaMemcpy(
     detection_range_d_.get(), config_.detection_range_.data(),
-    config_.detection_range_.size() * sizeof(float), cudaMemcpyHostToDevice);
+    config_.detection_range_.size() * sizeof(float), cudaMemcpyHostToDevice));
 
-  // Pre-allocate boxes3d device array
+  // Worst-case sizes, so nothing allocates or frees while a frame is in flight.
   boxes3d_d_ = autoware::cuda_utils::make_unique<Box3D[]>(config_.num_proposals_);
+  filtered_boxes3d_d_ = autoware::cuda_utils::make_unique<Box3D[]>(config_.num_proposals_);
+
+  if (config_.circle_nms_dist_threshold_ > 0.0) {
+    nms_boxes3d_d_ = autoware::cuda_utils::make_unique<Box3D[]>(config_.num_proposals_);
+    keep_mask_d_ = autoware::cuda_utils::make_unique<bool[]>(config_.num_proposals_);
+    nms_workspace_d_ = autoware::cuda_utils::make_unique<std::uint64_t[]>(
+      circle_nms_workspace_size(config_.num_proposals_));
+  }
 }
 
 // cspell: ignore divup
@@ -150,47 +162,49 @@ cudaError_t PostprocessCuda::generate_detected_boxes3d_launch(
     cls_output, box_output, config_.num_proposals_, config_.num_classes_,
     yaw_norm_thresholds_d_.get(), score_thresholds_d_.get(), detection_range_d_.get(),
     boxes3d_d_.get());
+  CHECK_CUDA_ERROR(cudaGetLastError());
 
-  // Synchronize the custom stream before using thrust on default stream
-  // This ensures the kernel output is ready before thrust reads it
-  cudaStreamSynchronize(stream);
+  // Thrust on the caller's stream keeps everything ordered without a device-wide sync.
+  const auto policy = autoware::cuda_utils::thrust_on_stream(stream);
 
   // Wrap raw pointer with thrust device pointer for thrust algorithms
   auto boxes3d_ptr = thrust::device_pointer_cast(boxes3d_d_.get());
+  auto filtered_ptr = thrust::device_pointer_cast(filtered_boxes3d_d_.get());
 
   // suppress by score
   const auto num_det_boxes3d = thrust::count_if(
-    thrust::device, boxes3d_ptr, boxes3d_ptr + config_.num_proposals_,
+    policy, boxes3d_ptr, boxes3d_ptr + config_.num_proposals_,
     is_score_greater_classwise(score_thresholds_d_.get()));
   if (num_det_boxes3d == 0) {
+    det_boxes3d.clear();
     return cudaGetLastError();
   }
-  thrust::device_vector<Box3D> det_boxes3d_d(num_det_boxes3d);
   thrust::copy_if(
-    thrust::device, boxes3d_ptr, boxes3d_ptr + config_.num_proposals_, det_boxes3d_d.begin(),
+    policy, boxes3d_ptr, boxes3d_ptr + config_.num_proposals_, filtered_ptr,
     is_score_greater_classwise(score_thresholds_d_.get()));
 
   // sort by score
-  thrust::sort(thrust::device, det_boxes3d_d.begin(), det_boxes3d_d.end(), score_greater());
+  thrust::sort(policy, filtered_ptr, filtered_ptr + num_det_boxes3d, score_greater());
 
   // supress by NMS
+  const Box3D * result_d = filtered_boxes3d_d_.get();
+  std::size_t result_count = num_det_boxes3d;
   if (config_.circle_nms_dist_threshold_ > 0.0) {
-    thrust::device_vector<bool> final_keep_mask_d(num_det_boxes3d);
-    const auto num_final_det_boxes3d =
-      circle_nms(det_boxes3d_d, config_.circle_nms_dist_threshold_, final_keep_mask_d, stream);
-    thrust::device_vector<Box3D> final_det_boxes3d_d(num_final_det_boxes3d);
+    auto nms_ptr = thrust::device_pointer_cast(nms_boxes3d_d_.get());
+    result_count = circle_nms(
+      filtered_boxes3d_d_.get(), num_det_boxes3d, config_.circle_nms_dist_threshold_,
+      keep_mask_d_.get(), nms_workspace_d_.get(), stream);
     thrust::copy_if(
-      thrust::device, det_boxes3d_d.begin(), det_boxes3d_d.end(), final_keep_mask_d.begin(),
-      final_det_boxes3d_d.begin(), is_kept());
-
-    // memcpy device to host
-    det_boxes3d.resize(num_final_det_boxes3d);
-    thrust::copy(final_det_boxes3d_d.begin(), final_det_boxes3d_d.end(), det_boxes3d.begin());
-  } else {
-    // memcpy device to host
-    det_boxes3d.resize(num_det_boxes3d);
-    thrust::copy(det_boxes3d_d.begin(), det_boxes3d_d.end(), det_boxes3d.begin());
+      policy, filtered_ptr, filtered_ptr + num_det_boxes3d,
+      thrust::device_pointer_cast(keep_mask_d_.get()), nms_ptr, is_kept());
+    result_d = nms_boxes3d_d_.get();
   }
+
+  det_boxes3d.resize(result_count);
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    det_boxes3d.data(), result_d, result_count * sizeof(Box3D), cudaMemcpyDeviceToHost, stream));
+  // The caller reads det_boxes3d on the host straight after this returns.
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
 
   return cudaGetLastError();
 }

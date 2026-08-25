@@ -23,12 +23,8 @@
 #include <cv_bridge/cv_bridge.h>
 #endif
 
-#include <opencv2/opencv.hpp>
-/* `#include <Eigen/Dense>` is including the Eigen library's Dense module. Eigen is a C++ template
-library for linear algebra: matrices, vectors, numerical solvers, and related algorithms. The Dense
-module provides classes and functions for dense matrices and vectors, as well as various linear
-algebra operations. */
 #include <Eigen/Dense>
+#include <opencv2/opencv.hpp>
 
 #include <sensor_msgs/image_encodings.hpp>
 
@@ -41,7 +37,10 @@ algebra operations. */
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <mutex>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::camera_streampetr
@@ -109,7 +108,8 @@ static void update_intrinsics(float * K_4x4, const Eigen::Matrix3f & ida_mat)
 
 CameraDataStore::CameraDataStore(
   rclcpp::Node * node, const int rois_number, const int image_height, const int image_width,
-  const int anchor_camera_id, const bool is_distorted_image, const EgoMaskParams & ego_mask_params)
+  const int anchor_camera_id, const bool is_distorted_image, const EgoMaskParams & ego_mask_params,
+  const std::shared_ptr<Tensor> & image_input)
 : rois_number_(rois_number),
   image_height_(image_height),
   image_width_(image_width),
@@ -118,12 +118,15 @@ CameraDataStore::CameraDataStore(
   is_distorted_image_(is_distorted_image),
   logger_(node->get_logger()),
   clock_(node->get_clock()),
-  input_rejected_(rois_number)
+  input_rejected_(rois_number),
+  image_input_(image_input)
 {
-  image_input_ = std::make_shared<Tensor>(
-    "image_input", nvinfer1::Dims{5, {1, rois_number, 3, image_height, image_width}},
-    nvinfer1::DataType::kFLOAT);  // {num_dims, batch_size, rois_number, num_channels, height,
-                                  // width}
+  // The preprocessing kernel writes directly into the backbone's input binding.
+  const std::size_t expected_bytes =
+    static_cast<std::size_t>(rois_number) * 3 * image_height * image_width * sizeof(float);
+  if (!image_input_ || image_input_->nbytes() != expected_bytes) {
+    throw std::runtime_error("CameraDataStore was given an image input tensor of the wrong size.");
+  }
 
   // RGB order, matching the model's input channel order.
   image_input_mean_ = std::make_shared<Tensor>(
@@ -140,9 +143,21 @@ CameraDataStore::CameraDataStore(
   camera_info_list_ = std::vector<CameraInfo::ConstSharedPtr>(rois_number, nullptr);
 
   streams_.resize(rois_number);
+  preprocess_done_events_.resize(rois_number);
+  preprocess_begin_events_.resize(rois_number);
+  preprocess_end_events_.resize(rois_number);
   for (int i = 0; i < rois_number; ++i) {
-    cudaStreamCreate(&streams_[i]);
+    CHECK_CUDA_ERROR(cudaStreamCreate(&streams_[i]));
+    // Only used for ordering, so timing is disabled to keep it cheap.
+    CHECK_CUDA_ERROR(cudaEventCreateWithFlags(&preprocess_done_events_[i], cudaEventDisableTiming));
+    CHECK_CUDA_ERROR(cudaEventCreate(&preprocess_begin_events_[i]));
+    CHECK_CUDA_ERROR(cudaEventCreate(&preprocess_end_events_[i]));
   }
+  preprocess_done_valid_.resize(rois_number, false);
+  preprocess_timing_pending_.resize(rois_number, false);
+
+  upload_buffers_.resize(rois_number, nullptr);
+  undistorted_buffers_.resize(rois_number, nullptr);
 
   // Initialize undistortion map storage
   undistort_map_x_gpu_.resize(rois_number, nullptr);
@@ -161,10 +176,19 @@ CameraDataStore::CameraDataStore(
 
 CameraDataStore::~CameraDataStore()
 {
-  // Tensor objects automatically handle GPU memory cleanup
-  // Clean up CUDA streams
+  // Destroying a stream with work in flight is undefined behaviour.
   for (auto & stream : streams_) {
+    cudaStreamSynchronize(stream);
     cudaStreamDestroy(stream);
+  }
+  for (auto & event : preprocess_done_events_) {
+    cudaEventDestroy(event);
+  }
+  for (auto & event : preprocess_begin_events_) {
+    cudaEventDestroy(event);
+  }
+  for (auto & event : preprocess_end_events_) {
+    cudaEventDestroy(event);
   }
 }
 
@@ -183,8 +207,12 @@ void CameraDataStore::update_camera_image(
     ++active_updates_;
   }
 
-  auto start_time = std::chrono::high_resolution_clock::now();
+  collect_preprocess_time(camera_id);
 
+  const auto stream = streams_.at(camera_id);
+  cudaEventRecord(preprocess_begin_events_[camera_id], stream);
+
+  // The mask must match the buffer it is painted into, which is the image, not camera_info.
   build_ego_mask_gpu(
     camera_id, static_cast<int>(input_camera_image_msg->width),
     static_cast<int>(input_camera_image_msg->height));
@@ -192,8 +220,8 @@ void CameraDataStore::update_camera_image(
   // Calculate image processing parameters
   auto params = calculate_image_processing_params(camera_id, input_camera_image_msg);
 
-  // Process image based on distortion settings
-  std::unique_ptr<Tensor> image_input_tensor;
+  // The returned buffer is owned by this object and reused across frames.
+  Tensor * image_input_tensor = nullptr;
   if (is_distorted_image_ && camera_info_list_[camera_id]) {
     image_input_tensor =
       process_distorted_image(camera_id, input_camera_image_msg, params, swap_rb);
@@ -220,15 +248,20 @@ void CameraDataStore::update_camera_image(
     params.camera_offset, params.original_height, params.original_width, params.newH, params.newW,
     image_height_, image_width_, params.start_y, params.start_x,
     static_cast<const float *>(image_input_mean_->ptr),
-    static_cast<const float *>(image_input_std_->ptr), streams_.at(camera_id));
+    static_cast<const float *>(image_input_std_->ptr), stream);
 
   if (err != cudaSuccess) {
     RCLCPP_ERROR(
       logger_, "resize_and_extract_roi_launch failed with error: %s", cudaGetErrorString(err));
   }
 
-  // Update metadata and timing
-  update_metadata_and_timing(camera_id, input_camera_image_msg, start_time);
+  cudaEventRecord(preprocess_end_events_[camera_id], stream);
+  preprocess_timing_pending_[camera_id] = true;
+  // The inference stream waits on this instead of the host blocking on cudaStreamSynchronize.
+  cudaEventRecord(preprocess_done_events_[camera_id], stream);
+  preprocess_done_valid_[camera_id] = true;
+
+  update_metadata(camera_id, input_camera_image_msg);
 
   {
     std::lock_guard<std::mutex> lock(freeze_mutex_);
@@ -280,6 +313,22 @@ bool CameraDataStore::validate_image_message(
     return false;
   }
 
+  // The intrinsics adjustment uses camera_info->width/height while preprocessing uses the
+  // image's own size; if the two disagree the intrinsics no longer describe the model's pixels.
+  const auto & camera_info = camera_info_list_[camera_id];
+  if (
+    camera_info && (camera_info->width != input_camera_image_msg->width ||
+                    camera_info->height != input_camera_image_msg->height)) {
+    RCLCPP_ERROR_THROTTLE(
+      logger_, *clock_, 10000 /* ms */,
+      "Camera %d publishes %ux%u images but its camera_info says %ux%u. The intrinsics would not "
+      "match the preprocessed pixels; dropping frames from this camera.",
+      camera_id, input_camera_image_msg->width, input_camera_image_msg->height, camera_info->width,
+      camera_info->height);
+    input_rejected_[camera_id] = true;
+    return false;
+  }
+
   input_rejected_[camera_id] = false;
   return true;
 }
@@ -315,7 +364,21 @@ CameraDataStore::ImageProcessingParams CameraDataStore::calculate_image_processi
   return params;
 }
 
-std::unique_ptr<CameraDataStore::Tensor> CameraDataStore::process_distorted_image(
+CameraDataStore::Tensor * CameraDataStore::staging_buffer(
+  std::vector<std::shared_ptr<Tensor>> & pool, const int camera_id, const std::string & name,
+  const int height, const int width)
+{
+  const std::size_t needed = static_cast<std::size_t>(height) * width * 3;
+  auto & slot = pool.at(camera_id);
+  if (!slot || slot->nbytes() != needed) {
+    slot = std::make_shared<Tensor>(
+      name + "_" + std::to_string(camera_id), nvinfer1::Dims{3, {height, width, 3}},
+      nvinfer1::DataType::kUINT8);
+  }
+  return slot.get();
+}
+
+CameraDataStore::Tensor * CameraDataStore::process_distorted_image(
   const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg,
   ImageProcessingParams & params, const bool swap_rb)
 {
@@ -335,15 +398,13 @@ std::unique_ptr<CameraDataStore::Tensor> CameraDataStore::process_distorted_imag
   params.original_height = original_height;
   params.original_width = original_width;
 
-  // Allocate GPU memory for input image (full resolution)
-  auto input_tensor = std::make_unique<Tensor>(
-    "input_img", nvinfer1::Dims{3, {original_height, original_width, 3}},
-    nvinfer1::DataType::kUINT8);
+  Tensor * input_tensor =
+    staging_buffer(upload_buffers_, camera_id, "input_img", original_height, original_width);
 
   // Copy input image to GPU
-  cudaMemcpyAsync(
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
     input_tensor->ptr, input_camera_image_msg->data.data(), input_tensor->nbytes(),
-    cudaMemcpyHostToDevice, streams_[camera_id]);
+    cudaMemcpyHostToDevice, streams_[camera_id]));
 
   // Convert to RGB immediately after the upload so every later stage (remap, ego mask, resize)
   // sees the model's channel order regardless of the source encoding.
@@ -359,10 +420,8 @@ std::unique_ptr<CameraDataStore::Tensor> CameraDataStore::process_distorted_imag
     }
   }
 
-  // Allocate GPU memory for undistorted image (same size as input - full resolution)
-  auto image_input_tensor = std::make_unique<Tensor>(
-    "camera_img", nvinfer1::Dims{3, {original_height, original_width, 3}},
-    nvinfer1::DataType::kUINT8);
+  Tensor * image_input_tensor =
+    staging_buffer(undistorted_buffers_, camera_id, "camera_img", original_height, original_width);
 
   // Apply undistortion using CUDA kernel
   // Both input and output are at full resolution
@@ -397,16 +456,15 @@ std::unique_ptr<CameraDataStore::Tensor> CameraDataStore::process_distorted_imag
   return image_input_tensor;
 }
 
-std::unique_ptr<CameraDataStore::Tensor> CameraDataStore::process_regular_image(
+CameraDataStore::Tensor * CameraDataStore::process_regular_image(
   const Image::ConstSharedPtr & input_camera_image_msg, const ImageProcessingParams & params,
   const int camera_id, const bool swap_rb)
 {
-  auto image_input_tensor = std::make_unique<Tensor>(
-    "camera_img", nvinfer1::Dims{3, {params.original_height, params.original_width, 3}},
-    nvinfer1::DataType::kUINT8);
-  cudaMemcpyAsync(
+  Tensor * image_input_tensor = staging_buffer(
+    upload_buffers_, camera_id, "camera_img", params.original_height, params.original_width);
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
     image_input_tensor->ptr, input_camera_image_msg->data.data(), image_input_tensor->nbytes(),
-    cudaMemcpyHostToDevice, streams_.at(camera_id));
+    cudaMemcpyHostToDevice, streams_.at(camera_id)));
 
   // Convert to RGB immediately after the upload so every later stage (ego mask, resize) sees the
   // model's channel order regardless of the source encoding.
@@ -440,16 +498,29 @@ std::unique_ptr<CameraDataStore::Tensor> CameraDataStore::process_regular_image(
   return image_input_tensor;
 }
 
-void CameraDataStore::update_metadata_and_timing(
-  const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg,
-  const std::chrono::high_resolution_clock::time_point & start_time)
+void CameraDataStore::update_metadata(
+  const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg)
 {
+  std::lock_guard<std::mutex> lock(metadata_mutex_);
   camera_image_timestamp_[camera_id] =
     input_camera_image_msg->header.stamp.sec + input_camera_image_msg->header.stamp.nanosec * 1e-9;
   camera_link_names_[camera_id] = input_camera_image_msg->header.frame_id;
+}
 
-  auto end_time = std::chrono::high_resolution_clock::now();
-  preprocess_time_ms_ = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+void CameraDataStore::collect_preprocess_time(const int camera_id)
+{
+  if (!preprocess_timing_pending_[camera_id]) {
+    return;
+  }
+  float elapsed_ms = 0.0f;
+  // cudaErrorNotReady means the previous frame is still running; skip the sample rather than block.
+  if (
+    cudaEventElapsedTime(
+      &elapsed_ms, preprocess_begin_events_[camera_id], preprocess_end_events_[camera_id]) ==
+    cudaSuccess) {
+    preprocess_time_ms_.store(elapsed_ms, std::memory_order_relaxed);
+    preprocess_timing_pending_[camera_id] = false;
+  }
 }
 
 void CameraDataStore::update_camera_info(
@@ -462,18 +533,8 @@ void CameraDataStore::update_camera_info(
     compute_undistortion_maps(camera_id);
   }
 
-  build_ego_mask_gpu(camera_id);
-}
-
-void CameraDataStore::build_ego_mask_gpu(const int camera_id)
-{
-  const auto & camera_info = camera_info_list_[camera_id];
-  if (!camera_info) {
-    return;
-  }
-
-  build_ego_mask_gpu(
-    camera_id, static_cast<int>(camera_info->width), static_cast<int>(camera_info->height));
+  // The ego mask is deliberately not built here: it must match the image's resolution, not
+  // camera_info's.
 }
 
 void CameraDataStore::build_ego_mask_gpu(const int camera_id, const int width, const int height)
@@ -509,10 +570,11 @@ void CameraDataStore::copy_ego_mask_gpu(
   ego_mask_gpu_[camera_id] = std::make_shared<Tensor>(
     "ego_mask", nvinfer1::Dims{2, {height, width}}, nvinfer1::DataType::kUINT8);
 
-  cudaMemcpyAsync(
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
     ego_mask_gpu_[camera_id]->ptr, raster.data(), ego_mask_gpu_[camera_id]->nbytes(),
-    cudaMemcpyHostToDevice, streams_[camera_id]);
-  cudaStreamSynchronize(streams_[camera_id]);
+    cudaMemcpyHostToDevice, streams_[camera_id]));
+  // raster is a local of the caller, so the copy has to complete before returning.
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(streams_[camera_id]));
 
   ego_mask_width_[camera_id] = width;
   ego_mask_height_[camera_id] = height;
@@ -532,6 +594,7 @@ bool CameraDataStore::check_if_all_camera_info_received() const
 
 bool CameraDataStore::check_if_all_camera_image_received() const
 {
+  std::lock_guard<std::mutex> lock(metadata_mutex_);
   for (const auto & camera_info_timestamp : camera_image_timestamp_) {
     if (camera_info_timestamp < 0) {
       return false;
@@ -542,6 +605,7 @@ bool CameraDataStore::check_if_all_camera_image_received() const
 
 std::vector<CameraDataStore::CameraStatus> CameraDataStore::get_camera_status() const
 {
+  std::lock_guard<std::mutex> lock(metadata_mutex_);
   std::vector<CameraStatus> status(rois_number_);
   for (size_t camera_id = 0; camera_id < rois_number_; ++camera_id) {
     status[camera_id].camera_info_received = static_cast<bool>(camera_info_list_[camera_id]);
@@ -558,8 +622,10 @@ float CameraDataStore::check_if_all_images_synced() const
     return -1.0;
   }
 
+  std::lock_guard<std::mutex> lock(metadata_mutex_);
   double min_time = std::numeric_limits<double>::max();
-  double max_time = std::numeric_limits<double>::min();
+  // lowest(), not min(): min() is the smallest *positive* normal double (~2.2e-308).
+  double max_time = std::numeric_limits<double>::lowest();
 
   for (size_t camera_id = 0; camera_id < camera_image_timestamp_.size(); ++camera_id) {
     if (camera_image_timestamp_[camera_id] < min_time) {
@@ -572,7 +638,7 @@ float CameraDataStore::check_if_all_images_synced() const
   return max_time - min_time;
 }
 
-std::vector<float> CameraDataStore::get_camera_info_vector() const
+std::optional<std::vector<float>> CameraDataStore::get_camera_info_vector() const
 {
   std::vector<float> intrinsics_all;
 
@@ -582,8 +648,10 @@ std::vector<float> CameraDataStore::get_camera_info_vector() const
   for (size_t camera_id = 0; camera_id < camera_info_list_.size(); ++camera_id) {
     const auto & camera_info_msg = camera_info_list_[camera_id];
     if (!camera_info_msg) {
-      throw std::runtime_error(
-        "CameraInfo not received for camera ID: " + std::to_string(camera_id));
+      // This used to throw. It runs inside a subscription callback, where an exception takes the
+      // whole node down instead of skipping one frame.
+      RCLCPP_ERROR(logger_, "CameraInfo not received for camera ID: %zu", camera_id);
+      return std::nullopt;
     }
 
     int rawW = camera_info_msg->width;
@@ -635,7 +703,7 @@ std::vector<float> CameraDataStore::get_camera_info_vector() const
 
 float CameraDataStore::get_preprocess_time_ms() const
 {
-  return preprocess_time_ms_;
+  return preprocess_time_ms_.load(std::memory_order_relaxed);
 }
 
 std::vector<float> CameraDataStore::get_image_shape() const
@@ -644,34 +712,55 @@ std::vector<float> CameraDataStore::get_image_shape() const
   return vec;
 }
 
-std::shared_ptr<cuda::Tensor> CameraDataStore::get_image_input() const
+std::shared_ptr<cuda::Tensor> CameraDataStore::get_image_input(cudaStream_t consumer_stream) const
 {
-  // Sync all streams to ensure processing is complete before returning
-  for (const auto & stream : streams_) {
-    cudaStreamSynchronize(stream);
+  // A GPU-side wait: the inference stream is told not to start until each camera's preprocessing
+  // event has fired. The host used to block here on one cudaStreamSynchronize per camera, which
+  // kept it from returning to the next image callback for no reason.
+  for (size_t camera_id = 0; camera_id < streams_.size(); ++camera_id) {
+    if (preprocess_done_valid_[camera_id]) {
+      CHECK_CUDA_ERROR(cudaStreamWaitEvent(consumer_stream, preprocess_done_events_[camera_id], 0));
+    }
   }
   return image_input_;
 }
 
-float CameraDataStore::get_timestamp()
+float CameraDataStore::peek_timestamp() const
 {
-  const float time_difference = camera_image_timestamp_[anchor_camera_id_] - start_timestamp_;
+  std::lock_guard<std::mutex> lock(metadata_mutex_);
+  if (start_timestamp_ < 0.0) {
+    return 0.0f;
+  }
+  return static_cast<float>(camera_image_timestamp_[anchor_camera_id_] - start_timestamp_);
+}
 
+float CameraDataStore::latch_timestamp(bool & origin_reset)
+{
+  std::lock_guard<std::mutex> lock(metadata_mutex_);
+  const double time_difference = camera_image_timestamp_[anchor_camera_id_] - start_timestamp_;
+
+  // Moving the origin renumbers every timestamp the model has seen so far. The temporal memory
+  // stores them relative to the old origin, so the caller has to drop it -- otherwise the whole
+  // memory queue suddenly looks like it came from MAX_ALLOWED_CAMERA_TIME_DIFF in the future.
   if (start_timestamp_ < 0.0 || time_difference > MAX_ALLOWED_CAMERA_TIME_DIFF) {
+    origin_reset = start_timestamp_ >= 0.0;
     start_timestamp_ = camera_image_timestamp_[anchor_camera_id_];
-    return 0.0;
+    return 0.0f;
   }
 
-  return time_difference;
+  origin_reset = false;
+  return static_cast<float>(time_difference);
 }
 
 std::vector<std::string> CameraDataStore::get_camera_link_names() const
 {
+  std::lock_guard<std::mutex> lock(metadata_mutex_);
   return camera_link_names_;
 }
 
 void CameraDataStore::restart()
 {
+  std::lock_guard<std::mutex> lock(metadata_mutex_);
   start_timestamp_ = -1.0;
   camera_image_timestamp_.assign(rois_number_, -1.0);
   camera_link_names_.assign(rois_number_, "");

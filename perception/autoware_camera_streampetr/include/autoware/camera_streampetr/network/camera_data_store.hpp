@@ -28,6 +28,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 namespace autoware::camera_streampetr
@@ -54,10 +55,11 @@ public:
     double last_image_timestamp{-1.0};
   };
 
+  /// @param image_input Destination of the preprocessing kernel: the backbone's own "img" binding.
   CameraDataStore(
     rclcpp::Node * node, const int rois_number, const int image_height, const int image_width,
     const int anchor_camera_id, const bool is_distorted_image,
-    const EgoMaskParams & ego_mask_params);
+    const EgoMaskParams & ego_mask_params, const std::shared_ptr<Tensor> & image_input);
   ~CameraDataStore();
   void update_camera_image(
     const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg);
@@ -68,11 +70,20 @@ public:
   float check_if_all_images_synced() const;
   std::vector<CameraStatus> get_camera_status() const;
   float get_preprocess_time_ms() const;
-  std::vector<float> get_camera_info_vector() const;
-  std::shared_ptr<cuda::Tensor> get_image_input() const;
+  /// std::nullopt when any camera_info is still missing.
+  std::optional<std::vector<float>> get_camera_info_vector() const;
+
+  /// Makes @p consumer_stream wait on the GPU for every camera's preprocessing; never blocks.
+  std::shared_ptr<cuda::Tensor> get_image_input(cudaStream_t consumer_stream) const;
 
   std::vector<float> get_image_shape() const;
-  float get_timestamp();
+
+  /// Elapsed time of the anchor camera relative to the latched origin, without side effects.
+  float peek_timestamp() const;
+  /// Same value, but re-latches the origin past MAX_ALLOWED_CAMERA_TIME_DIFF; @p origin_reset
+  /// then tells the caller to drop its temporal memory.
+  float latch_timestamp(bool & origin_reset);
+
   std::vector<std::string> get_camera_link_names() const;
   void restart();
   void freeze_updates();
@@ -96,26 +107,29 @@ private:
   // Helper methods for update_camera_image
   ImageProcessingParams calculate_image_processing_params(
     const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg) const;
-  std::unique_ptr<Tensor> process_distorted_image(
+  // swap_rb marks the source buffer BGR. Both return a buffer owned by this object.
+  Tensor * process_distorted_image(
     const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg,
     ImageProcessingParams & params, const bool swap_rb);
-  std::unique_ptr<Tensor> process_regular_image(
+  Tensor * process_regular_image(
     const Image::ConstSharedPtr & input_camera_image_msg, const ImageProcessingParams & params,
     const int camera_id, const bool swap_rb);
-  void update_metadata_and_timing(
-    const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg,
-    const std::chrono::high_resolution_clock::time_point & start_time);
+
+  /// Returns a reused full-resolution UINT8 buffer, allocated on first use or resolution change.
+  Tensor * staging_buffer(
+    std::vector<std::shared_ptr<Tensor>> & pool, const int camera_id, const std::string & name,
+    const int height, const int width);
+
+  void update_metadata(const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg);
+  /// Publishes the preprocess time of this camera's previous frame; never blocks.
+  void collect_preprocess_time(const int camera_id);
   void compute_undistortion_maps(const int camera_id);
-  void build_ego_mask_gpu(const int camera_id);
   void build_ego_mask_gpu(const int camera_id, const int width, const int height);
-  bool is_ego_mask_current(const int camera_id, const int width, const int height) const;
   void copy_ego_mask_gpu(
     const int camera_id, const std::vector<std::uint8_t> & raster, const int width,
     const int height);
 
-  // Entrance check for every incoming frame: validates the encoding (rgb8/bgr8, reporting via
-  // swap_rb whether the buffer needs a BGR -> RGB conversion right after upload) and the buffer
-  // geometry.
+  // Validates encoding (rgb8/bgr8; swap_rb reports whether BGR -> RGB is needed) and geometry.
   bool validate_image_message(
     const int camera_id, const Image::ConstSharedPtr & input_camera_image_msg, bool & swap_rb);
 
@@ -124,7 +138,8 @@ private:
   const int image_width_;
   const int anchor_camera_id_;
   double start_timestamp_;
-  float preprocess_time_ms_;
+  // Written from every camera callback thread and read by the node thread.
+  std::atomic<float> preprocess_time_ms_;
   const bool is_distorted_image_;
 
   rclcpp::Logger logger_;
@@ -137,7 +152,21 @@ private:
   std::shared_ptr<Tensor> image_input_std_;
   std::vector<double> camera_image_timestamp_;
   std::vector<std::string> camera_link_names_;
+  // Guards camera_image_timestamp_ and camera_link_names_ across callback and node threads.
+  mutable std::mutex metadata_mutex_;
   std::vector<cudaStream_t> streams_;
+
+  // Reused full-resolution upload / undistortion buffers, one per camera.
+  std::vector<std::shared_ptr<Tensor>> upload_buffers_;
+  std::vector<std::shared_ptr<Tensor>> undistorted_buffers_;
+
+  // Signals "this camera's preprocessing has been enqueued and finished" to the inference stream.
+  std::vector<cudaEvent_t> preprocess_done_events_;
+  std::vector<bool> preprocess_done_valid_;
+  // Timing pair around upload + kernels, read one frame later so reading never blocks.
+  std::vector<cudaEvent_t> preprocess_begin_events_;
+  std::vector<cudaEvent_t> preprocess_end_events_;
+  std::vector<bool> preprocess_timing_pending_;
 
   // GPU memory for undistortion maps
   std::vector<std::shared_ptr<Tensor>> undistort_map_x_gpu_;

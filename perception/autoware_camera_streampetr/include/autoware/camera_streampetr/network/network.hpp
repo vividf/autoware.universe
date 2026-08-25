@@ -95,6 +95,20 @@ public:
     return it->second;
   }
 
+  /// Points the engine at a caller-owned buffer; the caller must keep it alive for this engine.
+  void alias_binding(const std::string & name, const std::shared_ptr<Tensor> & tensor)
+  {
+    const auto & current = binding(name);
+    if (current->nbytes() != tensor->nbytes()) {
+      throw std::runtime_error(
+        "Cannot alias binding '" + name + "' (" + std::to_string(current->nbytes()) +
+        " bytes) to tensor '" + tensor->name + "' (" + std::to_string(tensor->nbytes()) +
+        " bytes): sizes differ.");
+    }
+    bindings[name] = tensor;
+    setTensorAddress(name.c_str(), tensor->ptr);
+  }
+
   bool set_bindings(const rclcpp::Logger & logger)
   {
     for (int n = 0; n < getNbIOTensors(); n++) {
@@ -227,6 +241,12 @@ public:
   /// Drops the temporal state. Safe to call before the first inference.
   void wipe_memory();
 
+  /// The backbone's own "img" input buffer; preprocessing writes straight into it.
+  const std::shared_ptr<Tensor> & image_input_binding() const;
+
+  /// Stream every inference kernel is enqueued on.
+  cudaStream_t stream() const { return stream_; }
+
 private:
   autoware_perception_msgs::msg::DetectedObject bbox_to_ros_msg(const Box3D & bbox);
 
@@ -235,6 +255,7 @@ private:
   void setup_engines();
   void setup_bindings();
   void validate_bindings() const;
+  void alias_shared_bindings();
   void initialize_memory_and_profiling();
   void configure_nms_if_needed();
 

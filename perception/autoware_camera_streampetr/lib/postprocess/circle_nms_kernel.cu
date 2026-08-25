@@ -25,11 +25,11 @@ All Rights Reserved 2019-2020.
 #include "autoware/camera_streampetr/postprocess/circle_nms_kernel.hpp"
 #include "autoware/camera_streampetr/utils.hpp"
 
-#include <thrust/host_vector.h>
+#include <vector>
 
 namespace
 {
-const std::size_t THREADS_PER_BLOCK_NMS = 16;
+const std::size_t THREADS_PER_BLOCK_NMS = autoware::camera_streampetr::CIRCLE_NMS_BOXES_PER_BLOCK;
 }  // namespace
 
 namespace autoware::camera_streampetr
@@ -84,59 +84,62 @@ __global__ void circle_nms_kernel(
 }
 
 cudaError_t circle_nms_launch(
-  const thrust::device_vector<Box3D> & boxes3d, const std::size_t num_boxes3d,
-  std::size_t col_blocks, const float distance_threshold,
-  thrust::device_vector<std::uint64_t> & mask, cudaStream_t stream)
+  const Box3D * boxes3d, const std::size_t num_boxes3d, std::size_t col_blocks,
+  const float distance_threshold, std::uint64_t * mask, cudaStream_t stream)
 {
   const float dist2d_pow_thres = powf(distance_threshold, 2);
 
   dim3 blocks(col_blocks, col_blocks);
   dim3 threads(THREADS_PER_BLOCK_NMS);
   circle_nms_kernel<<<blocks, threads, 0, stream>>>(
-    thrust::raw_pointer_cast(boxes3d.data()), num_boxes3d, col_blocks, dist2d_pow_thres,
-    thrust::raw_pointer_cast(mask.data()));
+    boxes3d, num_boxes3d, col_blocks, dist2d_pow_thres, mask);
 
   return cudaGetLastError();
 }
 
 std::size_t circle_nms(
-  thrust::device_vector<Box3D> & boxes3d, const float distance_threshold,
-  thrust::device_vector<bool> & keep_mask, cudaStream_t stream)
+  const Box3D * boxes3d, const std::size_t num_boxes3d, const float distance_threshold,
+  bool * keep_mask, std::uint64_t * workspace, cudaStream_t stream)
 {
-  const auto num_boxes3d = boxes3d.size();
+  if (num_boxes3d == 0) {
+    return 0;
+  }
   const auto col_blocks = divup(num_boxes3d, THREADS_PER_BLOCK_NMS);
-  thrust::device_vector<std::uint64_t> mask_d(num_boxes3d * col_blocks);
 
   CHECK_CUDA_ERROR(
-    circle_nms_launch(boxes3d, num_boxes3d, col_blocks, distance_threshold, mask_d, stream));
+    circle_nms_launch(boxes3d, num_boxes3d, col_blocks, distance_threshold, workspace, stream));
 
-  // memcpy device to host
-  thrust::host_vector<std::uint64_t> mask_h(mask_d.size());
-  thrust::copy(mask_d.begin(), mask_d.end(), mask_h.begin());
+  // The bitmask has to come back to the host: the suppression sweep below is inherently serial.
+  std::vector<std::uint64_t> mask_h(num_boxes3d * col_blocks);
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    mask_h.data(), workspace, mask_h.size() * sizeof(std::uint64_t), cudaMemcpyDeviceToHost,
+    stream));
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
 
   // generate keep_mask
   std::vector<std::uint64_t> remv_h(col_blocks);
-  thrust::host_vector<bool> keep_mask_h(keep_mask.size());
+  // std::vector<bool> is a bit field, so it cannot be memcpy'd to the device.
+  std::vector<char> keep_mask_h(num_boxes3d, 0);
   std::size_t num_to_keep = 0;
   for (std::size_t i = 0; i < num_boxes3d; i++) {
     auto nblock = i / THREADS_PER_BLOCK_NMS;
     auto inblock = i % THREADS_PER_BLOCK_NMS;
 
     if (!(remv_h[nblock] & (1ULL << inblock))) {
-      keep_mask_h[i] = true;
+      keep_mask_h[i] = 1;
       num_to_keep++;
-      std::uint64_t * p = &mask_h[0] + i * col_blocks;
+      const std::uint64_t * p = mask_h.data() + i * col_blocks;
       for (std::size_t j = nblock; j < col_blocks; j++) {
         remv_h[j] |= p[j];
       }
     } else {
-      keep_mask_h[i] = false;
+      keep_mask_h[i] = 0;
     }
   }
 
-  // memcpy host to device
-  keep_mask = keep_mask_h;
+  static_assert(sizeof(bool) == sizeof(char), "bool must be byte sized to copy the keep mask");
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    keep_mask, keep_mask_h.data(), num_boxes3d * sizeof(bool), cudaMemcpyHostToDevice, stream));
 
   return num_to_keep;
 }
