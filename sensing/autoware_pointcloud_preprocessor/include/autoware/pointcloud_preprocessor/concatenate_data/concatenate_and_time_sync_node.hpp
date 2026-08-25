@@ -18,7 +18,6 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 // ROS includes
@@ -116,7 +115,6 @@ private:
   std::list<std::shared_ptr<CloudCollector<MsgTraits>>> cloud_collectors_;
   std::unique_ptr<CollectorMatcher<MsgTraits>> collector_matcher_;
   std::unique_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer_;
-  std::unordered_set<std::string> frames_with_loaded_transform_;
 
   bool init_collector_list_{false};
   static constexpr const int num_of_collectors{3};
