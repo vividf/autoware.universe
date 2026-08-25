@@ -14,7 +14,11 @@
       pre_memory_length: 1024 # Input memory length for the temporal model
       post_memory_length: 1280 # Output memory length for the temporal model
 
-    model_params:
+      # NOTE: keep every model parameter under this single `model_params:` mapping. A duplicate
+      # key is undefined in YAML; rcl_yaml_param_parser happens to merge both blocks, but any
+      # strict reader (PyYAML, yaml-cpp, ruamel) keeps only the last one and silently drops
+      # everything above -- and all of those parameters are required, so the node would then fail
+      # to construct.
       trt_precision: "fp16" # TensorRT precision mode: "fp16" or "fp32"
       use_temporal: true # Can the model use temporal information or not.
 

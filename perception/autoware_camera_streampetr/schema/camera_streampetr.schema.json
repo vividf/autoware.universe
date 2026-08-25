@@ -1,0 +1,129 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Parameters for the autoware_camera_streampetr node",
+  "type": "object",
+  "definitions": {
+    "camera_mask": {
+      "type": "object",
+      "properties": {
+        "enable": {
+          "type": "boolean",
+          "description": "Whether this camera's polygon is painted over before preprocessing.",
+          "default": false
+        },
+        "mask": {
+          "type": "array",
+          "description": "Polygon as [x1, y1, x2, y2, ...]. Needs at least 3 points, so an even length of 6 or more.",
+          "items": { "type": "number" },
+          "minItems": 0,
+          "default": []
+        },
+        "normalized": {
+          "type": "boolean",
+          "description": "Whether the coordinates are fractions of the image size rather than pixels.",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "camera_streampetr": {
+      "type": "object",
+      "properties": {
+        "debug_mode": {
+          "type": "boolean",
+          "description": "Publish the latency/* topics.",
+          "default": true
+        },
+        "max_camera_time_diff": {
+          "type": "number",
+          "description": "Maximum spread between the camera timestamps of one inference, in seconds. A larger spread drops the frame and resets the temporal state.",
+          "exclusiveMinimum": 0.0,
+          "default": 0.15
+        },
+        "multithreading": {
+          "type": "boolean",
+          "description": "Give each camera subscription its own callback group so images are preprocessed in parallel.",
+          "default": false
+        },
+        "anchor_camera_id": {
+          "type": "integer",
+          "description": "ROI index whose image triggers the forward pass. Choose the camera that minimizes the spread between the camera timestamps.",
+          "minimum": 0,
+          "default": 0
+        },
+        "is_compressed_image": {
+          "type": "boolean",
+          "description": "Subscribe to <topic>/compressed and JPEG-decode on the CPU.",
+          "default": false
+        },
+        "is_distorted_image": {
+          "type": "boolean",
+          "description": "Undistort on the GPU using camera_info before preprocessing.",
+          "default": false
+        },
+        "build_only": {
+          "type": "boolean",
+          "description": "Build the TensorRT engines and exit.",
+          "default": false
+        },
+        "ego_mask.enabled": {
+          "type": "boolean",
+          "description": "Master switch for both mask mechanisms. Disabling it turns off every camera_N_mask as well as ego_mask.roi_polygons_yaml.",
+          "default": true
+        },
+        "ego_mask.fill_value_bgr": {
+          "type": "array",
+          "description": "Colour painted inside the mask polygons, in BGR order.",
+          "items": { "type": "number", "minimum": 0, "maximum": 255 },
+          "minItems": 3,
+          "maxItems": 3,
+          "default": [0.0, 0.0, 0.0]
+        },
+        "ego_mask.roi_polygons_yaml": {
+          "type": "array",
+          "description": "One polygon YAML path per model ROI index; an empty string leaves that ROI unmasked.",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "camera_mask.camera_ids": {
+          "type": "array",
+          "description": "Maps model ROI index to camera id: entry i names the camera whose camera_<id>_mask applies to ROI i. Only the first model_params.rois_number entries are read.",
+          "items": { "type": "integer", "minimum": 0, "maximum": 10 },
+          "default": [0, 1, 2, 3, 4]
+        },
+        "camera_0_mask": { "$ref": "#/definitions/camera_mask" },
+        "camera_1_mask": { "$ref": "#/definitions/camera_mask" },
+        "camera_2_mask": { "$ref": "#/definitions/camera_mask" },
+        "camera_3_mask": { "$ref": "#/definitions/camera_mask" },
+        "camera_4_mask": { "$ref": "#/definitions/camera_mask" },
+        "camera_5_mask": { "$ref": "#/definitions/camera_mask" },
+        "camera_6_mask": { "$ref": "#/definitions/camera_mask" },
+        "camera_7_mask": { "$ref": "#/definitions/camera_mask" },
+        "camera_8_mask": { "$ref": "#/definitions/camera_mask" },
+        "camera_9_mask": { "$ref": "#/definitions/camera_mask" },
+        "camera_10_mask": { "$ref": "#/definitions/camera_mask" }
+      },
+      "required": [
+        "debug_mode",
+        "max_camera_time_diff",
+        "multithreading",
+        "anchor_camera_id",
+        "is_compressed_image",
+        "is_distorted_image"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "/**": {
+      "type": "object",
+      "properties": {
+        "ros__parameters": { "$ref": "#/definitions/camera_streampetr" }
+      },
+      "required": ["ros__parameters"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["/**"],
+  "additionalProperties": false
+}

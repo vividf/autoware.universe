@@ -6,6 +6,7 @@
     anchor_camera_id: 0 # Camera id of the anchor topic. The forward pass begins once every anchor camera topic reaches.
     is_compressed_image: false # Whether the input images are compressed
     is_distorted_image: false # Whether the input images are distorted
+    ego_mask.enabled: true # Master switch for both mask mechanisms. The individual camera_N_mask.enable flags decide which cameras are actually masked.
     ego_mask.fill_value_rgb: [0.0, 0.0, 0.0] # RGB order, matching the model input and the rgb8 camera encoding
     diagnostics:
       max_allowed_processing_time_ms: 200.0 # A cycle slower than this raises a WARN.
@@ -16,7 +17,11 @@
       # that have not delivered a first frame yet only raise a WARN (normal during start-up).
       max_image_age_ms: 300.0
       validation_callback_interval_ms: 100.0 # Interval of both diagnostic callbacks.
-    camera_mask.camera_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    # Maps model ROI index -> camera id, so camera_mask.camera_ids[i] names the camera whose
+    # camera_<id>_mask below applies to ROI i. Only the first model_params.rois_number entries are
+    # read; a mask enabled for a camera outside that window is warned about at start-up.
+    # This matches the shipped streampetr.launch.xml, which feeds camera0..camera4 to ROI 0..4.
+    camera_mask.camera_ids: [0, 1, 2, 3, 4]
     camera_0_mask:
       enable: false
       mask: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] # points to construct the polygon, [x1, y2, x2, y2, x3, y3...]
@@ -53,11 +58,14 @@
       enable: false
       mask: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
       normalized: false
+    # camera_9 / camera_10 are the X2 side cameras, whose ego-vehicle body occupies a vertical
+    # strip of the image. They are kept here as a worked example of a normalized polygon; enable
+    # them in a vehicle-specific override that also lists their ids in camera_mask.camera_ids.
     camera_9_mask:
-      enable: true
+      enable: false
       mask: [0.8, 0.0, 1.0, 0.0, 1.0, 1.0, 0.8, 1.0]
       normalized: true
     camera_10_mask:
-      enable: true
+      enable: false
       mask: [0.0, 0.0, 0.2, 0.0, 0.2, 1.0, 0.0, 1.0]
       normalized: true
