@@ -203,16 +203,13 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::cloud_c
       this->get_logger(), *this->get_clock(), 1000, "Empty sensor points!");
   }
 
-  if (
-    input_ptr->header.frame_id != params_.output_frame &&
-    frames_with_loaded_transform_.count(input_ptr->header.frame_id) == 0) {
+  if (input_ptr->header.frame_id != params_.output_frame) {
     const auto sensor_to_output =
       managed_tf_buffer_->getTransform<geometry_msgs::msg::TransformStamped>(
         params_.output_frame, input_ptr->header.frame_id, this->now(),
         rclcpp::Duration::from_seconds(1.0), this->get_logger());
     if (sensor_to_output.has_value()) {
       combine_cloud_handler_->set_transform(*sensor_to_output);
-      frames_with_loaded_transform_.insert(input_ptr->header.frame_id);
     }
   }
 
