@@ -109,7 +109,7 @@ Eigen::Matrix4f CombineCloudHandlerBase::compute_transform_to_adjust_for_old_tim
 {
   // return identity if no twist is available
   if (twist_queue_.empty()) {
-    if (status != nullptr) status->no_twist_available = true;
+    if (status != nullptr) *status = MotionCompensationStatus::kNoTwistAvailable;
     return Eigen::Matrix4f::Identity();
   }
 
@@ -136,7 +136,7 @@ Eigen::Matrix4f CombineCloudHandlerBase::compute_transform_to_adjust_for_old_tim
     const auto dt = std::chrono::duration<double>(subtract(current_stamp, prev_stamp)).count();
 
     if (std::fabs(dt) > 0.1) {
-      if (status != nullptr) status->twist_time_gap_too_large = true;
+      if (status != nullptr) *status = MotionCompensationStatus::kTwistTimeGapTooLarge;
       break;
     }
 
