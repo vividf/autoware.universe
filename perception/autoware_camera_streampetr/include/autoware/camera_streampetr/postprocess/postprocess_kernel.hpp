@@ -74,6 +74,24 @@ public:
   std::vector<float> detection_range_{-61.2, -61.2, -10.0, 61.2, 61.2, 10.0};
 };
 
+// Supplies thrust's temporary storage from one preallocated block instead of a cudaMalloc/
+// cudaFree pair per algorithm; reset per frame, cudaMalloc fallback if outgrown.
+class ThrustTempArena
+{
+public:
+  using value_type = char;
+
+  void initialize(std::size_t capacity_bytes);
+  char * allocate(std::ptrdiff_t num_bytes);
+  void deallocate(char * ptr, std::size_t num_bytes);
+  void reset() { offset_ = 0; }
+
+private:
+  autoware::cuda_utils::CudaUniquePtr<char[]> pool_;
+  std::size_t capacity_{0};
+  std::size_t offset_{0};
+};
+
 class PostprocessCuda
 {
 public:
@@ -86,6 +104,7 @@ public:
 private:
   PostProcessingConfig config_;
   cudaStream_t stream_;
+  ThrustTempArena thrust_arena_;
 
   // Sized for the worst case so nothing on the per-frame path allocates.
   autoware::cuda_utils::CudaUniquePtr<float[]> yaw_norm_thresholds_d_;

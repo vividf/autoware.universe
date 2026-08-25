@@ -32,6 +32,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
@@ -158,6 +159,8 @@ CameraDataStore::CameraDataStore(
 
   upload_buffers_.resize(rois_number, nullptr);
   undistorted_buffers_.resize(rois_number, nullptr);
+  pinned_upload_buffers_.resize(rois_number, nullptr);
+  pinned_upload_capacity_.resize(rois_number, 0);
 
   // Initialize undistortion map storage
   undistort_map_x_gpu_.resize(rois_number, nullptr);
@@ -189,6 +192,11 @@ CameraDataStore::~CameraDataStore()
   }
   for (auto & event : preprocess_end_events_) {
     cudaEventDestroy(event);
+  }
+  for (auto & pinned : pinned_upload_buffers_) {
+    if (pinned) {
+      cudaFreeHost(pinned);
+    }
   }
 }
 
@@ -364,6 +372,23 @@ CameraDataStore::ImageProcessingParams CameraDataStore::calculate_image_processi
   return params;
 }
 
+void CameraDataStore::upload_via_pinned(
+  const int camera_id, const void * src, const std::size_t count, void * dst, cudaStream_t stream)
+{
+  auto & pinned = pinned_upload_buffers_[camera_id];
+  auto & capacity = pinned_upload_capacity_[camera_id];
+  if (pinned == nullptr || capacity < count) {
+    if (pinned != nullptr) {
+      CHECK_CUDA_ERROR(cudaFreeHost(pinned));
+    }
+    CHECK_CUDA_ERROR(cudaMallocHost(&pinned, count));
+    capacity = count;
+  }
+  // cudaMemcpyAsync from a pageable buffer would block this thread on a staged copy.
+  std::memcpy(pinned, src, count);
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(dst, pinned, count, cudaMemcpyHostToDevice, stream));
+}
+
 CameraDataStore::Tensor * CameraDataStore::staging_buffer(
   std::vector<std::shared_ptr<Tensor>> & pool, const int camera_id, const std::string & name,
   const int height, const int width)
@@ -401,10 +426,9 @@ CameraDataStore::Tensor * CameraDataStore::process_distorted_image(
   Tensor * input_tensor =
     staging_buffer(upload_buffers_, camera_id, "input_img", original_height, original_width);
 
-  // Copy input image to GPU
-  CHECK_CUDA_ERROR(cudaMemcpyAsync(
-    input_tensor->ptr, input_camera_image_msg->data.data(), input_tensor->nbytes(),
-    cudaMemcpyHostToDevice, streams_[camera_id]));
+  upload_via_pinned(
+    camera_id, input_camera_image_msg->data.data(), input_tensor->nbytes(), input_tensor->ptr,
+    streams_[camera_id]);
 
   // Convert to RGB immediately after the upload so every later stage (remap, ego mask, resize)
   // sees the model's channel order regardless of the source encoding.
@@ -462,9 +486,9 @@ CameraDataStore::Tensor * CameraDataStore::process_regular_image(
 {
   Tensor * image_input_tensor = staging_buffer(
     upload_buffers_, camera_id, "camera_img", params.original_height, params.original_width);
-  CHECK_CUDA_ERROR(cudaMemcpyAsync(
-    image_input_tensor->ptr, input_camera_image_msg->data.data(), image_input_tensor->nbytes(),
-    cudaMemcpyHostToDevice, streams_.at(camera_id)));
+  upload_via_pinned(
+    camera_id, input_camera_image_msg->data.data(), image_input_tensor->nbytes(),
+    image_input_tensor->ptr, streams_.at(camera_id));
 
   // Convert to RGB immediately after the upload so every later stage (ego mask, resize) sees the
   // model's channel order regardless of the source encoding.

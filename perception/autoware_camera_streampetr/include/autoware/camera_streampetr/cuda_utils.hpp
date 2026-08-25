@@ -50,6 +50,7 @@
 #include <cuda_runtime_api.h>
 
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -90,6 +91,8 @@ struct Tensor
 {
   std::string name;
   void * ptr = nullptr;
+  // Lazily allocated by load_from_vector_async; pinned so the upload is a true async DMA.
+  void * pinned_staging_ = nullptr;
   Dims dim;
   // 64-bit so a tensor larger than 2 GB cannot silently wrap the byte count.
   int64_t volume = 1;
@@ -121,6 +124,10 @@ struct Tensor
       cudaFree(ptr);
       ptr = nullptr;
     }
+    if (pinned_staging_) {
+      cudaFreeHost(pinned_staging_);
+      pinned_staging_ = nullptr;
+    }
   }
 
   void copy(std::shared_ptr<Tensor> other, cudaStream_t stream)
@@ -147,6 +154,24 @@ struct Tensor
     }
 
     CHECK_CUDA_ERROR(::cudaMemcpy(ptr, data.data(), nbytes(), cudaMemcpyHostToDevice));
+  }
+
+  // Stream-ordered variant for the per-frame path: the synchronous overload's legacy-default-
+  // stream copy waits on every stream. The pinned staging buffer stays valid until the next call.
+  template <class Htype = float>
+  void load_from_vector_async(const std::vector<Htype> & data, cudaStream_t stream)
+  {
+    if (data.size() != static_cast<std::size_t>(volume)) {
+      throw std::runtime_error(
+        "Tensor '" + name + "': expected " + std::to_string(volume) + " elements but got " +
+        std::to_string(data.size()) + ".");
+    }
+    if (pinned_staging_ == nullptr) {
+      CHECK_CUDA_ERROR(::cudaMallocHost(&pinned_staging_, nbytes()));
+    }
+    std::memcpy(pinned_staging_, data.data(), nbytes());
+    CHECK_CUDA_ERROR(
+      ::cudaMemcpyAsync(ptr, pinned_staging_, nbytes(), cudaMemcpyHostToDevice, stream));
   }
 
   std::vector<float> copy_tensor_to_host_buffer() const

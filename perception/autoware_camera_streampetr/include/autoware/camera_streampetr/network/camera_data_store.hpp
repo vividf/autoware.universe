@@ -115,6 +115,11 @@ private:
     const Image::ConstSharedPtr & input_camera_image_msg, const ImageProcessingParams & params,
     const int camera_id, const bool swap_rb);
 
+  // Copies src into the camera's pinned staging buffer and enqueues the device upload.
+  void upload_via_pinned(
+    const int camera_id, const void * src, const std::size_t count, void * dst,
+    cudaStream_t stream);
+
   /// Returns a reused full-resolution UINT8 buffer, allocated on first use or resolution change.
   Tensor * staging_buffer(
     std::vector<std::shared_ptr<Tensor>> & pool, const int camera_id, const std::string & name,
@@ -159,6 +164,9 @@ private:
   // Reused full-resolution upload / undistortion buffers, one per camera.
   std::vector<std::shared_ptr<Tensor>> upload_buffers_;
   std::vector<std::shared_ptr<Tensor>> undistorted_buffers_;
+  // Page-locked host staging, one per camera; makes the device copy a true async DMA.
+  std::vector<void *> pinned_upload_buffers_;
+  std::vector<std::size_t> pinned_upload_capacity_;
 
   // Signals "this camera's preprocessing has been enqueued and finished" to the inference stream.
   std::vector<cudaEvent_t> preprocess_done_events_;
