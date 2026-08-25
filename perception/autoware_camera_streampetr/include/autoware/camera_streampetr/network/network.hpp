@@ -263,6 +263,7 @@ private:
   void initialize_position_embedding(const InferenceInputs & inputs);
   void execute_backbone(const InferenceInputs & inputs);
   void execute_pts_head(const InferenceInputs & inputs);
+  void enqueue_pts_head_graph();
 
   NetworkConfig config_;
   std::unique_ptr<SubNetwork> backbone_;
@@ -279,6 +280,13 @@ private:
   bool is_inference_initialized_ = false;
   Memory mem_;
   cudaStream_t stream_;
+
+  // The head's enqueueV3 is captured into a CUDA graph after a warmup enqueue; any capture
+  // failure falls back to plain enqueueV3 for good. Capturing is safe because every address the
+  // head reads or writes is fixed at construction.
+  cudaGraphExec_t head_graph_{nullptr};
+  bool head_warmed_up_{false};
+  bool head_graph_unusable_{false};
 };
 
 }  // namespace autoware::camera_streampetr

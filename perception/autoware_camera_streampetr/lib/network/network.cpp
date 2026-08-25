@@ -352,6 +352,56 @@ void StreamPetrNetwork::execute_backbone(const InferenceInputs & inputs)
   dur_backbone_->mark_end(stream_);
 }
 
+// The memory step kernels stay outside the graph: a captured graph would freeze their
+// per-frame timestamp argument.
+void StreamPetrNetwork::enqueue_pts_head_graph()
+{
+  if (head_graph_ != nullptr) {
+    CHECK_CUDA_ERROR(cudaGraphLaunch(head_graph_, stream_));
+    return;
+  }
+
+  if (head_graph_unusable_ || !head_warmed_up_) {
+    pts_head_->enqueueV3(stream_);
+    head_warmed_up_ = true;
+    return;
+  }
+
+  // Thread-local capture mode keeps the camera streams' concurrent work out of the capture.
+  cudaGraph_t graph = nullptr;
+  bool captured = cudaStreamBeginCapture(stream_, cudaStreamCaptureModeThreadLocal) == cudaSuccess;
+  if (captured) {
+    captured = pts_head_->enqueueV3(stream_);
+    // EndCapture must run even after a failed enqueue, or the stream stays in capture mode.
+    captured = (cudaStreamEndCapture(stream_, &graph) == cudaSuccess) && captured;
+  }
+  if (captured && graph != nullptr) {
+    captured = cudaGraphInstantiate(&head_graph_, graph, 0) == cudaSuccess;
+  }
+  if (graph != nullptr) {
+    cudaGraphDestroy(graph);
+  }
+
+  if (captured && head_graph_ != nullptr) {
+    RCLCPP_INFO(
+      rclcpp::get_logger(config_.logger_name.c_str()), "pts_head captured as a CUDA graph");
+    CHECK_CUDA_ERROR(cudaGraphLaunch(head_graph_, stream_));
+    return;
+  }
+
+  head_graph_unusable_ = true;
+  if (head_graph_ != nullptr) {
+    cudaGraphExecDestroy(head_graph_);
+    head_graph_ = nullptr;
+  }
+  // Clear any sticky capture error so CHECK_CUDA_ERROR on later calls does not trip on it.
+  cudaGetLastError();
+  RCLCPP_WARN(
+    rclcpp::get_logger(config_.logger_name.c_str()),
+    "pts_head CUDA graph capture failed; falling back to per-kernel launches");
+  pts_head_->enqueueV3(stream_);
+}
+
 void StreamPetrNetwork::execute_pts_head(const InferenceInputs & inputs)
 {
   // Async on stream_: the synchronous overload's legacy-default-stream copy would wait for the
@@ -362,7 +412,7 @@ void StreamPetrNetwork::execute_pts_head(const InferenceInputs & inputs)
   dur_ptshead_->mark_begin(stream_);
 
   mem_.step_pre(inputs.stamp);
-  pts_head_->enqueueV3(stream_);
+  enqueue_pts_head_graph();
   mem_.step_post(inputs.stamp);
 
   if (config_.use_temporal) {
@@ -403,6 +453,10 @@ void StreamPetrNetwork::postprocess(
 
 StreamPetrNetwork::~StreamPetrNetwork()
 {
+  if (head_graph_ != nullptr) {
+    cudaGraphExecDestroy(head_graph_);
+    head_graph_ = nullptr;
+  }
   if (stream_) {
     // Destroying a stream with work still in flight is undefined behaviour.
     cudaStreamSynchronize(stream_);

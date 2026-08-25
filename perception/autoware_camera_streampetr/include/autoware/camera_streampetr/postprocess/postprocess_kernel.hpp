@@ -96,6 +96,7 @@ class PostprocessCuda
 {
 public:
   explicit PostprocessCuda(const PostProcessingConfig & config, cudaStream_t & stream);
+  ~PostprocessCuda();
 
   cudaError_t generate_detected_boxes3d_launch(
     const float * cls_output, const float * box_output, std::vector<Box3D> & det_boxes3d,
@@ -110,8 +111,10 @@ private:
   autoware::cuda_utils::CudaUniquePtr<float[]> yaw_norm_thresholds_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> score_thresholds_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> detection_range_d_;
-  autoware::cuda_utils::CudaUniquePtr<Box3D[]> boxes3d_d_;
   autoware::cuda_utils::CudaUniquePtr<Box3D[]> filtered_boxes3d_d_;
+  // Survivor count of the fused decode+filter kernel, mirrored to a pinned host int.
+  autoware::cuda_utils::CudaUniquePtr<int> num_filtered_d_;
+  int * num_filtered_host_{nullptr};
   // Only allocated when circle NMS is enabled.
   autoware::cuda_utils::CudaUniquePtr<Box3D[]> nms_boxes3d_d_;
   autoware::cuda_utils::CudaUniquePtr<bool[]> keep_mask_d_;
