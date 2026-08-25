@@ -30,6 +30,7 @@
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -107,8 +108,13 @@ PointTypeStruct point(float x, float y, float z)
 
 bool contains(const std::vector<PointTypeStruct> & points, float x, float y, float z)
 {
+  constexpr float kTolerance = 1e-5f;
   for (const auto & p : points) {
-    if (p.x == x && p.y == y && p.z == z) return true;
+    if (
+      std::abs(p.x - x) < kTolerance && std::abs(p.y - y) < kTolerance &&
+      std::abs(p.z - z) < kTolerance) {
+      return true;
+    }
   }
   return false;
 }
