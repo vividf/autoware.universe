@@ -114,8 +114,8 @@ private:
     const std::shared_ptr<CollectorInfoBase> & collector_info,
     ConcatenatedCloudResult<sensor_msgs::msg::PointCloud2> & result);
 
-  // Stores the per-sensor synchronized cloud for `topic`, optionally transforming it back into the
-  // input sensor frame. Takes ownership of motion-compensation.
+  // Stores the already motion-compensated cloud of `topic` as its synchronized cloud, optionally
+  // transformed back into the input sensor frame.
   void store_synchronized_cloud(
     const std::string & topic, const std::string & input_frame_id,
     const Eigen::Matrix4f & sensor_to_output, const builtin_interfaces::msg::Time & oldest_stamp,
