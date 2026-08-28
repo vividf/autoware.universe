@@ -43,7 +43,7 @@ std::string format_bool(bool value)
 }  // namespace
 
 diagnostic_msgs::msg::DiagnosticStatus build_diagnostic_status(
-  const ConcatenationDiagnosticsDigest & digest, const std::vector<std::string> & input_topics,
+  const ConcatenationDiagnosticsSummary & summary, const std::vector<std::string> & input_topics,
   const ConcatenationDiagnosticsOptions & options)
 {
   std::vector<diagnostic_msgs::msg::KeyValue> values;
@@ -55,18 +55,19 @@ diagnostic_msgs::msg::DiagnosticStatus build_diagnostic_status(
   };
 
   add(
-    "Concatenated pointcloud timestamp", format_timestamp(digest.concatenated_cloud_timestamp_sec));
+    "Concatenated pointcloud timestamp",
+    format_timestamp(summary.concatenated_cloud_timestamp_sec));
 
-  if (digest.is_advanced.has_value()) {
-    if (*digest.is_advanced) {
+  if (summary.is_advanced.has_value()) {
+    if (*summary.is_advanced) {
       add(
         "Minimum reference timestamp",
-        format_timestamp(digest.reference_time - digest.noise_window));
+        format_timestamp(summary.reference_time - summary.noise_window));
       add(
         "Maximum reference timestamp",
-        format_timestamp(digest.reference_time + digest.noise_window));
+        format_timestamp(summary.reference_time + summary.noise_window));
     } else {
-      add("First pointcloud arrival timestamp", format_timestamp(digest.first_arrival_time));
+      add("First pointcloud arrival timestamp", format_timestamp(summary.first_arrival_time));
     }
   }
 
@@ -77,7 +78,7 @@ diagnostic_msgs::msg::DiagnosticStatus build_diagnostic_status(
   std::unordered_map<std::string, double> topic_to_latency;
   if (options.now_sec.has_value()) {
     double max_latency = 0.0;
-    for (const auto & [topic, stamp] : digest.topic_to_original_stamp) {
+    for (const auto & [topic, stamp] : summary.topic_to_original_stamp) {
       const double latency_ms = (*options.now_sec - stamp) * 1000.0;
       topic_to_latency[topic] = latency_ms;
       max_latency = std::max(max_latency, latency_ms);
@@ -87,8 +88,8 @@ diagnostic_msgs::msg::DiagnosticStatus build_diagnostic_status(
 
   bool topic_miss = false;
   for (const auto & topic : input_topics) {
-    const auto stamp_it = digest.topic_to_original_stamp.find(topic);
-    const bool found = stamp_it != digest.topic_to_original_stamp.end();
+    const auto stamp_it = summary.topic_to_original_stamp.find(topic);
+    const bool found = stamp_it != summary.topic_to_original_stamp.end();
     add("Concatenated: " + topic, format_bool(found));
     if (found) {
       add("Timestamp: " + topic, format_timestamp(stamp_it->second));
@@ -104,7 +105,7 @@ diagnostic_msgs::msg::DiagnosticStatus build_diagnostic_status(
   const bool concatenation_success = !topic_miss;
   add("Pointcloud concatenation succeeded", format_bool(concatenation_success));
 
-  const bool is_concatenated_cloud_empty = digest.is_concatenated_cloud_empty;
+  const bool is_concatenated_cloud_empty = summary.is_concatenated_cloud_empty;
   int8_t level = diagnostic_msgs::msg::DiagnosticStatus::OK;
   std::string message = "Concatenated pointcloud is published and includes all topics";
   if (options.drop_previous_but_late) {

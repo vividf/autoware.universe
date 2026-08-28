@@ -38,7 +38,7 @@ struct ConcatenationDiagnosticsOptions
 };
 
 // Values from the concatenated frame that the diagnostics are built from.
-struct ConcatenationDiagnosticsDigest
+struct ConcatenationDiagnosticsSummary
 {
   double concatenated_cloud_timestamp_sec{0.0};
   bool is_concatenated_cloud_empty{false};
@@ -53,7 +53,7 @@ struct ConcatenationDiagnosticsDigest
 /// Build the DiagnosticStatus for the concatenation. Per-topic entries follow @p input_topics
 /// order. Shared by the node and the offline pipeline.
 diagnostic_msgs::msg::DiagnosticStatus build_diagnostic_status(
-  const ConcatenationDiagnosticsDigest & digest, const std::vector<std::string> & input_topics,
+  const ConcatenationDiagnosticsSummary & summary, const std::vector<std::string> & input_topics,
   const ConcatenationDiagnosticsOptions & options = {});
 
 }  // namespace autoware::pointcloud_preprocessor

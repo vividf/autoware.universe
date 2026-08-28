@@ -482,29 +482,29 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::check_c
   }
 
   // Collect inputs, build the status with the shared builder, and publish it.
-  ConcatenationDiagnosticsDigest digest;
-  digest.concatenated_cloud_timestamp_sec = current_concatenate_cloud_timestamp_;
-  digest.is_concatenated_cloud_empty = diagnostic_info.is_concatenated_cloud_empty;
+  ConcatenationDiagnosticsSummary summary;
+  summary.concatenated_cloud_timestamp_sec = current_concatenate_cloud_timestamp_;
+  summary.is_concatenated_cloud_empty = diagnostic_info.is_concatenated_cloud_empty;
   if (
     const auto naive_info =
       std::dynamic_pointer_cast<NaiveCollectorInfo>(diagnostic_info.collector_info)) {
-    digest.is_advanced = false;
-    digest.first_arrival_time = naive_info->timestamp;
+    summary.is_advanced = false;
+    summary.first_arrival_time = naive_info->timestamp;
   } else if (
     const auto advanced_info =
       std::dynamic_pointer_cast<AdvancedCollectorInfo>(diagnostic_info.collector_info)) {
-    digest.is_advanced = true;
-    digest.reference_time = advanced_info->timestamp;
-    digest.noise_window = advanced_info->noise_window;
+    summary.is_advanced = true;
+    summary.reference_time = advanced_info->timestamp;
+    summary.noise_window = advanced_info->noise_window;
   }
-  digest.topic_to_original_stamp = diagnostic_info.topic_to_original_stamp_map;
+  summary.topic_to_original_stamp = diagnostic_info.topic_to_original_stamp_map;
 
   ConcatenationDiagnosticsOptions options;
   options.processing_time_ms = diagnostic_info.processing_time;
   options.now_sec = diagnostic_info.now_sec;
   options.drop_previous_but_late = diagnostic_info.drop_previous_but_late_pointcloud;
 
-  const auto status = build_diagnostic_status(digest, params_.input_topics, options);
+  const auto status = build_diagnostic_status(summary, params_.input_topics, options);
   for (const auto & key_value : status.values) {
     diagnostics_interface_->add_key_value(key_value.key, key_value.value);
   }

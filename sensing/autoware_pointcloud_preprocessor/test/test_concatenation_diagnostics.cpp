@@ -29,8 +29,8 @@
 namespace
 {
 using autoware::pointcloud_preprocessor::build_diagnostic_status;
-using autoware::pointcloud_preprocessor::ConcatenationDiagnosticsDigest;
 using autoware::pointcloud_preprocessor::ConcatenationDiagnosticsOptions;
+using autoware::pointcloud_preprocessor::ConcatenationDiagnosticsSummary;
 
 const std::vector<std::string> kInputTopics = {"lidar_top", "lidar_left", "lidar_right"};
 
@@ -53,24 +53,24 @@ std::vector<std::string> keys_in_order(const diagnostic_msgs::msg::DiagnosticSta
   return keys;
 }
 
-// Naive digest where every input topic has a cloud stamped at 10.0 s.
-ConcatenationDiagnosticsDigest complete_naive_digest()
+// Naive summary where every input topic has a cloud stamped at 10.0 s.
+ConcatenationDiagnosticsSummary complete_naive_summary()
 {
-  ConcatenationDiagnosticsDigest digest;
-  digest.concatenated_cloud_timestamp_sec = 10.0;
-  digest.is_concatenated_cloud_empty = false;
-  digest.is_advanced = false;
-  digest.first_arrival_time = 100.0;
+  ConcatenationDiagnosticsSummary summary;
+  summary.concatenated_cloud_timestamp_sec = 10.0;
+  summary.is_concatenated_cloud_empty = false;
+  summary.is_advanced = false;
+  summary.first_arrival_time = 100.0;
   for (const auto & topic : kInputTopics) {
-    digest.topic_to_original_stamp[topic] = 10.0;
+    summary.topic_to_original_stamp[topic] = 10.0;
   }
-  return digest;
+  return summary;
 }
 }  // namespace
 
 TEST(ConcatenationDiagnostics, CompleteNaiveIsOk)
 {
-  const auto status = build_diagnostic_status(complete_naive_digest(), kInputTopics);
+  const auto status = build_diagnostic_status(complete_naive_summary(), kInputTopics);
   const auto values = values_of(status);
 
   EXPECT_EQ(status.level, diagnostic_msgs::msg::DiagnosticStatus::OK);
@@ -91,14 +91,14 @@ TEST(ConcatenationDiagnostics, CompleteNaiveIsOk)
 
 TEST(ConcatenationDiagnostics, EntryOrderFollowsInputTopics)
 {
-  auto digest = complete_naive_digest();
+  auto summary = complete_naive_summary();
   ConcatenationDiagnosticsOptions options;
   options.processing_time_ms = 2.5;
   options.now_sec = 10.1;
 
   // Per-topic entries follow input_topics order.
   EXPECT_EQ(
-    keys_in_order(build_diagnostic_status(digest, kInputTopics, options)),
+    keys_in_order(build_diagnostic_status(summary, kInputTopics, options)),
     (std::vector<std::string>{
       "Concatenated pointcloud timestamp", "First pointcloud arrival timestamp",
       "Processing time (ms)", "Pipeline latency (ms)", "Concatenated: lidar_top",
@@ -110,10 +110,10 @@ TEST(ConcatenationDiagnostics, EntryOrderFollowsInputTopics)
 
 TEST(ConcatenationDiagnostics, MissingTopicIsError)
 {
-  auto digest = complete_naive_digest();
-  digest.topic_to_original_stamp.erase("lidar_left");
+  auto summary = complete_naive_summary();
+  summary.topic_to_original_stamp.erase("lidar_left");
 
-  const auto status = build_diagnostic_status(digest, kInputTopics);
+  const auto status = build_diagnostic_status(summary, kInputTopics);
   const auto values = values_of(status);
 
   EXPECT_EQ(status.level, diagnostic_msgs::msg::DiagnosticStatus::ERROR);
@@ -126,10 +126,10 @@ TEST(ConcatenationDiagnostics, MissingTopicIsError)
 
 TEST(ConcatenationDiagnostics, EmptyCloudIsError)
 {
-  auto digest = complete_naive_digest();
-  digest.is_concatenated_cloud_empty = true;
+  auto summary = complete_naive_summary();
+  summary.is_concatenated_cloud_empty = true;
 
-  const auto status = build_diagnostic_status(digest, kInputTopics);
+  const auto status = build_diagnostic_status(summary, kInputTopics);
 
   EXPECT_EQ(status.level, diagnostic_msgs::msg::DiagnosticStatus::ERROR);
   EXPECT_EQ(status.message, "Concatenated pointcloud is empty");
@@ -142,16 +142,16 @@ TEST(ConcatenationDiagnostics, LateDropIsErrorAndOutranksTheOtherCauses)
   ConcatenationDiagnosticsOptions options;
   options.drop_previous_but_late = true;
 
-  auto digest = complete_naive_digest();
+  auto summary = complete_naive_summary();
   EXPECT_EQ(
-    build_diagnostic_status(digest, kInputTopics, options).message,
+    build_diagnostic_status(summary, kInputTopics, options).message,
     "Concatenated pointcloud was dropped due to its timestamp is earlier than the latest published "
     "one");
 
   // Missing topic changes the message; empty cloud does not override the late drop.
-  digest.topic_to_original_stamp.erase("lidar_left");
-  digest.is_concatenated_cloud_empty = true;
-  const auto status = build_diagnostic_status(digest, kInputTopics, options);
+  summary.topic_to_original_stamp.erase("lidar_left");
+  summary.is_concatenated_cloud_empty = true;
+  const auto status = build_diagnostic_status(summary, kInputTopics, options);
   EXPECT_EQ(status.level, diagnostic_msgs::msg::DiagnosticStatus::ERROR);
   EXPECT_EQ(
     status.message,
@@ -161,12 +161,12 @@ TEST(ConcatenationDiagnostics, LateDropIsErrorAndOutranksTheOtherCauses)
 
 TEST(ConcatenationDiagnostics, AdvancedReportsTheReferenceWindow)
 {
-  auto digest = complete_naive_digest();
-  digest.is_advanced = true;
-  digest.reference_time = 10.0;
-  digest.noise_window = 0.01;
+  auto summary = complete_naive_summary();
+  summary.is_advanced = true;
+  summary.reference_time = 10.0;
+  summary.noise_window = 0.01;
 
-  const auto values = values_of(build_diagnostic_status(digest, kInputTopics));
+  const auto values = values_of(build_diagnostic_status(summary, kInputTopics));
 
   EXPECT_EQ(values.at("Minimum reference timestamp"), "9.990000000");
   EXPECT_EQ(values.at("Maximum reference timestamp"), "10.010000000");
@@ -175,10 +175,10 @@ TEST(ConcatenationDiagnostics, AdvancedReportsTheReferenceWindow)
 
 TEST(ConcatenationDiagnostics, NoMatchingContextOmitsBothEntries)
 {
-  auto digest = complete_naive_digest();
-  digest.is_advanced = std::nullopt;
+  auto summary = complete_naive_summary();
+  summary.is_advanced = std::nullopt;
 
-  const auto values = values_of(build_diagnostic_status(digest, kInputTopics));
+  const auto values = values_of(build_diagnostic_status(summary, kInputTopics));
 
   EXPECT_EQ(values.count("First pointcloud arrival timestamp"), 0u);
   EXPECT_EQ(values.count("Minimum reference timestamp"), 0u);
@@ -191,7 +191,7 @@ TEST(ConcatenationDiagnostics, OptionalLatencyAndProcessingTime)
   options.now_sec = 10.1;  // 100 ms after the stamps
 
   const auto values =
-    values_of(build_diagnostic_status(complete_naive_digest(), kInputTopics, options));
+    values_of(build_diagnostic_status(complete_naive_summary(), kInputTopics, options));
 
   EXPECT_EQ(values.at("Processing time (ms)"), "2.500000");
   EXPECT_EQ(values.at("Pipeline latency (ms)"), "100.000000");
@@ -207,7 +207,7 @@ TEST(ConcatenationDiagnostics, DiagnosticNameIsAppendedWhenGiven)
   options.diagnostic_name = "concat_status";
 
   EXPECT_EQ(
-    build_diagnostic_status(complete_naive_digest(), kInputTopics, options).name,
+    build_diagnostic_status(complete_naive_summary(), kInputTopics, options).name,
     "/sensing/lidar/concatenate_data_synchronizer: concat_status");
 }
 

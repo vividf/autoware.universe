@@ -309,9 +309,7 @@ ament_export_targets(export_${PROJECT_NAME})
 
 find_package(autoware_utils_math REQUIRED)
 
-# Concatenation core: combine + matching + diagnostics without any ROS runtime dependency
-# (no rclcpp, tf, pcl_ros). Kept separate from `concatenate_data` so consumers do not pull in the
-# node sources. Link message targets directly instead of ament_target_dependencies to avoid rclcpp.
+# ROS-runtime-free core (no rclcpp/tf/pcl_ros). Links message targets directly to keep it that way.
 add_library(concatenate_core SHARED
   src/concatenate_data/combine_cloud_handler.cpp
   src/concatenate_data/combine_cloud_handler_base.cpp
