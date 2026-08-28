@@ -26,29 +26,23 @@ namespace autoware::pointcloud_preprocessor
 
 struct ConcatenationDiagnosticsOptions
 {
-  // The online node uses its fully-qualified name for both fields below.
   std::string node_name{"concatenate_data_synchronizer"};
-  // When non-empty, the status name becomes "<node_name>: <diagnostic_name>".
+  // If non-empty, the status name is "<node_name>: <diagnostic_name>".
   std::string diagnostic_name{};
-  // Runtime-only entries with no offline meaning unless the caller supplies the data:
-  // when set, added as "Processing time (ms)".
+  // If set, adds "Processing time (ms)".
   std::optional<double> processing_time_ms{};
-  // When set (seconds), "Pipeline latency (ms)" and per-topic "Latency (ms): <topic>" are computed
-  // as (now - original_stamp) * 1000, exactly as the node does against its wall clock.
+  // If set (seconds), adds "Pipeline latency (ms)" and per-topic "Latency (ms): <topic>".
   std::optional<double> now_sec{};
-  // Reproduces the node's out-of-order-republish guard; offline batches normally leave it false.
+  // True when the cloud was dropped because it is older than the last published one.
   bool drop_previous_but_late{false};
 };
 
-// The frame-derived values the diagnostics are built from, decoupled from the frame itself so the
-// node can capture them before the concatenated cloud is moved into its publisher (the timing
-// options only become known after publishing).
+// Values from the concatenated frame that the diagnostics are built from.
 struct ConcatenationDiagnosticsDigest
 {
   double concatenated_cloud_timestamp_sec{0.0};
   bool is_concatenated_cloud_empty{false};
-  // Which matching context to report: true = advanced (reference window), false = naive (first
-  // arrival), nullopt = no context (neither entry is emitted).
+  // true: advanced strategy (reference window), false: naive (first arrival), nullopt: none.
   std::optional<bool> is_advanced{};
   double reference_time{0.0};
   double noise_window{0.0};
@@ -56,13 +50,8 @@ struct ConcatenationDiagnosticsDigest
   std::unordered_map<std::string, double> topic_to_original_stamp{};
 };
 
-/// Build the DiagnosticStatus the concatenation publishes on /diagnostics: the key/value entries
-/// (fixed order, fixed string formatting), level, and message. @p input_topics fixes the order of
-/// the per-topic entries. This is the single implementation behind both the node (which relays the
-/// result through its DiagnosticsInterface) and the offline pipeline. Note: "Concatenated:
-/// <topic>" reflects whether the topic contributed a cloud, not whether that cloud survived -- a
-/// cloud dropped for a missing transform still shows "True"; the finer per-source verdict lives in
-/// the concatenation info.
+/// Build the DiagnosticStatus for the concatenation. Per-topic entries follow @p input_topics
+/// order. Shared by the node and the offline pipeline.
 diagnostic_msgs::msg::DiagnosticStatus build_diagnostic_status(
   const ConcatenationDiagnosticsDigest & digest, const std::vector<std::string> & input_topics,
   const ConcatenationDiagnosticsOptions & options = {});

@@ -481,8 +481,7 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::check_c
     return;
   }
 
-  // The status content is built by the same core code path the offline pipeline uses; this
-  // function only captures the frame-derived values and relays the result onto /diagnostics.
+  // Collect inputs, build the status with the shared builder, and publish it.
   ConcatenationDiagnosticsDigest digest;
   digest.concatenated_cloud_timestamp_sec = current_concatenate_cloud_timestamp_;
   digest.is_concatenated_cloud_empty = diagnostic_info.is_concatenated_cloud_empty;

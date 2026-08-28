@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Unit tests for the ROS-runtime-free diagnostics builder: the key/value entries (which appear,
-// their order, their string formatting) and the level/message table the node used to build inline.
-// The digest is filled exactly as the node fills it, so these tests pin the published status
-// without a running node.
+// Tests for build_diagnostic_status(): key/value entries, their order and formatting, and the
+// level/message rules.
 
 #include "autoware/pointcloud_preprocessor/concatenate_data/concatenation_diagnostics.hpp"
 
@@ -55,7 +53,7 @@ std::vector<std::string> keys_in_order(const diagnostic_msgs::msg::DiagnosticSta
   return keys;
 }
 
-// A naive digest in which every input topic contributed a cloud stamped at 10.0 s.
+// Naive digest where every input topic has a cloud stamped at 10.0 s.
 ConcatenationDiagnosticsDigest complete_naive_digest()
 {
   ConcatenationDiagnosticsDigest digest;
@@ -76,7 +74,6 @@ TEST(ConcatenationDiagnostics, CompleteNaiveIsOk)
   const auto values = values_of(status);
 
   EXPECT_EQ(status.level, diagnostic_msgs::msg::DiagnosticStatus::OK);
-  // The node's DiagnosticsInterface publishes "OK" as the message whenever the level is OK.
   EXPECT_EQ(status.message, "OK");
   EXPECT_EQ(values.at("Concatenated pointcloud timestamp"), "10.000000000");
   EXPECT_EQ(values.at("First pointcloud arrival timestamp"), "100.000000000");
@@ -85,10 +82,9 @@ TEST(ConcatenationDiagnostics, CompleteNaiveIsOk)
     EXPECT_EQ(values.at("Concatenated: " + topic), "True");
     EXPECT_EQ(values.at("Timestamp: " + topic), "10.000000000");
   }
-  // Naive reports the first arrival, never an advanced reference window.
   EXPECT_EQ(values.count("Minimum reference timestamp"), 0u);
   EXPECT_EQ(values.count("Maximum reference timestamp"), 0u);
-  // Runtime-only entries are not fabricated when the caller supplies no data.
+  // Not emitted without options.
   EXPECT_EQ(values.count("Processing time (ms)"), 0u);
   EXPECT_EQ(values.count("Pipeline latency (ms)"), 0u);
 }
@@ -100,8 +96,7 @@ TEST(ConcatenationDiagnostics, EntryOrderFollowsInputTopics)
   options.processing_time_ms = 2.5;
   options.now_sec = 10.1;
 
-  // The per-topic entries follow the configured input_topics order, not the map's ordering, and the
-  // fixed entries keep the order the node published them in.
+  // Per-topic entries follow input_topics order.
   EXPECT_EQ(
     keys_in_order(build_diagnostic_status(digest, kInputTopics, options)),
     (std::vector<std::string>{
@@ -126,7 +121,7 @@ TEST(ConcatenationDiagnostics, MissingTopicIsError)
   EXPECT_EQ(values.at("Pointcloud concatenation succeeded"), "False");
   EXPECT_EQ(values.at("Concatenated: lidar_top"), "True");
   EXPECT_EQ(values.at("Concatenated: lidar_left"), "False");
-  EXPECT_EQ(values.count("Timestamp: lidar_left"), 0u);  // never arrived -> no entry
+  EXPECT_EQ(values.count("Timestamp: lidar_left"), 0u);
 }
 
 TEST(ConcatenationDiagnostics, EmptyCloudIsError)
@@ -138,7 +133,7 @@ TEST(ConcatenationDiagnostics, EmptyCloudIsError)
 
   EXPECT_EQ(status.level, diagnostic_msgs::msg::DiagnosticStatus::ERROR);
   EXPECT_EQ(status.message, "Concatenated pointcloud is empty");
-  // The concatenation itself still succeeded: every topic contributed.
+  // All topics contributed, so concatenation itself succeeded.
   EXPECT_EQ(values_of(status).at("Pointcloud concatenation succeeded"), "True");
 }
 
@@ -153,7 +148,7 @@ TEST(ConcatenationDiagnostics, LateDropIsErrorAndOutranksTheOtherCauses)
     "Concatenated pointcloud was dropped due to its timestamp is earlier than the latest published "
     "one");
 
-  // A missing topic changes the wording; an empty cloud does not outrank the late drop.
+  // Missing topic changes the message; empty cloud does not override the late drop.
   digest.topic_to_original_stamp.erase("lidar_left");
   digest.is_concatenated_cloud_empty = true;
   const auto status = build_diagnostic_status(digest, kInputTopics, options);
@@ -193,7 +188,7 @@ TEST(ConcatenationDiagnostics, OptionalLatencyAndProcessingTime)
 {
   ConcatenationDiagnosticsOptions options;
   options.processing_time_ms = 2.5;
-  options.now_sec = 10.1;  // 0.1 s after the 10.0 s stamps -> 100 ms latency
+  options.now_sec = 10.1;  // 100 ms after the stamps
 
   const auto values =
     values_of(build_diagnostic_status(complete_naive_digest(), kInputTopics, options));

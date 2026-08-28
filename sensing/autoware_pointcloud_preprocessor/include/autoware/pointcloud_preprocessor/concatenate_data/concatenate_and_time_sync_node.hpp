@@ -108,8 +108,7 @@ private:
     std::shared_ptr<CollectorInfoBase> collector_info;
     std::unordered_map<std::string, double> topic_to_original_stamp_map;
     double processing_time{0.0};
-    // Publish-time wall clock (seconds); the diagnostics builder derives the pipeline latencies
-    // from it, exactly as the debug publisher's map is derived.
+    // Publish time (seconds), used to compute pipeline latencies.
     double now_sec{0.0};
   };
 

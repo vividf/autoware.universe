@@ -309,15 +309,9 @@ ament_export_targets(export_${PROJECT_NAME})
 
 find_package(autoware_utils_math REQUIRED)
 
-# ---- Concatenation core (ROS-runtime-free) ----
-# Same approach as the distortion corrector core: the combine + matching logic is built as a
-# standalone shared library that links only ROS message types and header-only math (no rclcpp, no
-# tf, no pcl_ros). It is parameterized by the point cloud *message* type (not the node-level traits),
-# so its headers never pull in the trait's rclcpp publisher/subscriber types. It is built separately
-# from the full `concatenate_data` so consumers of the core do not drag in the node / legacy-node
-# sources (and their utils::is_data_layout_* dependency). Dependencies are linked via
-# target_link_libraries with the exported message targets (not ament_target_dependencies, which
-# would over-declare the package closure and re-pull rclcpp).
+# Concatenation core: combine + matching + diagnostics without any ROS runtime dependency
+# (no rclcpp, tf, pcl_ros). Kept separate from `concatenate_data` so consumers do not pull in the
+# node sources. Link message targets directly instead of ament_target_dependencies to avoid rclcpp.
 add_library(concatenate_core SHARED
   src/concatenate_data/combine_cloud_handler.cpp
   src/concatenate_data/combine_cloud_handler_base.cpp
@@ -328,8 +322,7 @@ target_include_directories(concatenate_core PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<INSTALL_INTERFACE:include/${PROJECT_NAME}>"
 )
-# Header-only includes (point_cloud_msg_wrapper / autoware_point_types provide the cloud helpers;
-# tf2 is used for its LinearMath types only). Message includes propagate via the linked targets.
+# Header-only dependencies (tf2 is used for LinearMath only).
 target_include_directories(concatenate_core SYSTEM PUBLIC
   ${autoware_utils_INCLUDE_DIRS}
   ${autoware_point_types_INCLUDE_DIRS}

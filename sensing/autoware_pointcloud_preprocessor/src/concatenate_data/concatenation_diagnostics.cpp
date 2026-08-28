@@ -29,8 +29,7 @@ namespace autoware::pointcloud_preprocessor
 namespace
 {
 
-// std::to_string(double) matches the formatting the node's DiagnosticsInterface uses for doubles
-// (fixed, 6 decimal places); bools are published as "True"/"False" there as well.
+// Same formatting as DiagnosticsInterface: doubles with 6 decimals, bools as "True"/"False".
 std::string format_double(double value)
 {
   return std::to_string(value);
@@ -128,8 +127,7 @@ diagnostic_msgs::msg::DiagnosticStatus build_diagnostic_status(
                   ? options.node_name
                   : options.node_name + ": " + options.diagnostic_name;
   status.hardware_id = options.node_name;
-  // The node's DiagnosticsInterface publishes "OK" as the message whenever the level is OK (see
-  // create_diagnostics_array); mirror that so the output matches /diagnostics verbatim.
+  // DiagnosticsInterface publishes "OK" as the message when the level is OK.
   status.message = level == diagnostic_msgs::msg::DiagnosticStatus::OK ? "OK" : message;
   status.values = values;
   return status;
