@@ -38,6 +38,20 @@ struct SerializedPoolingDeviceStageView
   std::int64_t * serialized_code{};
   std::int64_t * serialized_order{};
   std::int64_t * serialized_inverse{};
+  /// serialized_order padded to whole attention windows, [num_orders, padded_count]; the gather
+  /// order the pooled level's attention blocks read (engine input
+  /// `serialized_pooling_i_patch_order`).
+  std::int64_t * patch_order{};
+};
+
+/// The input level's serialization, the engine inputs that replaced the in-graph sort of
+/// `serialized_code`: `serialized_order` / `serialized_inverse` are [num_orders, num_voxels],
+/// `patch_order` is the order padded to whole attention windows, [num_orders, padded_count].
+struct InputLevelSerializationView
+{
+  std::int64_t * serialized_order{};
+  std::int64_t * serialized_inverse{};
+  std::int64_t * patch_order{};
 };
 
 class PreprocessCuda
@@ -76,11 +90,19 @@ public:
     std::int64_t * inverse_map, std::size_t * num_cropped_points);
 
   /**
-   * @brief Builds the per-stage pooling metadata the encoder graph consumes.
+   * @brief Builds the serialization inputs of every level the encoder and head graphs consume.
+   *
+   * The input level's orders are needed to derive the pooling metadata anyway, so they are
+   * written out for the engine (`input_level`) instead of being sorted again in-graph; every
+   * level additionally gets its `patch_order` (the order padded to whole attention windows of
+   * `config.patch_sizes_[level]`, see fillPatchOrderKernel).
    *
    * @param grid_coord Grid coordinates of the input voxels, laid out [num_voxels, 3].
    * @param serialized_code Codes of the input voxels, laid out [num_orders, num_voxels].
    * @param num_voxels Number of input voxels; clamped to max_num_voxels internally.
+   * @param input_level Output device buffers for the input level's serialization; the order and
+   * inverse buffers hold [num_orders, max_num_voxels], patch_order
+   * [num_orders, padded_voxel_count(max_num_voxels, 0)].
    * @param stages Output device buffers to fill, one per pooling stage.
    * @param stage_counts Output voxel count per level, laid out [num_stages + 1]; entry 0 is the
    * (clamped) input count.
@@ -91,6 +113,7 @@ public:
    */
   void generateSerializedPoolingMetadata(
     const std::int32_t * grid_coord, const std::int64_t * serialized_code, std::int64_t num_voxels,
+    const InputLevelSerializationView & input_level,
     const std::vector<SerializedPoolingDeviceStageView> & stages, std::int64_t * stage_counts);
 
   [[nodiscard]] const std::uint32_t * cropMask() const { return crop_mask_d_.get(); }
@@ -122,17 +145,14 @@ private:
   cudaEvent_t num_cropped_points_copy_event_;
   cudaEvent_t num_unique_points_copy_event_;
 
-  /// Serialization order of the input level (the deduplicated voxels generateFeatures emits),
-  /// laid out [num_orders, num_voxels]. Row 0 is the identity; the remaining rows are the only
-  /// sorts left in the pooling-metadata path.
-  autoware::cuda_utils::CudaUniquePtr<std::int64_t[]> input_level_order_d_{nullptr};
-  /// Keys for one of those sorts: each input voxel's code under the serialization order being
-  /// sorted.
+  /// Keys for one of the input-level order sorts (the only sorts left in the pooling-metadata
+  /// path; row 0 of the order is the identity): each input voxel's code under the serialization
+  /// order being sorted.
   autoware::cuda_utils::CudaUniquePtr<std::int64_t[]> order_sort_keys_d_{nullptr};
   /// Sorted-keys output; CUB requires the buffer, nothing reads it afterwards.
   autoware::cuda_utils::CudaUniquePtr<std::int64_t[]> order_sort_sorted_keys_d_{nullptr};
   /// Filled with 0..n-1 and sorted alongside the keys, which leaves it listing the voxel indices
-  /// in ascending code order; written directly into the input_level_order_d_ row.
+  /// in ascending code order; written directly into the caller's input-level order row.
   autoware::cuda_utils::CudaUniquePtr<std::int64_t[]> order_sort_indices_d_{nullptr};
   /// Run-start flags: 1 where the parent voxel changes while walking a level, either in storage
   /// order (pooling) or as listed by one of its serialization orders; 0 elsewhere.

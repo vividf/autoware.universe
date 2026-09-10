@@ -74,6 +74,7 @@ protected:
   void initPtr();
   void initEncoderTrt(const tensorrt_common::TrtCommonConfig & trt_config);
   [[nodiscard]] std::array<std::int64_t, 3> stageProfileCounts(std::size_t stage_index) const;
+  [[nodiscard]] std::array<std::int64_t, 3> stagePaddedProfileCounts(std::size_t stage_index) const;
   void initSeg3dHeadTrt(const tensorrt_common::TrtCommonConfig & trt_config);
   void initDetection3DHeadTrt(const tensorrt_common::TrtCommonConfig & trt_config);
   void createPointFields();
@@ -137,9 +138,16 @@ protected:
     CudaUniquePtr<std::int64_t[]> serialized_code{nullptr};
     CudaUniquePtr<std::int64_t[]> serialized_order{nullptr};
     CudaUniquePtr<std::int64_t[]> serialized_inverse{nullptr};
+    CudaUniquePtr<std::int64_t[]> patch_order{nullptr};
   };
 
   std::vector<SerializedPoolingDeviceStage> serialized_pooling_stages_d_;
+  // The input level's serialization: [num_orders, max_num_voxels] orders and inverses, and the
+  // window-padded patch order. The inverse and the patch order are engine inputs (the graph
+  // stopped sorting the codes itself); the bare order only seeds the pooling chain.
+  CudaUniquePtr<std::int64_t[]> serialized_order_d_{nullptr};
+  CudaUniquePtr<std::int64_t[]> serialized_inverse_d_{nullptr};
+  CudaUniquePtr<std::int64_t[]> patch_order_d_{nullptr};
   CudaUniquePtr<std::int64_t[]> serialized_pooling_num_voxels_d_{nullptr};
   CudaUniquePtrHost<std::int64_t[]> serialized_pooling_num_voxels_;
   std::vector<std::int64_t> serialized_pooling_depths_;
@@ -158,6 +166,7 @@ protected:
   CudaUniquePtr<float[]> reconstructed_probs_d_{nullptr};           // only for partial and full
   CudaUniquePtr<std::int32_t[]> grid_coord_d_{nullptr};
   CudaUniquePtr<float[]> feat_d_{nullptr};
+  // Voxelizer output; seeds the pooling chain on the device but is not an engine input.
   CudaUniquePtr<std::int64_t[]> serialized_code_d_{nullptr};
 
   // Encoder outputs shared with all the heads: per-stage point features,
