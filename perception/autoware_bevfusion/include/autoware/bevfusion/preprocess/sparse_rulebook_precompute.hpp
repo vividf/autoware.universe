@@ -32,7 +32,9 @@
 
 #include <cuda_runtime.h>
 
+#include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -56,6 +58,17 @@ struct SparseDownsampleStage
   int kernel_volume{0};            // prod(ksize); filled by ctor if 0
 };
 
+// What the runtime needs to regenerate the graph's precomputed rulebooks, as the exporter recorded
+// it in the ONNX metadata_props ("rulebook_stages" + "rulebook_coors_permutation").
+struct RulebookMetadata
+{
+  std::vector<SparseDownsampleStage> stages;
+  // For each spconv spatial coordinate column, the graph `coors` spatial column it is read from —
+  // the convolutions were exported on coordinates in this order, so the rulebooks must be built on
+  // it too. Absent in older exports; the caller then falls back to the legacy contract.
+  std::optional<std::array<int, 3>> coors_permutation;
+};
+
 class SparseRulebookPrecompute
 {
 public:
@@ -67,11 +80,15 @@ public:
   // Compute all stage rulebooks from input voxel coordinates.
   //   coors_d      : device buffer of voxel coords, row-major [num_in, coors_cols].
   //   num_in       : number of input voxels.
-  //   coors_cols   : 3 (graph-input [z,y,x], no batch) or 4 ([batch, x, y, z]).
-  //   flip_zyx_to_xyz : if true, treat coors as [.. z,y,x] and reverse the spatial columns to
-  //                     [x,y,z] before prepending batch (the legacy Autoware graph-input contract).
+  //   coors_cols   : 3 (graph-input spatial coords, no batch) or 4 (already [batch, ...] in the
+  //                  convolutions' column order; copied verbatim).
+  //   coors_permutation : for each spconv spatial column, the `coors` column it is read from
+  //                  (RulebookMetadata::coors_permutation). {2,1,0} turns [z,y,x] into [x,y,z];
+  //                  {1,2,0} turns it into [y,x,z].
   // After this returns, stageCount(i) and the device pointers below are valid for binding.
-  void compute(const std::int32_t * coors_d, int num_in, int coors_cols, bool flip_zyx_to_xyz);
+  void compute(
+    const std::int32_t * coors_d, int num_in, int coors_cols,
+    const std::array<int, 3> & coors_permutation);
 
   int numStages() const { return static_cast<int>(stages_.size()); }
   const SparseDownsampleStage & stage(int i) const { return stages_[i]; }

@@ -258,8 +258,9 @@ public:
   // Upper bound on active out-voxels per down-sample stage; must match the plugin's
   // out_indices_num_limit_ and the TensorRT profile max for the rulebook inputs.
   std::int64_t sparse_out_indices_num_limit_{256000};
-  // Voxelizer coords order: true if `coors` is [z,y,x] (legacy Autoware graph-input contract) and
-  // must be flipped to [x,y,z] before spconv. Matches the AWML export coors_contract.
+  // Fallback for sparse engines exported before the ONNX carried "rulebook_coors_permutation":
+  // true if `coors` is [z,y,x] and those exports were built on [x,y,z] (the AWML contract).
+  // Ignored when the ONNX records its column order.
   bool sparse_coors_is_zyx_{true};
 };
 

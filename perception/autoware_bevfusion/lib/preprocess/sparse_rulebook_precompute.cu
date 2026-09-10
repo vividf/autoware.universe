@@ -44,12 +44,12 @@ constexpr int kMaskCount = 1;
 constexpr bool kDoSort = true;
 constexpr std::size_t kThrustTempBytes = 8U * 1024U * 1024U;
 
-// coors_d[num_in, cols] -> out[num_in, 4] = [batch=0, x, y, z].
-// flip=true : input spatial cols are [z, y, x] (legacy graph-input contract) -> reversed to
-// [x,y,z]. cols == 4 : assume input already [batch, x, y, z] and copy verbatim.
+// coors_d[num_in, cols] -> out[num_in, 4] = [batch=0, s0, s1, s2] with s_j = src[perm_j]: the
+// graph's `coors` spatial columns reordered into the column order the convolutions were exported
+// with. cols == 4 : input is already [batch, ...] in that order and is copied verbatim.
 __global__ void buildBatchedCoordsKernel(
   const std::int32_t * __restrict__ in, std::int32_t * __restrict__ out, int num_in, int cols,
-  bool flip)
+  int perm0, int perm1, int perm2)
 {
   const int r = blockIdx.x * blockDim.x + threadIdx.x;
   if (r >= num_in) {
@@ -66,15 +66,9 @@ __global__ void buildBatchedCoordsKernel(
   }
   // cols == 3
   dst[0] = 0;  // batch
-  if (flip) {
-    dst[1] = src[2];  // x
-    dst[2] = src[1];  // y
-    dst[3] = src[0];  // z
-  } else {
-    dst[1] = src[0];
-    dst[2] = src[1];
-    dst[3] = src[2];
-  }
+  dst[1] = src[perm0];
+  dst[2] = src[perm1];
+  dst[3] = src[perm2];
 }
 
 bool useInt64HashK(
@@ -241,7 +235,8 @@ int SparseRulebookPrecompute::computeStage(int i, const std::int32_t * coords_in
 }
 
 void SparseRulebookPrecompute::compute(
-  const std::int32_t * coors_d, int num_in, int coors_cols, bool flip_zyx_to_xyz)
+  const std::int32_t * coors_d, int num_in, int coors_cols,
+  const std::array<int, 3> & coors_permutation)
 {
   if (num_in <= 0 || num_in > out_indices_num_limit_) {
     throw std::runtime_error(
@@ -250,14 +245,21 @@ void SparseRulebookPrecompute::compute(
   }
   if (coors_cols != 3 && coors_cols != 4) {
     throw std::runtime_error(
-      "SparseRulebookPrecompute: coors_cols must be 3 ([z,y,x]) or 4 ([b,x,y,z])");
+      "SparseRulebookPrecompute: coors_cols must be 3 (spatial coords) or 4 ([batch, ...])");
+  }
+  for (const int column : coors_permutation) {
+    if (column < 0 || column >= 3) {
+      throw std::runtime_error(
+        "SparseRulebookPrecompute: coors_permutation entries must index the 3 spatial columns");
+    }
   }
 
-  // Build [batch, x, y, z] int32 coords for the first down-sample stage.
+  // Build [batch, *spatial] int32 coords in the convolutions' column order for the first stage.
   const int block = 256;
   const int grid = (num_in + block - 1) / block;
   buildBatchedCoordsKernel<<<grid, block, 0, stream_>>>(
-    coors_d, coords_xyzb_d_.get(), num_in, coors_cols, flip_zyx_to_xyz);
+    coors_d, coords_xyzb_d_.get(), num_in, coors_cols, coors_permutation[0], coors_permutation[1],
+    coors_permutation[2]);
   CHECK_CUDA_ERROR(cudaGetLastError());
 
   // Cascade: each down-sample's out_indices feed the next (submanifold layers in between do not

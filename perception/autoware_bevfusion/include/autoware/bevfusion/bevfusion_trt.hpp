@@ -37,6 +37,7 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -158,6 +159,8 @@ protected:
   std::unique_ptr<PreprocessCuda> pre_ptr_{nullptr};
   std::unique_ptr<PostprocessCuda> post_ptr_{nullptr};
   std::unique_ptr<SparseRulebookPrecompute> sparse_rulebook_ptr_{nullptr};
+  // Column order the precomputed rulebooks are built on (see RulebookMetadata).
+  std::array<int, 3> rulebook_coors_permutation_{0, 1, 2};
   cudaStream_t stream_{nullptr};
 
   BEVFusionConfig config_;

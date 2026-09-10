@@ -26,11 +26,13 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -63,21 +65,22 @@ bool read_varint(std::ifstream & f, std::uint64_t & out)
   return true;
 }
 
-// Load SparseDownsampleStage descriptors from the "rulebook_stages" metadata_props entry
-// embedded in the ONNX by AWML sparse_trainstation_transform.embed_rulebook_stages_metadata().
+// Load the precomputed-rulebook contract from the ONNX metadata_props the exporter embedded:
+// "rulebook_stages" (the down-sample stages' geometry, JSON) and "rulebook_coors_permutation"
+// (the coordinate column order the graph was exported with, JSON [3]).
 //
 // Parses only the top-level protobuf fields of ModelProto, skipping the large graph field
-// (field 7) via fseek — total I/O is a few KB regardless of model size.
-// Returns an empty vector if the path is empty, the file is missing, the key is absent,
-// or the JSON is malformed.
-std::vector<SparseDownsampleStage> load_stages_from_onnx(const std::string & onnx_path)
+// (field 7) via seekg — total I/O is a few KB regardless of model size.
+// Returns empty stages if the path is empty, the file is missing, or the key is absent.
+RulebookMetadata load_rulebook_metadata(const std::string & onnx_path)
 {
+  RulebookMetadata metadata;
   if (onnx_path.empty()) {
-    return {};
+    return metadata;
   }
   std::ifstream f(onnx_path, std::ios::binary);
   if (!f.is_open()) {
-    return {};
+    return metadata;
   }
 
   // ONNX ModelProto (protobuf3) top-level field numbers:
@@ -89,8 +92,10 @@ std::vector<SparseDownsampleStage> load_stages_from_onnx(const std::string & onn
   constexpr int kFieldMetadataProps = 14;
   constexpr std::uint32_t kWireVarint = 0;
   constexpr std::uint32_t kWireLenDelim = 2;
-  constexpr std::string_view kMetaKey = "rulebook_stages";
+  constexpr std::string_view kStagesKey = "rulebook_stages";
+  constexpr std::string_view kPermutationKey = "rulebook_coors_permutation";
 
+  std::map<std::string, std::string> props;
   while (f.good()) {
     std::uint64_t tag_u64;
     if (!read_varint(f, tag_u64)) {
@@ -143,36 +148,42 @@ std::vector<SparseDownsampleStage> load_stages_from_onnx(const std::string & onn
         }
       }
       f.seekg(entry_end);  // ensure we're at the correct position after the entry
-      if (key != kMetaKey) {
-        continue;
-      }
-      // Found the entry — parse the JSON value.
-      try {
-        auto j = nlohmann::json::parse(value);
-        std::vector<SparseDownsampleStage> stages;
-        for (const auto & entry : j) {
-          SparseDownsampleStage s;
-          s.onnx_base = entry.at("onnx_base").get<std::string>();
-          s.ksize = entry.at("ksize").get<std::vector<int>>();
-          s.stride = entry.at("stride").get<std::vector<int>>();
-          s.padding = entry.at("padding").get<std::vector<int>>();
-          s.dilation = entry.at("dilation").get<std::vector<int>>();
-          s.spatial_shape = entry.at("spatial_shape").get<std::vector<int>>();
-          stages.push_back(std::move(s));
-        }
-        return stages;
-      } catch (const std::exception & e) {
-        // The key is present but the value is not the expected JSON — surface it rather than
-        // returning {} (which the caller reports as "metadata absent, re-export").
-        throw std::runtime_error(
-          std::string("ONNX 'rulebook_stages' metadata is present but could not be parsed: ") +
-          e.what());
-      }
+      props.emplace(std::move(key), std::move(value));
     } else {
       break;  // unexpected wire type — stop parsing
     }
   }
-  return {};
+
+  const auto stages_it = props.find(std::string(kStagesKey));
+  if (stages_it == props.end()) {
+    return metadata;
+  }
+  // A key that is present but not the expected JSON is surfaced rather than reported as
+  // "metadata absent, re-export".
+  try {
+    for (const auto & entry : nlohmann::json::parse(stages_it->second)) {
+      SparseDownsampleStage s;
+      s.onnx_base = entry.at("onnx_base").get<std::string>();
+      s.ksize = entry.at("ksize").get<std::vector<int>>();
+      s.stride = entry.at("stride").get<std::vector<int>>();
+      s.padding = entry.at("padding").get<std::vector<int>>();
+      s.dilation = entry.at("dilation").get<std::vector<int>>();
+      s.spatial_shape = entry.at("spatial_shape").get<std::vector<int>>();
+      metadata.stages.push_back(std::move(s));
+    }
+    const auto permutation_it = props.find(std::string(kPermutationKey));
+    if (permutation_it != props.end()) {
+      const auto columns = nlohmann::json::parse(permutation_it->second).get<std::vector<int>>();
+      if (columns.size() != 3) {
+        throw std::runtime_error("expected 3 entries in rulebook_coors_permutation");
+      }
+      metadata.coors_permutation = std::array<int, 3>{columns[0], columns[1], columns[2]};
+    }
+  } catch (const std::exception & e) {
+    throw std::runtime_error(
+      std::string("ONNX rulebook metadata is present but could not be parsed: ") + e.what());
+  }
+  return metadata;
 }
 }  // namespace
 
@@ -191,18 +202,24 @@ BEVFusionTRT::BEVFusionTRT(
   initPtr();
 
   // trainStation/DDS removal: owns the stable rulebook buffers bound as engine inputs.
-  // Reads stage geometry from the "rulebook_stages" metadata_props embedded in the ONNX by AWML.
+  // Reads the stage geometry and the coordinate column order from the metadata_props the
+  // exporter embedded in the ONNX.
   if (config_.sparse_remove_trainstation_) {
     const std::string onnx_path = trt_config.common.onnx_path.string();
-    auto stages = load_stages_from_onnx(onnx_path);
-    if (stages.empty()) {
+    auto metadata = load_rulebook_metadata(onnx_path);
+    if (metadata.stages.empty()) {
       throw std::runtime_error(
         "sparse_remove_trainstation is enabled but the ONNX at '" + onnx_path +
-        "' has no 'rulebook_stages' metadata. "
-        "Re-export the model with AWML spconv_remove_trainstation=True.");
+        "' has no 'rulebook_stages' metadata. Re-export the model with the down-sample "
+        "rulebooks precomputed (autoware-ml BEVFusion sparse stage / AWML "
+        "spconv_remove_trainstation=True).");
     }
+    // Exports that predate the recorded column order were built on [x, y, z] coordinates, from
+    // a [z, y, x] graph input when sparse_coors_is_zyx is set.
+    rulebook_coors_permutation_ = metadata.coors_permutation.value_or(
+      config_.sparse_coors_is_zyx_ ? std::array<int, 3>{2, 1, 0} : std::array<int, 3>{0, 1, 2});
     sparse_rulebook_ptr_ = std::make_unique<SparseRulebookPrecompute>(
-      static_cast<int>(config_.sparse_out_indices_num_limit_), std::move(stages), stream_);
+      static_cast<int>(config_.sparse_out_indices_num_limit_), std::move(metadata.stages), stream_);
   }
 
   initTrt(trt_config);
@@ -928,7 +945,7 @@ bool BEVFusionTRT::preProcess(
   if (sparse_rulebook_ptr_) {
     sparse_rulebook_ptr_->compute(
       voxel_coords_d_.get(), static_cast<int>(num_voxels), BEVFusionConfig::kNum3DCoords,
-      config_.sparse_coors_is_zyx_);
+      rulebook_coors_permutation_);
   }
 
   configureTensorRTInputs(num_voxels, num_points);
