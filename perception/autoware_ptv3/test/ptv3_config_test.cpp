@@ -35,9 +35,37 @@ PTv3Config makeDetectionConfig(
 {
   return PTv3Config(
     false, true, "", 8, voxels_num, point_cloud_range, voxel_size, {}, {"z", "z-trans"},
-    {2, 2, 2, 2}, {8, 16, 32, 64, 128}, {}, {}, "", false, "", {}, {"CAR", "PEDESTRIAN"},
-    bbox_voxel_size, distance_bin_upper_limits, detection_score_thresholds, yaw_norm_thresholds,
-    true, 8, {-2.0F, -2.0F, -2.0F, 4.0F, 4.0F, 4.0F});
+    {2, 2, 2, 2}, {8, 16, 32, 64, 128}, {4, 4, 4, 4, 4}, {}, {}, "", false, "", {},
+    {"CAR", "PEDESTRIAN"}, bbox_voxel_size, distance_bin_upper_limits, detection_score_thresholds,
+    yaw_norm_thresholds, true, 8, {-2.0F, -2.0F, -2.0F, 4.0F, 4.0F, 4.0F});
+}
+
+// Segmentation-only config over three levels (two pooling stages), so the attention window can
+// differ per level.
+PTv3Config makeSegmentationConfig(const std::vector<std::int64_t> & patch_sizes = {4, 4, 4})
+{
+  return PTv3Config(
+    true, false, "", 8, {1, 4, 8}, {-1.0F, -1.0F, -1.0F, 3.0F, 3.0F, 3.0F}, {1.0F, 1.0F, 1.0F},
+    {"noise"}, {"z", "z-trans"}, {2, 2}, {8, 16, 32}, patch_sizes, {0, 0, 0}, {}, "xyzi", false,
+    "partial", {0, 0});
+}
+
+TEST(PTv3ConfigTest, RejectsPatchSizesThatDoNotCoverEveryStage)
+{
+  // One window per level (pooling stages + 1), each positive: the padded extents of every
+  // patch_order input are derived from this list.
+  EXPECT_THROW(makeSegmentationConfig({4, 4}), std::runtime_error);
+  EXPECT_THROW(makeSegmentationConfig({4, 0, 4}), std::runtime_error);
+}
+
+TEST(PTv3ConfigTest, PadsVoxelCountsToWholeAttentionWindows)
+{
+  const auto config = makeSegmentationConfig();
+  EXPECT_EQ(config.padded_voxel_count(0, 0), 0);
+  EXPECT_EQ(config.padded_voxel_count(1, 0), 4);
+  EXPECT_EQ(config.padded_voxel_count(4, 0), 4);
+  EXPECT_EQ(config.padded_voxel_count(5, 1), 8);
+  EXPECT_EQ(config.padded_voxel_count(9, 2), 12);
 }
 
 TEST(PTv3ConfigTest, AcceptsCompatibleDetectionGrid)
