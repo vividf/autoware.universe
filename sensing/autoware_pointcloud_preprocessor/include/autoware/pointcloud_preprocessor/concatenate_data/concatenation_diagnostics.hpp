@@ -53,6 +53,11 @@ struct ConcatenationDiagnosticsSummary
   // Set by the advanced strategy.
   std::optional<ReferenceWindow> reference_window{};
   std::unordered_map<std::string, double> topic_to_original_stamp{};
+  // Topics that arrived but whose points are not in the concatenated cloud, because no transform
+  // to the output frame was available. They count as missing, like a topic that never arrived.
+  std::vector<std::string> topics_missing_transform{};
+  // Sensor frames behind the above, reported so the operator knows which TF entries to fix.
+  std::vector<std::string> frames_missing_transform{};
 };
 
 /// Build the DiagnosticStatus for the concatenation. Per-topic entries follow @p input_topics

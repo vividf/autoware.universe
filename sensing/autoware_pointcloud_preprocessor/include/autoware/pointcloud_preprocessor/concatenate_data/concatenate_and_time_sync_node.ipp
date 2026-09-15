@@ -307,11 +307,11 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::publish
       "timestamp");
   }
 
-  if (!concatenated_cloud_result.dropped_frames_missing_transform.empty()) {
+  if (!concatenated_cloud_result.dropped_sources_missing_transform.empty()) {
     std::string dropped_frames;
-    for (const auto & frame : concatenated_cloud_result.dropped_frames_missing_transform) {
+    for (const auto & source : concatenated_cloud_result.dropped_sources_missing_transform) {
       if (!dropped_frames.empty()) dropped_frames += ", ";
-      dropped_frames += frame;
+      dropped_frames += source.frame_id;
     }
     RCLCPP_ERROR_STREAM_THROTTLE(
       this->get_logger(), *this->get_clock(), std::chrono::milliseconds(10000).count(),
@@ -389,6 +389,8 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::publish
   diagnostic_info.collector_info = std::move(collector_info);
   diagnostic_info.topic_to_original_stamp_map =
     concatenated_cloud_result.topic_to_original_stamp_map;
+  diagnostic_info.dropped_sources_missing_transform =
+    concatenated_cloud_result.dropped_sources_missing_transform;
   diagnostic_info.processing_time = processing_time;
   diagnostic_info.now_sec = now_sec;
   check_concat_status(diagnostic_info);
@@ -496,6 +498,10 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::check_c
       ReferenceWindow{advanced_info->timestamp, advanced_info->noise_window};
   }
   summary.topic_to_original_stamp = diagnostic_info.topic_to_original_stamp_map;
+  for (const auto & source : diagnostic_info.dropped_sources_missing_transform) {
+    summary.topics_missing_transform.push_back(source.topic);
+    summary.frames_missing_transform.push_back(source.frame_id);
+  }
 
   ConcatenationDiagnosticsOptions options;
   options.processing_time_ms = diagnostic_info.processing_time;

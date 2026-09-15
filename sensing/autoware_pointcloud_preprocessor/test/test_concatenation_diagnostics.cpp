@@ -125,6 +125,32 @@ TEST(ConcatenationDiagnostics, MissingTopicIsError)
   EXPECT_EQ(values.count("Timestamp: lidar_left"), 0u);
 }
 
+TEST(ConcatenationDiagnostics, SourceWithoutTransformCountsAsMissing)
+{
+  // The source arrived, so it keeps its stamp, but no transform to the output frame was available
+  // and its points never reached the concatenated cloud.
+  auto summary = complete_naive_summary();
+  summary.topics_missing_transform = {"lidar_left"};
+  summary.frames_missing_transform = {"lidar_left_frame"};
+
+  const auto status = build_diagnostic_status(summary, kInputTopics);
+  const auto values = key_values_of(status);
+
+  EXPECT_EQ(status.level, diagnostic_msgs::msg::DiagnosticStatus::ERROR);
+  EXPECT_EQ(status.message, "Concatenated pointcloud is published but misses some topics");
+  EXPECT_EQ(values.at("Pointcloud concatenation succeeded"), "False");
+  EXPECT_EQ(values.at("Concatenated: lidar_left"), "False");
+  EXPECT_EQ(values.count("Timestamp: lidar_left"), 0u);
+  EXPECT_EQ(values.at("Concatenated: lidar_top"), "True");
+  EXPECT_EQ(values.at("Frames without a transform to the output frame"), "lidar_left_frame");
+}
+
+TEST(ConcatenationDiagnostics, TransformlessFramesAreOmittedWhenAllSourcesAreConcatenated)
+{
+  const auto values = key_values_of(build_diagnostic_status(complete_naive_summary(), kInputTopics));
+  EXPECT_EQ(values.count("Frames without a transform to the output frame"), 0u);
+}
+
 TEST(ConcatenationDiagnostics, EmptyConcatenatedCloudIsError)
 {
   auto summary = complete_naive_summary();

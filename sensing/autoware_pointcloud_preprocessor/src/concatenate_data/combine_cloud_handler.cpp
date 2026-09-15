@@ -264,7 +264,7 @@ void CombineCloudHandler<sensor_msgs::msg::PointCloud2>::process_input_cloud(
   // Transform the cloud into the output frame
   const auto sensor_to_output = get_transform_to_output_frame(xyzirc_cloud->header.frame_id);
   if (!sensor_to_output.has_value()) {
-    result.dropped_frames_missing_transform.push_back(xyzirc_cloud->header.frame_id);
+    result.dropped_sources_missing_transform.push_back({topic, xyzirc_cloud->header.frame_id});
     concatenation_info_manager_.update_source_from_point_cloud(
       *xyzirc_cloud, topic, autoware_sensing_msgs::msg::SourcePointCloudInfo::STATUS_INVALID,
       *result.concatenation_info_ptr);

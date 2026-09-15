@@ -148,7 +148,8 @@ CombineCloudHandler<cuda_blackboard::CudaPointCloud2>::combine_pointclouds(
 
     const auto transform_opt = get_transform_to_output_frame(cloud->header.frame_id);
     if (!transform_opt.has_value()) {
-      concatenate_cloud_result.dropped_frames_missing_transform.push_back(cloud->header.frame_id);
+      concatenate_cloud_result.dropped_sources_missing_transform.push_back(
+        {topic, cloud->header.frame_id});
       concatenation_info_manager_.update_source_from_point_cloud(
         *cloud, topic, autoware_sensing_msgs::msg::SourcePointCloudInfo::STATUS_INVALID,
         *concatenate_cloud_result.concatenation_info_ptr);

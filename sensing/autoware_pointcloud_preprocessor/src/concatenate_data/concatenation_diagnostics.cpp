@@ -76,12 +76,22 @@ diagnostic_msgs::msg::DiagnosticStatus build_diagnostic_status(
     add("Pipeline latency (ms)", std::to_string(max_latency));
   }
 
+  const auto & missing_transform = summary.topics_missing_transform;
+  const auto has_no_transform = [&missing_transform](const std::string & topic) {
+    return std::find(missing_transform.begin(), missing_transform.end(), topic) !=
+           missing_transform.end();
+  };
+
   bool topic_miss = false;
   for (const auto & topic : input_topics) {
     const auto stamp_it = summary.topic_to_original_stamp.find(topic);
-    const bool found = stamp_it != summary.topic_to_original_stamp.end();
-    add("Concatenated: " + topic, format_bool(found));
-    if (found) {
+    // A source that arrived but could not be transformed contributes no points, so it is reported
+    // as not concatenated, the same as one that never arrived. This keeps the status consistent
+    // with ConcatenatedPointCloudInfo, which already excludes it from concatenation_success.
+    const bool concatenated =
+      stamp_it != summary.topic_to_original_stamp.end() && !has_no_transform(topic);
+    add("Concatenated: " + topic, format_bool(concatenated));
+    if (concatenated) {
       add("Timestamp: " + topic, format_timestamp(stamp_it->second));
     } else {
       topic_miss = true;
@@ -90,6 +100,15 @@ diagnostic_msgs::msg::DiagnosticStatus build_diagnostic_status(
     if (latency_it != topic_to_latency.end()) {
       add("Latency (ms): " + topic, std::to_string(latency_it->second));
     }
+  }
+
+  if (!summary.frames_missing_transform.empty()) {
+    std::string frames;
+    for (const auto & frame : summary.frames_missing_transform) {
+      if (!frames.empty()) frames += ", ";
+      frames += frame;
+    }
+    add("Frames without a transform to the output frame", frames);
   }
 
   const bool concatenation_success = !topic_miss;

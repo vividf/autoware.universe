@@ -106,6 +106,7 @@ private:
     bool is_concatenated_cloud_empty{false};
     std::shared_ptr<CollectorInfoBase> collector_info;
     std::unordered_map<std::string, double> topic_to_original_stamp_map;
+    std::vector<DroppedSource> dropped_sources_missing_transform;
     double processing_time{0.0};
     // Publish time (seconds), used to compute pipeline latencies.
     double now_sec{0.0};
