@@ -156,7 +156,6 @@ CombineCloudHandler<cuda_blackboard::CudaPointCloud2>::combine_pointclouds(
       continue;
     }
 
-    // Compute motion compensation transform
     Eigen::Matrix4f transform = *transform_opt;
 
     rclcpp::Time current_cloud_stamp = rclcpp::Time(cloud->header.stamp);
