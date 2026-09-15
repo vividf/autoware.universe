@@ -42,6 +42,15 @@ enum class MotionCompensationStatus {
   kTwistTimeGapTooLarge,
 };
 
+/// A source cloud that arrived but was left out of the concatenated cloud.
+struct DroppedSource
+{
+  /// Input topic, used to mark the source as not concatenated in the diagnostics.
+  std::string topic;
+  /// Sensor frame, which is what the operator has to fix in the TF tree.
+  std::string frame_id;
+};
+
 template <typename PointCloudMsgT>
 struct ConcatenatedCloudResult
 {
@@ -51,7 +60,7 @@ struct ConcatenatedCloudResult
     topic_to_transformed_cloud_map;
   std::unordered_map<std::string, double> topic_to_original_stamp_map;
   MotionCompensationStatus motion_compensation_status{MotionCompensationStatus::kValid};
-  std::vector<std::string> dropped_frames_missing_transform;
+  std::vector<DroppedSource> dropped_sources_missing_transform;
 };
 
 class CombineCloudHandlerBase

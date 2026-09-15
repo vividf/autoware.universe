@@ -178,8 +178,9 @@ TEST_F(CudaCombineCloudHandlerTest, DropsCloudWithoutExtrinsic)
 
   ASSERT_NE(result.concatenate_cloud_ptr, nullptr);
   EXPECT_EQ(result.concatenate_cloud_ptr->width, 1u);  // only lidar_left survived
-  ASSERT_EQ(result.dropped_frames_missing_transform.size(), 1u);
-  EXPECT_EQ(result.dropped_frames_missing_transform[0], "unknown_sensor_frame");
+  ASSERT_EQ(result.dropped_sources_missing_transform.size(), 1u);
+  EXPECT_EQ(result.dropped_sources_missing_transform[0].frame_id, "unknown_sensor_frame");
+  EXPECT_EQ(result.dropped_sources_missing_transform[0].topic, "lidar_right");
 
   const auto points = read_back(*result.concatenate_cloud_ptr);
   ASSERT_EQ(points.size(), 1u);

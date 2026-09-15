@@ -345,7 +345,7 @@ TEST_F(ConcatenateCloudTest, TestConcatenateClouds)
 
   auto
     [concatenate_cloud_ptr, concatenation_info_ptr, topic_to_transformed_cloud_map,
-     topic_to_original_stamp_map, motion_compensation_status, dropped_frames_missing_transform] =
+     topic_to_original_stamp_map, motion_compensation_status, dropped_sources_missing_transform] =
       collector_->concatenate_pointclouds(topic_to_cloud_map);
 
   // test output concatenate cloud
