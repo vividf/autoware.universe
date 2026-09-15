@@ -48,7 +48,10 @@ ament_target_dependencies(pointcloud_preprocessor_filter_base
   pcl_ros
   autoware_point_types
   managed_transform_buffer
+  autoware_agnocast_wrapper
 )
+
+autoware_agnocast_wrapper_setup(pointcloud_preprocessor_filter_base)
 
 add_library(faster_voxel_grid_downsample_filter SHARED
   src/downsample_filter/faster_voxel_grid_downsample_filter.cpp
@@ -382,10 +385,6 @@ if(BUILD_TESTING)
     test/test_concatenation_diagnostics.cpp
   )
 
-  ament_add_gtest(test_polar_voxel_outlier_filter_node
-    test/test_polar_voxel_outlier_filter_node.cpp
-  )
-
   ament_add_gtest(test_polar_voxel_noise_filter_node
     test/test_polar_voxel_noise_filter_node.cpp
   )
@@ -394,9 +393,17 @@ if(BUILD_TESTING)
     test/blockage_diag/test_blockage_diag.cpp
   )
 
-  ament_add_gtest(test_blockage_diag_node
-    test/blockage_diag/test_blockage_diag_node.cpp
-  )
+  if(NOT "$ENV{ENABLE_AGNOCAST}" STREQUAL "1")
+    ament_add_gtest(test_polar_voxel_outlier_filter_node
+      test/test_polar_voxel_outlier_filter_node.cpp
+    )
+    target_link_libraries(test_polar_voxel_outlier_filter_node pointcloud_preprocessor_filter)
+
+    ament_add_gtest(test_blockage_diag_node
+      test/blockage_diag/test_blockage_diag_node.cpp
+    )
+    target_link_libraries(test_blockage_diag_node pointcloud_preprocessor_filter)
+  endif()
 
   ament_add_gtest(test_pointcloud2_to_depth_image
     test/blockage_diag/test_pointcloud2_to_depth_image.cpp
@@ -421,10 +428,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_concatenation_info concatenate_data)
   target_link_libraries(test_matching_policy concatenate_core)
   target_link_libraries(test_concatenation_diagnostics concatenate_core)
-  target_link_libraries(test_polar_voxel_outlier_filter_node pointcloud_preprocessor_filter)
   target_link_libraries(test_polar_voxel_noise_filter_node pointcloud_preprocessor_filter)
   target_link_libraries(test_blockage_diag pointcloud_preprocessor_filter)
-  target_link_libraries(test_blockage_diag_node pointcloud_preprocessor_filter)
   target_link_libraries(test_pointcloud2_to_depth_image pointcloud_preprocessor_filter)
   target_link_libraries(test_blockage_detection pointcloud_preprocessor_filter)
   target_link_libraries(test_dust_detection pointcloud_preprocessor_filter)
