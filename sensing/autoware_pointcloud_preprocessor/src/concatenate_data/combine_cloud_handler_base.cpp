@@ -14,13 +14,35 @@
 
 #include "autoware/pointcloud_preprocessor/concatenate_data/combine_cloud_handler_base.hpp"
 
+#include "conversion.hpp"
 #include "time_utils.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <deque>
+#include <optional>
+#include <string>
 
 namespace autoware::pointcloud_preprocessor
 {
+
+void CombineCloudHandlerBase::set_transform(
+  const geometry_msgs::msg::TransformStamped & sensor_to_output_frame)
+{
+  sensor_to_output_transforms_[sensor_to_output_frame.child_frame_id] =
+    to_eigen_matrix(sensor_to_output_frame.transform);
+}
+
+std::optional<Eigen::Matrix4f> CombineCloudHandlerBase::get_transform_to_output_frame(
+  const std::string & frame_id) const
+{
+  if (frame_id == output_frame_) return Eigen::Matrix4f::Identity();
+
+  auto it = sensor_to_output_transforms_.find(frame_id);
+  if (it == sensor_to_output_transforms_.end()) return std::nullopt;
+  return it->second;
+}
 
 void CombineCloudHandlerBase::process_twist(
   const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr & twist_msg)
@@ -82,14 +104,12 @@ std::deque<geometry_msgs::msg::TwistStamped> CombineCloudHandlerBase::get_twist_
 }
 
 Eigen::Matrix4f CombineCloudHandlerBase::compute_transform_to_adjust_for_old_timestamp(
-  const builtin_interfaces::msg::Time & old_stamp, const builtin_interfaces::msg::Time & new_stamp)
+  const builtin_interfaces::msg::Time & old_stamp, const builtin_interfaces::msg::Time & new_stamp,
+  MotionCompensationStatus * status)
 {
   // return identity if no twist is available
   if (twist_queue_.empty()) {
-    RCLCPP_WARN_STREAM_THROTTLE(
-      node_.get_logger(), *node_.get_clock(), std::chrono::milliseconds(10000).count(),
-      "No twist is available. Please confirm twist topic and timestamp. Leaving point cloud "
-      "untransformed.");
+    if (status != nullptr) *status = MotionCompensationStatus::kNoTwistAvailable;
     return Eigen::Matrix4f::Identity();
   }
 
@@ -116,10 +136,7 @@ Eigen::Matrix4f CombineCloudHandlerBase::compute_transform_to_adjust_for_old_tim
     const auto dt = std::chrono::duration<double>(subtract(current_stamp, prev_stamp)).count();
 
     if (std::fabs(dt) > 0.1) {
-      RCLCPP_WARN_STREAM_THROTTLE(
-        node_.get_logger(), *node_.get_clock(), std::chrono::milliseconds(10000).count(),
-        "Time difference is too large. Cloud not interpolate. Please confirm twist topic and "
-        "timestamp");
+      if (status != nullptr) *status = MotionCompensationStatus::kTwistTimeGapTooLarge;
       break;
     }
 
