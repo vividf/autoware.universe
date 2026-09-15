@@ -261,7 +261,6 @@ void CombineCloudHandler<sensor_msgs::msg::PointCloud2>::process_input_cloud(
   auto xyzirc_cloud = std::make_unique<sensor_msgs::msg::PointCloud2>();
   convert_to_xyzirc_cloud(cloud, xyzirc_cloud);
 
-  // Transform the cloud into the output frame
   const auto sensor_to_output = get_transform_to_output_frame(xyzirc_cloud->header.frame_id);
   if (!sensor_to_output.has_value()) {
     result.dropped_sources_missing_transform.push_back({topic, xyzirc_cloud->header.frame_id});

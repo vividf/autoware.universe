@@ -111,7 +111,6 @@ PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::
   diagnostics_interface_ =
     std::make_unique<autoware_utils::DiagnosticsInterface>(this, this->get_fully_qualified_name());
 
-  // TF Buffer
   managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>();
 
   initialize_pub_sub();
