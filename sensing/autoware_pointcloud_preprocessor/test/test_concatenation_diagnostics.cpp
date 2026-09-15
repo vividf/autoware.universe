@@ -147,7 +147,8 @@ TEST(ConcatenationDiagnostics, SourceWithoutTransformCountsAsMissing)
 
 TEST(ConcatenationDiagnostics, TransformlessFramesAreOmittedWhenAllSourcesAreConcatenated)
 {
-  const auto values = key_values_of(build_diagnostic_status(complete_naive_summary(), kInputTopics));
+  const auto values =
+    key_values_of(build_diagnostic_status(complete_naive_summary(), kInputTopics));
   EXPECT_EQ(values.count("Frames without a transform to the output frame"), 0u);
 }
 
