@@ -85,9 +85,6 @@ diagnostic_msgs::msg::DiagnosticStatus build_diagnostic_status(
   bool topic_miss = false;
   for (const auto & topic : input_topics) {
     const auto stamp_it = summary.topic_to_original_stamp.find(topic);
-    // A source that arrived but could not be transformed contributes no points, so it is reported
-    // as not concatenated, the same as one that never arrived. This keeps the status consistent
-    // with ConcatenatedPointCloudInfo, which already excludes it from concatenation_success.
     const bool concatenated =
       stamp_it != summary.topic_to_original_stamp.end() && !has_no_transform(topic);
     add("Concatenated: " + topic, format_bool(concatenated));

@@ -212,9 +212,6 @@ CombineCloudHandler<cuda_blackboard::CudaPointCloud2>::combine_pointclouds(
     concatenated_start_index = 0;
 
     for (const auto & [topic, cloud] : topic_to_cloud_map) {
-      // Skip the sources excluded from the concatenated buffer in the first pass (no injected
-      // extrinsic), so the read offset into output_points stays aligned with that buffer. Both
-      // passes iterate the same unmodified map in the same order, so the skips match.
       if (!get_transform_to_output_frame(cloud->header.frame_id).has_value()) {
         continue;
       }
@@ -239,8 +236,6 @@ CombineCloudHandler<cuda_blackboard::CudaPointCloud2>::combine_pointclouds(
       auto & stream = cuda_concat_struct_map_[topic].stream;
 
       if (keep_input_frame_in_synchronized_pointcloud_ && need_transform_to_sensor_frame) {
-        // Map the (output-frame) cloud back into the sensor frame: inverse of the injected
-        // sensor->output extrinsic.
         Eigen::Matrix4f transform = Eigen::Matrix4f::Identity();
         auto transform_opt = get_transform_to_output_frame(cloud->header.frame_id);
 
