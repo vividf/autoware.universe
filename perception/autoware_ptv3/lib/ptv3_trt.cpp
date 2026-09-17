@@ -174,8 +174,8 @@ void PTv3TRT::initPtr()
 {
   grid_coord_d_ = autoware::cuda_utils::make_unique<std::int32_t[]>(config_.max_num_voxels_ * 3);
   feat_d_ = autoware::cuda_utils::make_unique<float[]>(config_.max_num_voxels_ * 4);
-  serialized_code_d_ =
-    autoware::cuda_utils::make_unique<std::int64_t[]>(config_.max_num_voxels_ * 2);
+  serialized_code_d_ = autoware::cuda_utils::make_unique<std::int64_t[]>(
+    config_.max_num_voxels_ * config_.serialization_orders_.size());
 
   // Encoder outputs shared with all the heads: one feature buffer per stage.
   stage_feat_d_.clear();
@@ -901,7 +901,9 @@ bool PTv3TRT::preProcess(
   clear_async(feat_d_.get(), static_cast<std::size_t>(config_.max_num_voxels_) * 4, stream_);
   clear_async(grid_coord_d_.get(), static_cast<std::size_t>(config_.max_num_voxels_) * 3, stream_);
   clear_async(
-    serialized_code_d_.get(), static_cast<std::size_t>(config_.max_num_voxels_) * 2, stream_);
+    serialized_code_d_.get(),
+    static_cast<std::size_t>(config_.max_num_voxels_) * config_.serialization_orders_.size(),
+    stream_);
   clear_async(
     compact_points_d_.get(),
     static_cast<std::size_t>(config_.max_num_voxels_) * sizeof(CloudPointTypeXYZIRCAEDT), stream_);
