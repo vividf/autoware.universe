@@ -175,6 +175,7 @@ if(BUILD_TESTING)
   ament_add_gtest(test_cuda_combine_cloud_handler
     test/cuda_concatenate_data/test_cuda_combine_cloud_handler.cpp)
   ament_target_dependencies(test_cuda_combine_cloud_handler
+    autoware_cuda_utils
     autoware_pointcloud_preprocessor
     autoware_point_types
     autoware_sensing_msgs

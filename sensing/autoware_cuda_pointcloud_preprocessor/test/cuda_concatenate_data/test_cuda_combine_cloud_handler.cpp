@@ -22,6 +22,7 @@
 #include "autoware/cuda_pointcloud_preprocessor/cuda_concatenate_data/cuda_combine_cloud_handler_kernel.hpp"
 #include "autoware/pointcloud_preprocessor/concatenate_data/collector_info.hpp"
 
+#include <autoware/cuda_utils/cuda_gtest_utils.hpp>
 #include <cuda_blackboard/cuda_pointcloud2.hpp>
 #include <cuda_blackboard/cuda_unique_ptr.hpp>
 
@@ -33,6 +34,7 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -120,25 +122,27 @@ bool contains(const std::vector<PointTypeStruct> & points, float x, float y, flo
 }
 }  // namespace
 
-class CudaCombineCloudHandlerTest : public ::testing::Test
+class CudaCombineCloudHandlerTest : public autoware::cuda_utils::CudaTest
 {
 protected:
   void SetUp() override
   {
-    int device_count = 0;
-    if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count == 0) {
-      GTEST_SKIP() << "No CUDA device available";
-    }
+    // Skips the test when no CUDA device is usable, e.g. on a CI runner without a GPU.
+    autoware::cuda_utils::CudaTest::SetUp();
+    if (IsSkipped()) return;
+
+    // Built here rather than as a member initializer: the constructor creates a CUDA stream, and a
+    // member would be constructed before SetUp() runs, throwing past the skip above.
+    // Motion compensation off (no twist needed); clouds are already in the output frame.
+    handler_.emplace(
+      std::vector<std::string>{"lidar_left", "lidar_right"}, kOutputFrame,
+      /*is_motion_compensated=*/false,
+      /*publish_synchronized_pointcloud=*/false,
+      /*keep_input_frame_in_synchronized_pointcloud=*/false,
+      autoware::pointcloud_preprocessor::MatchingStrategyType::naive);
   }
 
-  // Motion compensation off (no twist needed); clouds are already in the output frame.
-  CombineCloudHandler<CudaPointCloud2> handler_{
-    {"lidar_left", "lidar_right"},
-    kOutputFrame,
-    /*is_motion_compensated=*/false,
-    /*publish_synchronized_pointcloud=*/false,
-    /*keep_input_frame_in_synchronized_pointcloud=*/false,
-    autoware::pointcloud_preprocessor::MatchingStrategyType::naive};
+  std::optional<CombineCloudHandler<CudaPointCloud2>> handler_;
 };
 
 TEST_F(CudaCombineCloudHandlerTest, ConcatenatesTwoCloudsOnGpu)
@@ -149,7 +153,7 @@ TEST_F(CudaCombineCloudHandlerTest, ConcatenatesTwoCloudsOnGpu)
     make_cloud({point(0.0f, 0.0f, 3.0f), point(4.0f, 0.0f, 0.0f)});
 
   auto result =
-    handler_.combine_pointclouds(topic_to_cloud_map, std::make_shared<NaiveCollectorInfo>());
+    handler_->combine_pointclouds(topic_to_cloud_map, std::make_shared<NaiveCollectorInfo>());
 
   ASSERT_NE(result.concatenate_cloud_ptr, nullptr);
   EXPECT_EQ(result.concatenate_cloud_ptr->width, 4u);
@@ -174,7 +178,7 @@ TEST_F(CudaCombineCloudHandlerTest, DropsCloudWithoutExtrinsic)
   topic_to_cloud_map["lidar_right"] = make_cloud({point(9.0f, 0.0f, 0.0f)}, "unknown_sensor_frame");
 
   auto result =
-    handler_.combine_pointclouds(topic_to_cloud_map, std::make_shared<NaiveCollectorInfo>());
+    handler_->combine_pointclouds(topic_to_cloud_map, std::make_shared<NaiveCollectorInfo>());
 
   ASSERT_NE(result.concatenate_cloud_ptr, nullptr);
   EXPECT_EQ(result.concatenate_cloud_ptr->width, 1u);  // only lidar_left survived
