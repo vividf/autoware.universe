@@ -44,6 +44,7 @@
 #include <numeric>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace
@@ -198,7 +199,7 @@ void usage(const char * program)
 size_t parse_size(const char * text, size_t fallback)
 {
   char * end = nullptr;
-  const unsigned long long value = std::strtoull(text, &end, 10);
+  const uint64_t value = std::strtoull(text, &end, 10);
   if (end == text || value == 0) return fallback;
   return static_cast<size_t>(value);
 }
