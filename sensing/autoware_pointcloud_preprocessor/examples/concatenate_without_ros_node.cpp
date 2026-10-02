@@ -66,8 +66,8 @@ using autoware::pointcloud_preprocessor::ReferenceWindow;
 using point_cloud_msg_wrapper::PointCloud2Modifier;
 using sensor_msgs::msg::PointCloud2;
 
-const std::vector<std::string> input_topics = {"/sensor0/points", "/sensor1/points",
-                                               "/sensor2/points"};
+const std::vector<std::string> input_topics = {
+  "/sensor0/points", "/sensor1/points", "/sensor2/points"};
 const std::vector<std::string> sensor_frames = {"sensor0", "sensor1", "sensor2"};
 constexpr char output_frame[] = "base_link";
 
@@ -169,8 +169,8 @@ void print_timing(const std::vector<double> & samples_ms, size_t total_points)
   const double stddev = std::sqrt(variance);
 
   const auto previous_precision = std::cout.precision();
-  std::cout << std::fixed << std::setprecision(3) << "concatenation time over "
-            << sorted_ms.size() << " runs\n"
+  std::cout << std::fixed << std::setprecision(3) << "concatenation time over " << sorted_ms.size()
+            << " runs\n"
             << "  average : " << mean << " ms\n"
             << "  stddev  : " << stddev << " ms\n"
             << "  min     : " << sorted_ms.front() << " ms\n"
@@ -178,9 +178,9 @@ void print_timing(const std::vector<double> & samples_ms, size_t total_points)
             << "  p95     : " << percentile_ms(sorted_ms, 0.95) << " ms\n"
             << "  max     : " << sorted_ms.back() << " ms\n";
   if (mean > 0.0) {
-    std::cout << std::setprecision(2) << "  rate    : "
-              << (static_cast<double>(total_points) / mean) / 1000.0 << " Mpoint/s ("
-              << 1000.0 / mean << " concatenations/s)\n";
+    std::cout << std::setprecision(2)
+              << "  rate    : " << (static_cast<double>(total_points) / mean) / 1000.0
+              << " Mpoint/s (" << 1000.0 / mean << " concatenations/s)\n";
   }
   std::cout << std::defaultfloat << std::setprecision(static_cast<int>(previous_precision));
 }
@@ -190,8 +190,7 @@ void usage(const char * program)
   std::cout << "usage: " << program << " [points_per_cloud] [iterations] [warmup]\n"
             << "  points_per_cloud  points in each source cloud (default "
             << default_points_per_cloud << ")\n"
-            << "  iterations        timed concatenations   (default " << default_iterations
-            << ")\n"
+            << "  iterations        timed concatenations   (default " << default_iterations << ")\n"
             << "  warmup            untimed warm-up runs   (default " << default_warmup_iterations
             << ")\n";
 }
@@ -340,12 +339,12 @@ int main(int argc, char ** argv)
   all_ok &= check(
     point_count(cloud) == points_per_cloud * input_topics.size(),
     "every source contributed its points");
-  all_ok &= check(
-    to_seconds(cloud.header.stamp) == base_stamp_sec, "stamp is the oldest input stamp");
+  all_ok &=
+    check(to_seconds(cloud.header.stamp) == base_stamp_sec, "stamp is the oldest input stamp");
   all_ok &= check(collectors.size() == 1, "all three clouds landed in one collector");
   all_ok &= check(ready, "the collector reported the group complete");
-  all_ok &= check(
-    !collector.is_timed_out(base_stamp_sec + 0.1), "the group completed before its timeout");
+  all_ok &=
+    check(!collector.is_timed_out(base_stamp_sec + 0.1), "the group completed before its timeout");
   all_ok &= check(info.source_info.size() == input_topics.size(), "info describes every source");
   all_ok &= check(
     result.motion_compensation_status ==
@@ -372,8 +371,9 @@ int main(int argc, char ** argv)
     std::cout << "  " << key_value.key << " = " << key_value.value << "\n";
   }
   std::cout << "\n";
-  all_ok &= check(status.message.find("includes all topics") != std::string::npos,
-                  "diagnostics report a complete concatenation");
+  all_ok &= check(
+    status.message.find("includes all topics") != std::string::npos,
+    "diagnostics report a complete concatenation");
 
   std::cout << "\n" << (all_ok ? "PASS" : "FAIL") << ": concatenation ran without a ROS node\n";
   return all_ok ? EXIT_SUCCESS : EXIT_FAILURE;
