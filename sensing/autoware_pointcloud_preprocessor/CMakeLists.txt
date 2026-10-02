@@ -356,6 +356,18 @@ install(TARGETS concatenate_core
   RUNTIME DESTINATION bin
 )
 
+# Off by default so release builds don't pay for it: enable with -DBUILD_EXAMPLES=ON.
+option(BUILD_EXAMPLES "Build the examples for this package" OFF)
+
+if(BUILD_EXAMPLES)
+  # Shows the core concatenating clouds with no node and no executor. Links concatenate_core only,
+  # so a stray rclcpp dependency creeping back into the core breaks this build.
+  add_executable(concatenate_without_ros_node
+    examples/concatenate_without_ros_node.cpp
+  )
+  target_link_libraries(concatenate_without_ros_node concatenate_core)
+endif()
+
 ament_auto_package(INSTALL_TO_SHARE
   launch
   config
