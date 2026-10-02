@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "cloud_collector_core.hpp"
 #include "collector_info.hpp"
 #include "combine_cloud_handler.hpp"
 
@@ -32,7 +33,8 @@ class PointCloudConcatenateDataSynchronizerComponentTemplated;
 template <typename MsgTraits>
 class CombineCloudHandler;
 
-enum class CollectorStatus { Idle, Processing, Finished };
+// The ROS half of the collector: a timeout timer, the throttled warnings, and the hand-off to the
+// node's publisher. The state machine itself lives in CloudCollectorCore.
 template <typename MsgTraits>
 class CloudCollector
 {
@@ -68,12 +70,7 @@ private:
   std::shared_ptr<CombineCloudHandler<typename MsgTraits::PointCloudMessage>>
     combine_cloud_handler_;
   rclcpp::TimerBase::SharedPtr timer_;
-  std::unordered_map<std::string, typename MsgTraits::PointCloudMessage::ConstSharedPtr>
-    topic_to_cloud_map_;
-  uint64_t num_of_clouds_;
-  double timeout_sec_;
-  std::shared_ptr<CollectorInfoBase> collector_info_;
-  CollectorStatus status_;
+  CloudCollectorCore<typename MsgTraits::PointCloudMessage> core_;
   bool debug_mode_;
 };
 
