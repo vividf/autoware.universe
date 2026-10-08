@@ -38,6 +38,9 @@ struct CollectorAddResult
   bool duplicate_topic{false};
   /// The group now holds a cloud for every input topic, so nothing is left to wait for.
   bool ready_to_concatenate{false};
+  /// False when the group had already been concatenated: the cloud was not stored, and reset()
+  /// has to come first. Every other field stays false.
+  bool accepted{true};
 };
 
 /// One group of source clouds on its way to becoming a single concatenated cloud: one slot per
@@ -54,19 +57,27 @@ public:
   {
   }
 
-  /// Add one cloud. Pass @p arrival_time to let the collector answer is_timed_out() itself;
-  /// leave it empty when an external timer owns the timeout.
-  CollectorAddResult add(
+  /// Add one cloud, unless the group has already been concatenated. Pass @p arrival_time to let
+  /// the collector answer is_timed_out() itself; leave it empty when an external timer owns the
+  /// timeout.
+  [[nodiscard]] CollectorAddResult add(
     const std::string & topic, CloudConstPtr cloud,
     std::optional<double> arrival_time = std::nullopt)
   {
     CollectorAddResult result;
 
+    // A finished group is done: taking more clouds would grow a cloud set that was already
+    // concatenated, and could report it complete a second time.
+    if (status_ == CollectorStatus::Finished) {
+      result.accepted = false;
+      return result;
+    }
+
     if (status_ == CollectorStatus::Idle) {
       status_ = CollectorStatus::Processing;
       result.started = true;
       started_at_ = arrival_time;
-    } else if (status_ == CollectorStatus::Processing) {
+    } else {
       result.duplicate_topic = has_topic(topic);
     }
 
