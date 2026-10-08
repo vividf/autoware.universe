@@ -207,8 +207,13 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::cloud_c
       managed_tf_buffer_->getTransform<geometry_msgs::msg::TransformStamped>(
         params_.output_frame, input_ptr->header.frame_id, this->now(),
         rclcpp::Duration::from_seconds(1.0), this->get_logger());
-    if (sensor_to_output.has_value()) {
-      combine_cloud_handler_->set_transform(*sensor_to_output);
+    if (sensor_to_output.has_value() && !combine_cloud_handler_->set_transform(*sensor_to_output)) {
+      RCLCPP_ERROR_STREAM_THROTTLE(
+        this->get_logger(), *this->get_clock(), std::chrono::milliseconds(10000).count(),
+        "Ignored a transform from '" << sensor_to_output->child_frame_id << "' into '"
+                                     << sensor_to_output->header.frame_id
+                                     << "', which is not the output frame '" << params_.output_frame
+                                     << "'.");
     }
   }
 

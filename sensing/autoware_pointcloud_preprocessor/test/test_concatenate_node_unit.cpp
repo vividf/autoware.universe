@@ -78,7 +78,7 @@ protected:
       combine_cloud_handler_, number_of_pointcloud, timeout_sec, collector_debug_mode);
 
     for (const auto & transform : generate_static_transform_msgs()) {
-      combine_cloud_handler_->set_transform(transform);
+      ASSERT_TRUE(combine_cloud_handler_->set_transform(transform));
     }
   }
 

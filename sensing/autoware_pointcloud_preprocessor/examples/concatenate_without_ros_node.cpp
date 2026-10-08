@@ -235,7 +235,11 @@ int main(int argc, char ** argv)
   // Transforms the node would look up from tf2. Here they are handed over directly, which is what
   // makes an offline run reproducible: no TF listener, no waiting, no lookup failures.
   for (size_t i = 0; i < sensor_frames.size(); ++i) {
-    handler.set_transform(make_transform(i));
+    if (!handler.set_transform(make_transform(i))) {
+      std::cerr << "transform for " << sensor_frames[i] << " does not reach " << output_frame
+                << "\n";
+      return EXIT_FAILURE;
+    }
   }
 
   // Ego motion the node would take from /twist. Without this the core reports

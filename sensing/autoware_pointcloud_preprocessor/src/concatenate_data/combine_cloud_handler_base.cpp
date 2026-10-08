@@ -27,11 +27,16 @@
 namespace autoware::pointcloud_preprocessor
 {
 
-void CombineCloudHandlerBase::set_transform(
+bool CombineCloudHandlerBase::set_transform(
   const geometry_msgs::msg::TransformStamped & sensor_to_output_frame)
 {
+  // The cache key is the child frame alone, so the parent has to be the output frame.
+  if (sensor_to_output_frame.header.frame_id != output_frame_) return false;
+  if (sensor_to_output_frame.child_frame_id.empty()) return false;
+
   sensor_to_output_transforms_[sensor_to_output_frame.child_frame_id] =
     to_eigen_matrix(sensor_to_output_frame.transform);
+  return true;
 }
 
 std::optional<Eigen::Matrix4f> CombineCloudHandlerBase::get_transform_to_output_frame(

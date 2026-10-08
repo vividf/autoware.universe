@@ -81,7 +81,12 @@ public:
 
   virtual ~CombineCloudHandlerBase() = default;
 
-  void set_transform(const geometry_msgs::msg::TransformStamped & sensor_to_output_frame);
+  /// Cache the transform from a sensor frame into the output frame.
+  /// @return false, caching nothing, if the transform does not end at the output frame or carries
+  /// no child frame. The stamp is deliberately not checked: the cache keeps the latest transform
+  /// per sensor frame, which assumes the sensor extrinsics are static.
+  [[nodiscard]] bool set_transform(
+    const geometry_msgs::msg::TransformStamped & sensor_to_output_frame);
 
   void process_twist(
     const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr & twist_msg);
