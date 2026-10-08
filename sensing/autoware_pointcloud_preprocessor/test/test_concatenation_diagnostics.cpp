@@ -173,7 +173,7 @@ TEST(ConcatenationDiagnostics, LateDropIsErrorAndOutranksTheOtherCauses)
   auto summary = complete_naive_summary();
   EXPECT_EQ(
     build_diagnostic_status(summary, kInputTopics, options).message,
-    "Concatenated pointcloud was dropped because its timestamp is earlier than the latest "
+    "Concatenated pointcloud was dropped due to its timestamp is earlier than the latest "
     "published one");
 
   // Missing topic changes the message; empty cloud does not override the late drop.
@@ -183,8 +183,8 @@ TEST(ConcatenationDiagnostics, LateDropIsErrorAndOutranksTheOtherCauses)
   EXPECT_EQ(status.level, diagnostic_msgs::msg::DiagnosticStatus::ERROR);
   EXPECT_EQ(
     status.message,
-    "Concatenated pointcloud was dropped due to missing topics and because its timestamp is "
-    "earlier than the latest published one");
+    "Concatenated pointcloud was dropped due to missing topics and its timestamp is earlier "
+    "than the latest published one");
 }
 
 TEST(ConcatenationDiagnostics, AdvancedReportsTheReferenceWindow)

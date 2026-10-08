@@ -115,9 +115,9 @@ diagnostic_msgs::msg::DiagnosticStatus build_diagnostic_status(
   std::string message = "Concatenated pointcloud is published and includes all topics";
   if (options.drop_previous_but_late) {
     level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-    message = topic_miss ? "Concatenated pointcloud was dropped due to missing topics and because "
-                           "its timestamp is earlier than the latest published one"
-                         : "Concatenated pointcloud was dropped because its timestamp is earlier "
+    message = topic_miss ? "Concatenated pointcloud was dropped due to missing topics and its "
+                           "timestamp is earlier than the latest published one"
+                         : "Concatenated pointcloud was dropped due to its timestamp is earlier "
                            "than the latest published one";
   } else if (summary.is_concatenated_cloud_empty) {
     level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
