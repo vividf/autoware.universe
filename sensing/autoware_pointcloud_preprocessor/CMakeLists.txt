@@ -350,7 +350,8 @@ target_link_libraries(concatenate_core PUBLIC
   ${diagnostic_msgs_TARGETS}
 )
 
-install(TARGETS concatenate_core
+install(
+  TARGETS concatenate_core EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
