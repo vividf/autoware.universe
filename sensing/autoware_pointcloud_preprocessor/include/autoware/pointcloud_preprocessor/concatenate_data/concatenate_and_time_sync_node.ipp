@@ -210,10 +210,9 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::cloud_c
     if (sensor_to_output.has_value() && !combine_cloud_handler_->set_transform(*sensor_to_output)) {
       RCLCPP_ERROR_STREAM_THROTTLE(
         this->get_logger(), *this->get_clock(), std::chrono::milliseconds(10000).count(),
-        "Ignored a transform from '" << sensor_to_output->child_frame_id << "' into '"
-                                     << sensor_to_output->header.frame_id
-                                     << "', which is not the output frame '" << params_.output_frame
-                                     << "'.");
+        "Ignored a transform from '"
+          << sensor_to_output->child_frame_id << "' into '" << sensor_to_output->header.frame_id
+          << "', which is not the output frame '" << params_.output_frame << "'.");
     }
   }
 
