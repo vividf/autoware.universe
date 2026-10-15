@@ -19,7 +19,9 @@
 
 #include <geometry_msgs/msg/transform.hpp>
 
-// Package-internal message-to-Eigen conversion helpers that do not depend on the ROS runtime.
+// ROS-message conversion helpers that depend only on message types and header-only math (no
+// rclcpp, no tf2_ros). They let the concatenation core take transforms as messages without pulling
+// in the ROS runtime.
 namespace autoware::pointcloud_preprocessor
 {
 
