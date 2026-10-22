@@ -379,12 +379,7 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::publish
     std::move(concatenated_cloud_result.concatenation_info_ptr));
 
   const double processing_time = stop_watch_ptr_->toc("processing_time", true);
-  std::unordered_map<std::string, double> topic_to_pipeline_latency_map;
   const double now_sec = this->get_clock()->now().seconds();
-
-  for (const auto & [topic, stamp] : concatenated_cloud_result.topic_to_original_stamp_map) {
-    topic_to_pipeline_latency_map[topic] = (now_sec - stamp) * 1000.0;  // ms
-  }
 
   diagnostic_info.publish_pointcloud = publish_pointcloud;
   diagnostic_info.drop_previous_but_late_pointcloud = drop_previous_but_late_pointcloud;
@@ -400,7 +395,9 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::publish
 
   if (debug_publisher_) {
     const double cyclic_time = stop_watch_ptr_->toc("cyclic_time", true);
-    publish_debug_message(processing_time, cyclic_time, topic_to_pipeline_latency_map);
+    publish_debug_message(
+      processing_time, cyclic_time,
+      pipeline_latencies_ms(concatenated_cloud_result.topic_to_original_stamp_map, now_sec));
   }
 }
 
