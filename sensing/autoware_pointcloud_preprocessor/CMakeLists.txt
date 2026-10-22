@@ -469,7 +469,9 @@ if(BUILD_TESTING)
     test/test_concatenate_node_characterization.cpp
     TIMEOUT 180
   )
+  find_package(rosgraph_msgs REQUIRED)
   target_link_libraries(test_concatenate_node_characterization pointcloud_preprocessor_filter)
-  ament_target_dependencies(test_concatenate_node_characterization rclcpp_components tf2_ros)
+  ament_target_dependencies(
+    test_concatenate_node_characterization rclcpp_components rosgraph_msgs tf2_ros)
 
 endif()
