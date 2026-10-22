@@ -16,7 +16,6 @@
 // set the "debug_" value to true to display the point cloud values. Then,
 // replace the expected values with the newly displayed undistorted point cloud values.
 
-#include "autoware/pointcloud_preprocessor/concatenate_data/cloud_collector.hpp"
 #include "autoware/pointcloud_preprocessor/concatenate_data/cloud_concatenator.hpp"
 #include "autoware/pointcloud_preprocessor/concatenate_data/combine_cloud_handler.hpp"
 #include "autoware/pointcloud_preprocessor/concatenate_data/concatenate_and_time_sync_node.hpp"
@@ -39,11 +38,9 @@
 #include <utility>
 #include <vector>
 
-using autoware::pointcloud_preprocessor::CloudCollector;
 using autoware::pointcloud_preprocessor::CombineCloudHandler;
 using autoware::pointcloud_preprocessor::ConcatenatedFrameStatus;
 using autoware::pointcloud_preprocessor::MatchingStrategyType;
-using autoware::pointcloud_preprocessor::PointCloud2Traits;
 using autoware::pointcloud_preprocessor::PointCloudConcatenateDataSynchronizerComponent;
 using CloudConcatenator =
   autoware::pointcloud_preprocessor::CloudConcatenator<sensor_msgs::msg::PointCloud2>;
@@ -79,11 +76,6 @@ protected:
     combine_cloud_handler_ = std::make_shared<CombineCloudHandler<sensor_msgs::msg::PointCloud2>>(
       input_topics, "base_link", true, true, true,
       autoware::pointcloud_preprocessor::MatchingStrategyType::advanced);
-
-    collector_ = std::make_shared<CloudCollector<PointCloud2Traits>>(
-      std::dynamic_pointer_cast<PointCloudConcatenateDataSynchronizerComponent>(
-        concatenate_node_->shared_from_this()),
-      combine_cloud_handler_, number_of_pointcloud, timeout_sec, collector_debug_mode);
 
     concatenator_ = std::make_unique<CloudConcatenator>(
       input_topics, "base_link", timeout_sec, true, true, true, MatchingStrategyType::advanced,
@@ -178,17 +170,14 @@ protected:
 
   std::shared_ptr<PointCloudConcatenateDataSynchronizerComponent> concatenate_node_;
   std::shared_ptr<CombineCloudHandler<sensor_msgs::msg::PointCloud2>> combine_cloud_handler_;
-  std::shared_ptr<CloudCollector<PointCloud2Traits>> collector_;
   std::unique_ptr<CloudConcatenator> concatenator_;
 
   static constexpr int32_t timestamp_seconds{10};
   static constexpr uint32_t timestamp_nanoseconds{100'000'000};
   static constexpr size_t number_of_points{3};
   static constexpr float standard_tolerance{1e-4};
-  static constexpr int number_of_pointcloud{3};
   static constexpr float timeout_sec{0.2};
-  static constexpr bool collector_debug_mode{false};  // For showing collector information
-  bool debug_{false};                                 // For the Unit test
+  bool debug_{false};  // For the Unit test
 };
 
 //////////////////////////////// Test combine_cloud_handler ////////////////////////////////
@@ -296,42 +285,7 @@ TEST_F(ConcatenateCloudTest, TestComputeTransformToAdjustForOldTimestamp)
   }
 }
 
-//////////////////////////////// Test cloud_collector ////////////////////////////////
-
-TEST_F(ConcatenateCloudTest, TestSetAndGetNaiveCollectorInfo)
-{
-  auto naive_info = std::make_shared<autoware::pointcloud_preprocessor::NaiveCollectorInfo>();
-  naive_info->timestamp = 15.0;
-
-  collector_->set_info(naive_info);
-  auto collector_info_new = collector_->get_info();
-
-  auto naive_info_new =
-    std::dynamic_pointer_cast<autoware::pointcloud_preprocessor::NaiveCollectorInfo>(
-      collector_info_new);
-  ASSERT_NE(naive_info_new, nullptr) << "Collector info is not of type NaiveCollectorInfo";
-
-  EXPECT_DOUBLE_EQ(naive_info_new->timestamp, 15.0);
-}
-
-TEST_F(ConcatenateCloudTest, TestSetAndGetAdvancedCollectorInfo)
-{
-  auto advanced_info = std::make_shared<autoware::pointcloud_preprocessor::AdvancedCollectorInfo>();
-  advanced_info->timestamp = 10.0;
-  advanced_info->noise_window = 0.1;
-  collector_->set_info(advanced_info);
-  auto collector_info_new = collector_->get_info();
-  auto advanced_info_new =
-    std::dynamic_pointer_cast<autoware::pointcloud_preprocessor::AdvancedCollectorInfo>(
-      collector_info_new);
-  ASSERT_NE(advanced_info_new, nullptr) << "Collector info is not of type AdvancedCollectorInfo";
-
-  // Validate the values
-  auto min = advanced_info_new->timestamp - advanced_info_new->noise_window;
-  auto max = advanced_info_new->timestamp + advanced_info_new->noise_window;
-  EXPECT_DOUBLE_EQ(min, 9.9);
-  EXPECT_DOUBLE_EQ(max, 10.1);
-}
+//////////////////////////////// Test concatenation core ////////////////////////////////
 
 TEST_F(ConcatenateCloudTest, TestConcatenateClouds)
 {
@@ -360,7 +314,7 @@ TEST_F(ConcatenateCloudTest, TestConcatenateClouds)
   auto
     [concatenate_cloud_ptr, concatenation_info_ptr, topic_to_transformed_cloud_map,
      topic_to_original_stamp_map, motion_compensation_status, dropped_sources_missing_transform] =
-      collector_->concatenate_pointclouds(topic_to_cloud_map);
+      combine_cloud_handler_->combine_pointclouds(topic_to_cloud_map, nullptr);
 
   // test output concatenate cloud
   // No input twist, so it will not do the motion compensation
@@ -525,7 +479,7 @@ TEST_F(ConcatenateCloudTest, TestConcatenateCloudsLeavesNonFinitePointsUnchanged
   std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::ConstSharedPtr> topic_to_cloud_map;
   topic_to_cloud_map["lidar_top"] = std::make_shared<sensor_msgs::msg::PointCloud2>(cloud);
 
-  auto result = collector_->concatenate_pointclouds(topic_to_cloud_map);
+  auto result = combine_cloud_handler_->combine_pointclouds(topic_to_cloud_map, nullptr);
 
   const auto read_points = [](const sensor_msgs::msg::PointCloud2 & msg) {
     std::vector<Eigen::Vector3f> out;
