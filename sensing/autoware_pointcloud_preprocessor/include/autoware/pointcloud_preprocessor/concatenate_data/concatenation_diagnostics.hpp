@@ -63,7 +63,7 @@ struct ConcatenationDiagnosticsSummary
 };
 
 /// Per-topic pipeline latency in milliseconds: (now_sec - original stamp) for every topic.
-std::unordered_map<std::string, double> pipeline_latencies_ms(
+std::unordered_map<std::string, double> latency_ms_per_topic(
   const std::unordered_map<std::string, double> & topic_to_original_stamp, double now_sec);
 
 /// Build the DiagnosticStatus for the concatenation. Per-topic entries follow @p input_topics
