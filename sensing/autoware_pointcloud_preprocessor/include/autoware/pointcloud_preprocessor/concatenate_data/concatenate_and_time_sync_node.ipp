@@ -397,7 +397,7 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::publish
     const double cyclic_time = stop_watch_ptr_->toc("cyclic_time", true);
     publish_debug_message(
       processing_time, cyclic_time,
-      pipeline_latencies_ms(concatenated_cloud_result.topic_to_original_stamp_map, now_sec));
+      latency_ms_per_topic(concatenated_cloud_result.topic_to_original_stamp_map, now_sec));
   }
 }
 
