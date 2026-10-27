@@ -122,7 +122,7 @@ std::vector<ConcatenatedFrame<PointCloudMsgT>> CloudConcatenator<PointCloudMsgT>
   if (matched_index.has_value()) {
     index = *matched_index;
   } else {
-    if (max_open_collectors_ != 0 && collectors_.size() >= max_open_collectors_) {
+    while (max_open_collectors_ != 0 && collectors_.size() >= max_open_collectors_) {
       drop_oldest_collector();
     }
     const MatchingReference reference = matching_policy_->reference_for(incoming_cloud_info);
@@ -132,13 +132,15 @@ std::vector<ConcatenatedFrame<PointCloudMsgT>> CloudConcatenator<PointCloudMsgT>
   }
 
   // (4) Add the cloud; emit immediately if the collector is now complete.
-  if (collectors_[index].topic_to_cloud.count(topic) > 0) {
+  auto & topic_to_cloud = collectors_[index].topic_to_cloud;
+  const bool replaced_existing_cloud =
+    !topic_to_cloud.insert_or_assign(topic, std::move(cloud)).second;
+  if (replaced_existing_cloud) {
     // Usually a symptom of a mis-tuned noise window; the newer cloud wins, as in the node.
     ++stats_.duplicate_topic_inserts;
     stats_.last_duplicate_topic = topic;
   }
-  collectors_[index].topic_to_cloud[topic] = std::move(cloud);
-  if (collectors_[index].topic_to_cloud.size() == input_topics_.size()) {
+  if (topic_to_cloud.size() == input_topics_.size()) {
     Collector completed = std::move(collectors_[index]);
     collectors_.erase(collectors_.begin() + static_cast<std::ptrdiff_t>(index));
     outputs.push_back(emit(std::move(completed), ConcatenatedFrameStatus::kComplete));
@@ -151,14 +153,15 @@ template <typename PointCloudMsgT>
 std::vector<ConcatenatedFrame<PointCloudMsgT>>
 CloudConcatenator<PointCloudMsgT>::close_expired_collectors(double now_sec)
 {
-  // A collector expires once timeout_sec has elapsed since its creation (>=, so a timer armed
-  // exactly at the deadline closes it), or once the caller's clock has gone back past its creation
-  // (a rosbag restarted under use_sim_time), since it would otherwise wait for that time to return.
+  // A collector expires once its deadline is reached, or once the caller's clock has gone back past
+  // its creation (a rosbag restarted under use_sim_time), since it would otherwise wait for that
+  // time to return. The deadline is the same sum next_deadline() reports, so a timer armed exactly
+  // at it closes the collector (now - creation >= timeout can round just short of it).
   std::vector<Collector> stale;
   std::vector<Collector> open;
   for (auto & collector : collectors_) {
     if (
-      collector.creation_arrival <= now_sec - timeout_sec_ ||
+      collector.creation_arrival + timeout_sec_ <= now_sec ||
       now_sec < collector.creation_arrival) {
       stale.push_back(std::move(collector));
     } else {
