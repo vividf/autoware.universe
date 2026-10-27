@@ -2180,7 +2180,7 @@ TEST_F(ConcatenateNodeTest, ConcatenatesReplayedFramesAfterTheClockJumpsBack)
   publish_clouds_from(base_stamp_sec + 0.5, {0});
   run_clock(clock_after_restart_sec, clock_after_restart_sec + 5 * timeout_sec);
   concatenated_clouds_.clear();
-  const double replayed_sec = base_stamp_sec - 50.0;
+  const double replayed_sec = base_stamp_sec - 1.0;
 
   // Act: the next frame's first cloud arrives before this frame's other two.
   publish_cloud(0, replayed_sec + timestamp_offsets.at(0));
