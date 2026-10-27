@@ -99,32 +99,47 @@ CloudConcatenator make_advanced_concatenator(double timeout_sec = 0.2)
 
 TEST(CloudConcatenatorConstruction, UnknownStrategyNameIsRejectedAtParse)
 {
+  // Arrange
   // Strategy names are validated once, at the string boundary; the concatenator itself only
   // accepts the typed enum.
-  EXPECT_THROW(parse_matching_strategy("no_such_strategy"), std::invalid_argument);
+  const auto parse_unknown_name = [] { return parse_matching_strategy("no_such_strategy"); };
+
+  // Act & Assert
+  EXPECT_THROW(static_cast<void>(parse_unknown_name()), std::invalid_argument);
 }
 
 TEST(CloudConcatenatorConstruction, AdvancedRequiresOffsetsAndNoiseWindow)
 {
-  EXPECT_THROW(
-    CloudConcatenator(
-      kInputTopics, kOutputFrame, 0.2, false, false, false, MatchingStrategyType::advanced),
-    std::invalid_argument);
+  // Arrange
+  const auto construct_without_offsets = [] {
+    return CloudConcatenator(
+      kInputTopics, kOutputFrame, 0.2, false, false, false, MatchingStrategyType::advanced);
+  };
+
+  // Act & Assert
+  EXPECT_THROW(static_cast<void>(construct_without_offsets()), std::invalid_argument);
 }
 
 TEST(CloudConcatenatorConstruction, AdvancedRejectsMismatchedSizes)
 {
+  // Arrange
   // Size validation is delegated to AdvancedMatchingPolicy (shared with the node).
-  EXPECT_THROW(
-    CloudConcatenator(
+  const auto construct_with_too_few_offsets = [] {
+    return CloudConcatenator(
       kInputTopics, kOutputFrame, 0.2, false, false, false, MatchingStrategyType::advanced,
-      std::vector<double>{0.0, 0.04}, kNoise),
-    std::runtime_error);
+      std::vector<double>{0.0, 0.04}, kNoise);
+  };
+
+  // Act & Assert
+  EXPECT_THROW(static_cast<void>(construct_with_too_few_offsets()), std::runtime_error);
 }
 
 TEST(CloudConcatenator, ProcessCloudRejectsUnknownTopic)
 {
+  // Arrange
   auto concatenator = make_naive_concatenator();
+
+  // Act & Assert
   EXPECT_THROW(
     static_cast<void>(
       concatenator.process_cloud("not_a_configured_topic", make_cloud(10, 0), 100.0)),
@@ -133,12 +148,18 @@ TEST(CloudConcatenator, ProcessCloudRejectsUnknownTopic)
 
 TEST(CloudConcatenator, NaiveCompletesWhenAllTopicsArrive)
 {
+  // Arrange
   auto concatenator = make_naive_concatenator();
+  const auto after_first = concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.00);
+  const auto after_second =
+    concatenator.process_cloud("lidar_left", make_cloud(10, 1'000'000), 100.01);
 
-  EXPECT_TRUE(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.00).empty());
-  EXPECT_TRUE(concatenator.process_cloud("lidar_left", make_cloud(10, 1'000'000), 100.01).empty());
+  // Act
   const auto frames = concatenator.process_cloud("lidar_right", make_cloud(10, 2'000'000), 100.02);
 
+  // Assert
+  EXPECT_TRUE(after_first.empty());
+  EXPECT_TRUE(after_second.empty());  // nothing is emitted until the collector is complete
   ASSERT_EQ(frames.size(), 1u);
   EXPECT_EQ(frames[0].status, ConcatenatedFrameStatus::kComplete);
   ASSERT_TRUE(frames[0].result.concatenate_cloud_ptr != nullptr);
@@ -148,12 +169,17 @@ TEST(CloudConcatenator, NaiveCompletesWhenAllTopicsArrive)
 
 TEST(CloudConcatenator, NaiveTimesOutIncompleteCollector)
 {
+  // Arrange
+  // Only lidar_top is in the collector.
   auto concatenator = make_naive_concatenator(0.2);
+  const auto after_first = concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.0);
 
-  // Only lidar_top; a cloud arriving 0.5 s later (> 0.2 s timeout) closes the stale collector.
-  EXPECT_TRUE(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.0).empty());
+  // Act
+  // A cloud arriving 0.5 s later (> 0.2 s timeout) closes the stale collector.
   const auto frames = concatenator.process_cloud("lidar_left", make_cloud(10, 0), 100.5);
 
+  // Assert
+  EXPECT_TRUE(after_first.empty());
   ASSERT_EQ(frames.size(), 1u);
   EXPECT_EQ(frames[0].status, ConcatenatedFrameStatus::kTimeout);
   EXPECT_EQ(frames[0].result.concatenate_cloud_ptr->width, kPointsPerCloud);  // only lidar_top
@@ -161,27 +187,56 @@ TEST(CloudConcatenator, NaiveTimesOutIncompleteCollector)
 
 TEST(CloudConcatenator, CloseExpiredCollectorsWithoutACloud)
 {
+  // Arrange
   // The node-adoption hook: a timer drives the clock while no clouds arrive.
   auto concatenator = make_naive_concatenator(0.2);
-  EXPECT_TRUE(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.0).empty());
+  const auto after_first = concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.0);
+  const auto before_deadline = concatenator.close_expired_collectors(100.1);
 
-  EXPECT_TRUE(concatenator.close_expired_collectors(100.1).empty());  // not expired yet
-
+  // Act
   const auto frames = concatenator.close_expired_collectors(100.5);
+
+  // Assert
+  EXPECT_TRUE(after_first.empty());
+  EXPECT_TRUE(before_deadline.empty());  // not expired yet at 100.1
   ASSERT_EQ(frames.size(), 1u);
   EXPECT_EQ(frames[0].status, ConcatenatedFrameStatus::kTimeout);
   EXPECT_EQ(frames[0].first_arrival_time, 100.0);
 }
 
+TEST(CloudConcatenator, CloseExpiredCollectorsAtExactlyNextDeadline)
+{
+  // Arrange
+  // An epoch-scale arrival time: here (arrival + 0.1) - arrival rounds to just below 0.1, so an
+  // elapsed-time comparison would leave the collector open at the instant the timer fires.
+  auto concatenator = make_naive_concatenator(0.1);
+  static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 1700058338.2039454));
+  const std::optional<double> deadline = concatenator.next_deadline();
+  ASSERT_TRUE(deadline.has_value());
+
+  // Act
+  const auto frames = concatenator.close_expired_collectors(*deadline);
+
+  // Assert
+  ASSERT_EQ(frames.size(), 1u);
+  EXPECT_EQ(frames[0].status, ConcatenatedFrameStatus::kTimeout);
+  EXPECT_FALSE(concatenator.next_deadline().has_value());
+}
+
 TEST(CloudConcatenator, ClockGoingBackwardsClosesCollectorsOpenedBeforeIt)
 {
-  // Under use_sim_time a restarted rosbag moves the node's clock backwards. A collector opened
-  // before the jump must still close instead of waiting for its old deadline to come around again.
+  // Arrange
+  // Under use_sim_time a restarted rosbag moves the node's clock backwards.
   auto concatenator = make_advanced_concatenator(0.2);
-  EXPECT_TRUE(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.0).empty());
+  const auto after_first = concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.0);
 
+  // Act
   const auto frames = concatenator.close_expired_collectors(50.0);
 
+  // Assert
+  // A collector opened before the jump must still close instead of waiting for its old deadline
+  // to come around again.
+  EXPECT_TRUE(after_first.empty());
   ASSERT_EQ(frames.size(), 1u);
   EXPECT_EQ(frames[0].status, ConcatenatedFrameStatus::kTimeout);
   EXPECT_FALSE(concatenator.next_deadline().has_value());
@@ -189,20 +244,23 @@ TEST(CloudConcatenator, ClockGoingBackwardsClosesCollectorsOpenedBeforeIt)
 
 TEST(CloudConcatenator, ClockGoingBackwardsKeepsLiveCollectorsOverStaleOnes)
 {
-  // Two partial frames are open when the bag restarts. The restarted stream carries earlier stamps,
-  // so drop-oldest would evict its collectors rather than the stale ones.
+  // Arrange
+  // Two partial frames are open when the bag restarts.
   CloudConcatenator concatenator(
     kInputTopics, kOutputFrame, /*timeout_sec=*/0.2, false, false, false,
     MatchingStrategyType::advanced, kOffsets, kNoise, /*max_open_collectors=*/3);
   static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.0));
   static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(10, 500'000'000), 100.1));
 
-  // After the jump, frame N+1 opens before frame N's other clouds arrive.
+  // Act
+  // The restarted stream carries earlier stamps, so drop-oldest would evict its collectors rather
+  // than the stale ones. After the jump, frame N+1 opens before frame N's other clouds arrive.
   static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(5, 0), 50.0));
   static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(5, 100'000'000), 50.1));
   static_cast<void>(concatenator.process_cloud("lidar_left", make_cloud(5, 40'000'000), 50.14));
   const auto frames = concatenator.process_cloud("lidar_right", make_cloud(5, 80'000'000), 50.18);
 
+  // Assert
   ASSERT_EQ(frames.size(), 1u);
   EXPECT_EQ(frames[0].status, ConcatenatedFrameStatus::kComplete);
   EXPECT_DOUBLE_EQ(frames[0].reference_time, 5.0);
@@ -211,15 +269,20 @@ TEST(CloudConcatenator, ClockGoingBackwardsKeepsLiveCollectorsOverStaleOnes)
 
 TEST(CloudConcatenator, FlushEmitsOpenCollectorsOldestFirst)
 {
-  auto concatenator = make_advanced_concatenator(10.0);  // long timeout: nothing expires
-
+  // Arrange
   // lidar_left's corrected stamp (10.16) is far outside lidar_top's window (~[9.99, 10.01]), so it
   // opens a second collector instead of joining the first.
-  EXPECT_TRUE(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.00).empty());
-  EXPECT_TRUE(
-    concatenator.process_cloud("lidar_left", make_cloud(10, 200'000'000), 100.05).empty());
+  auto concatenator = make_advanced_concatenator(10.0);  // long timeout: nothing expires
+  const auto after_first = concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.00);
+  const auto after_second =
+    concatenator.process_cloud("lidar_left", make_cloud(10, 200'000'000), 100.05);
 
+  // Act
   const auto frames = concatenator.flush();
+
+  // Assert
+  EXPECT_TRUE(after_first.empty());
+  EXPECT_TRUE(after_second.empty());
   ASSERT_EQ(frames.size(), 2u);
   EXPECT_EQ(frames[0].status, ConcatenatedFrameStatus::kTimeout);
   EXPECT_EQ(frames[1].status, ConcatenatedFrameStatus::kTimeout);
@@ -228,13 +291,19 @@ TEST(CloudConcatenator, FlushEmitsOpenCollectorsOldestFirst)
 
 TEST(CloudConcatenator, AdvancedMatchesOffsetCorrectedTimestamps)
 {
-  auto concatenator = make_advanced_concatenator();
-
+  // Arrange
   // Per-topic stamps staggered by exactly the offsets: corrected timestamps all map to 10.00 s.
-  EXPECT_TRUE(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.00).empty());
-  EXPECT_TRUE(concatenator.process_cloud("lidar_left", make_cloud(10, 40'000'000), 100.01).empty());
+  auto concatenator = make_advanced_concatenator();
+  const auto after_first = concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.00);
+  const auto after_second =
+    concatenator.process_cloud("lidar_left", make_cloud(10, 40'000'000), 100.01);
+
+  // Act
   const auto frames = concatenator.process_cloud("lidar_right", make_cloud(10, 80'000'000), 100.02);
 
+  // Assert
+  EXPECT_TRUE(after_first.empty());
+  EXPECT_TRUE(after_second.empty());
   ASSERT_EQ(frames.size(), 1u);
   EXPECT_EQ(frames[0].status, ConcatenatedFrameStatus::kComplete);
   EXPECT_EQ(frames[0].result.concatenate_cloud_ptr->width, kInputTopics.size() * kPointsPerCloud);
@@ -245,36 +314,65 @@ TEST(CloudConcatenator, AdvancedMatchesOffsetCorrectedTimestamps)
   ASSERT_TRUE(frames[0].result.concatenation_info_ptr != nullptr);
 }
 
+TEST(CloudConcatenator, NextDeadlineIsEmptyWhileNothingIsOpen)
+{
+  // Arrange
+  auto concatenator = make_naive_concatenator(0.2);
+
+  // Act
+  const auto deadline = concatenator.next_deadline();
+
+  // Assert
+  EXPECT_FALSE(deadline.has_value());
+}
+
 TEST(CloudConcatenator, NextDeadlineTracksOldestOpenCollector)
 {
+  // Arrange
   auto concatenator = make_naive_concatenator(0.2);
-  EXPECT_FALSE(concatenator.next_deadline().has_value());  // nothing open
-
   static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.0));
-  ASSERT_TRUE(concatenator.next_deadline().has_value());
-  EXPECT_DOUBLE_EQ(*concatenator.next_deadline(), 100.2);
 
+  // Act
+  const auto deadline = concatenator.next_deadline();
+
+  // Assert
+  ASSERT_TRUE(deadline.has_value());
+  EXPECT_DOUBLE_EQ(*deadline, 100.2);  // first arrival + timeout
+}
+
+TEST(CloudConcatenator, NextDeadlineIsEmptyAgainOnceCollectorsClose)
+{
+  // Arrange
+  auto concatenator = make_naive_concatenator(0.2);
+  static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.0));
   static_cast<void>(concatenator.close_expired_collectors(100.5));
-  EXPECT_FALSE(concatenator.next_deadline().has_value());  // closed again
+
+  // Act
+  const auto deadline = concatenator.next_deadline();
+
+  // Assert
+  EXPECT_FALSE(deadline.has_value());
 }
 
 TEST(CloudConcatenator, MaxOpenCollectorsDropsOldestUnpublished)
 {
-  // Cap of 2 open collectors (the node uses its historical pool size); a third collector must
-  // evict the one with the oldest reference without emitting it.
+  // Arrange
+  // Cap of 2 open collectors (the node uses its historical pool size). Two lidar_top clouds with
+  // stamps far outside each other's windows fill it with two collectors.
   CloudConcatenator concatenator(
     kInputTopics, kOutputFrame, /*timeout_sec=*/10.0, false, false, false,
     MatchingStrategyType::advanced, kOffsets, kNoise, /*max_open_collectors=*/2);
-
-  // Three lidar_top clouds with stamps far outside each other's windows -> three collectors.
   static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.0));
   static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(11, 0), 100.1));
+
+  // Act
+  // A third collector must evict the one with the oldest reference without emitting it.
   static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(12, 0), 100.2));
-
-  EXPECT_EQ(concatenator.stats().force_dropped_collectors, 1u);
-
-  // The survivors are the two newest collectors; flushing yields them oldest-first.
   const auto frames = concatenator.flush();
+
+  // Assert
+  EXPECT_EQ(concatenator.stats().force_dropped_collectors, 1u);
+  // The survivors are the two newest collectors; flushing yields them oldest-first.
   ASSERT_EQ(frames.size(), 2u);
   EXPECT_DOUBLE_EQ(frames[0].reference_time, 11.0);
   EXPECT_DOUBLE_EQ(frames[1].reference_time, 12.0);
