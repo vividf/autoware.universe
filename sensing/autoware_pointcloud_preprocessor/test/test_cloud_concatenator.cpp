@@ -204,6 +204,25 @@ TEST(CloudConcatenator, CloseExpiredCollectorsWithoutACloud)
   EXPECT_EQ(frames[0].first_arrival_time, 100.0);
 }
 
+TEST(CloudConcatenator, CloseExpiredCollectorsAtExactlyNextDeadline)
+{
+  // Arrange
+  // An epoch-scale arrival time: here (arrival + 0.1) - arrival rounds to just below 0.1, so an
+  // elapsed-time comparison would leave the collector open at the instant the timer fires.
+  auto concatenator = make_naive_concatenator(0.1);
+  static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 1700058338.2039454));
+  const std::optional<double> deadline = concatenator.next_deadline();
+  ASSERT_TRUE(deadline.has_value());
+
+  // Act
+  const auto frames = concatenator.close_expired_collectors(*deadline);
+
+  // Assert
+  ASSERT_EQ(frames.size(), 1u);
+  EXPECT_EQ(frames[0].status, ConcatenatedFrameStatus::kTimeout);
+  EXPECT_FALSE(concatenator.next_deadline().has_value());
+}
+
 TEST(CloudConcatenator, ClockGoingBackwardsClosesCollectorsOpenedBeforeIt)
 {
   // Arrange
