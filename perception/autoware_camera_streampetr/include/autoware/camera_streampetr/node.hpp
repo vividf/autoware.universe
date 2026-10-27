@@ -77,6 +77,8 @@ private:
   // Helper methods for step function
   bool validate_camera_sync();
   void reset_system_state();
+  // Drops the temporal memory; the next inference starts a new stream.
+  void start_new_stream();
   bool prepare_inference_data(const rclcpp::Time & stamp);
   void cleanup_on_failure();
   // One cycle's detections and timing.

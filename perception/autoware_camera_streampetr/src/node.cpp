@@ -57,6 +57,12 @@ std::string format_milliseconds(const double milliseconds)
 
 constexpr std::size_t MAX_CAMERA_MASK_ID = 10;
 
+// No vehicle covers this distance between two inference frames; a larger motion is a localization
+// jump or the cameras stalling while driving, and the memory no longer describes the scene. The
+// head also encodes each memory entry's motion at up to 32 times its size, which overflows FP16
+// past about 2 km and leaves NaN in the memory for good.
+constexpr double MAX_EGO_MOTION_BETWEEN_FRAMES = 50.0;  // [m]
+
 // Per-camera `cameraN/state` values published in the camera-status diagnostics; external
 // monitors match on these strings, so they are part of the node's interface.
 constexpr const char * CAMERA_STATE_REJECTED = "rejected";
@@ -401,9 +407,15 @@ bool StreamPetrNode::validate_camera_sync()
 
 void StreamPetrNode::reset_system_state()
 {
+  start_new_stream();
+  data_store_->restart();
+}
+
+void StreamPetrNode::start_new_stream()
+{
+  // The memory and the pose it is stored relative to are only valid together.
   network_->wipe_memory();
   previous_map_to_base_.reset();
-  data_store_->restart();
 }
 
 bool StreamPetrNode::prepare_inference_data(const rclcpp::Time & stamp)
@@ -426,6 +438,17 @@ bool StreamPetrNode::prepare_inference_data(const rclcpp::Time & stamp)
 
   // Store the results for inference
   current_map_to_base_ = map_to_base.value();
+  if (previous_map_to_base_.has_value()) {
+    const double ego_motion =
+      previous_map_to_base_->getOrigin().distance(current_map_to_base_.getOrigin());
+    if (ego_motion > MAX_EGO_MOTION_BETWEEN_FRAMES) {
+      RCLCPP_WARN(
+        rclcpp::get_logger(logger_name_.c_str()),
+        "The vehicle moved %.1f m since the last inference frame; dropping the temporal memory.",
+        ego_motion);
+      start_new_stream();
+    }
+  }
   current_ego_pose_ = compute_ego_pose_bindings(previous_map_to_base_, current_map_to_base_);
   current_extrinsics_ = extrinsic_vectors.value();
   current_prediction_timestamp_ = data_store_->get_timestamp();
