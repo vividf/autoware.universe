@@ -18,5 +18,6 @@
 
 // The concatenator is templated on the point cloud message type (implementation in the .ipp); the
 // PointCloud2 instantiation ships in concatenate_core so the bindings and tests link against one
-// copy. The CUDA node instantiates its cuda_blackboard::CudaPointCloud2 variant in its own TU.
+// copy. The CUDA node instantiates its cuda_blackboard::CudaPointCloud2 variant in its own
+// translation unit.
 template class autoware::pointcloud_preprocessor::CloudConcatenator<sensor_msgs::msg::PointCloud2>;
