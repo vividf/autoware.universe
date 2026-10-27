@@ -29,6 +29,7 @@
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <rosgraph_msgs/msg/clock.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
@@ -119,6 +120,7 @@ struct NodeParams
   std::string synchronized_pointcloud_postfix{"pointcloud_sync"};
   int maximum_queue_size{5};
   double rosbag_length{0.0};
+  bool use_sim_time{false};
   std::vector<double> lidar_timestamp_noise_windows{noise_window, noise_window, noise_window};
 };
 
@@ -445,6 +447,11 @@ protected:
     create_input_publishers();
     create_output_subscriptions();
 
+    if (params.use_sim_time) {
+      clock_publisher_ =
+        test_node_->create_publisher<rosgraph_msgs::msg::Clock>("/clock", rclcpp::ClockQoS());
+    }
+
     load_node_under_test();
     spin_for(std::chrono::milliseconds(300));
   }
@@ -477,6 +484,24 @@ protected:
   {
     input_publishers_.at(sensor_index)->publish(make_cloud(sensor_index, stamp_sec, layout, empty));
     spin_for(std::chrono::milliseconds(10));
+  }
+
+  // Sets /clock, for a node started with use_sim_time.
+  void set_clock(double seconds)
+  {
+    rosgraph_msgs::msg::Clock msg;
+    msg.clock = to_time(seconds);
+    clock_publisher_->publish(msg);
+    spin_for(std::chrono::milliseconds(20));
+  }
+
+  // Runs /clock from `from_sec` to `to_sec` in 50 ms steps, as a rosbag replay does.
+  void run_clock(double from_sec, double to_sec)
+  {
+    constexpr double step_sec = 0.05;
+    for (int step = 0; from_sec + step * step_sec <= to_sec + 1e-9; ++step) {
+      set_clock(from_sec + step * step_sec);
+    }
   }
 
   // Publishes one cloud per sensor at base_sec + its configured offset, and returns the
@@ -817,6 +842,7 @@ private:
     std::vector<rclcpp::Parameter> overrides{
       {"debug_mode", false},
       {"rosbag_length", params_.rosbag_length},
+      {"use_sim_time", params_.use_sim_time},
       {"maximum_queue_size", params_.maximum_queue_size},
       {"timeout_sec", timeout_sec},
       {"is_motion_compensated", params_.is_motion_compensated},
@@ -848,6 +874,7 @@ private:
   std::vector<rclcpp::Publisher<PointCloud2>::SharedPtr> input_publishers_;
   rclcpp::Publisher<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr twist_publisher_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odometry_publisher_;
+  rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr clock_publisher_;
 
   rclcpp::Subscription<PointCloud2>::SharedPtr concatenated_subscription_;
   rclcpp::Subscription<ConcatenatedPointCloudInfo>::SharedPtr info_subscription_;
@@ -948,6 +975,7 @@ PointCloud2 ConcatenateNodeTest::make_cloud(
 //   Odometry                    - the other velocity input
 //   Diagnostics                 - level, message, and key/value payload
 //   Debug topics                - processing time, cyclic time, per-input latency
+//   Simulated time              - use_sim_time, and /clock jumping back on a rosbag restart
 //
 // Each test builds its own node, so any one of them can be run on its own:
 //   ./test_concatenate_node_characterization --gtest_filter='*DropsCloudOlder*'
@@ -2095,6 +2123,78 @@ TEST_F(ConcatenateNodeTest, PublishesPipelineLatencyPerInputTopic)
   for (size_t i = 0; i < num_sensors; ++i) {
     EXPECT_FALSE(pipeline_latencies_.at(i).empty()) << "no latency for sensor " << i;
   }
+}
+
+// ---------------------------------------------------------------------------------------
+// Simulated time. With use_sim_time the node's clock follows /clock, which jumps back when
+// a rosbag is restarted or replayed with --loop. Covers the timeout timer across that jump.
+// ---------------------------------------------------------------------------------------
+
+// /clock before and after a rosbag restart; far apart compared with timeout_sec.
+constexpr double clock_before_restart_sec = 1000.0;
+constexpr double clock_after_restart_sec = 500.0;
+
+TEST_F(ConcatenateNodeTest, TimesOutOnSimulatedTime)
+{
+  // Arrange
+  NodeParams params;
+  params.is_motion_compensated = false;
+  params.use_sim_time = true;
+  start(params);
+  set_clock(clock_before_restart_sec);
+  publish_clouds_from(base_stamp_sec, {0});
+
+  // Act
+  run_clock(clock_before_restart_sec, clock_before_restart_sec + 5 * timeout_sec);
+
+  // Assert
+  const auto cloud = await_concatenated_cloud();
+  EXPECT_EQ(cloud.width, num_points);
+}
+
+TEST_F(ConcatenateNodeTest, TimesOutAFrameLeftOpenWhenTheClockJumpsBack)
+{
+  // Arrange: the bag ends mid-frame, so a collector is still waiting for two sensors.
+  NodeParams params;
+  params.is_motion_compensated = false;
+  params.use_sim_time = true;
+  start(params);
+  set_clock(clock_before_restart_sec);
+  publish_clouds_from(base_stamp_sec, {0});
+
+  // Act: the bag restarts, so /clock goes back and runs on from there.
+  run_clock(clock_after_restart_sec, clock_after_restart_sec + 5 * timeout_sec);
+
+  // Assert
+  const auto cloud = await_concatenated_cloud();
+  EXPECT_EQ(cloud.width, num_points);
+}
+
+TEST_F(ConcatenateNodeTest, ConcatenatesReplayedFramesAfterTheClockJumpsBack)
+{
+  // Arrange: two frames are left open when the bag ends. After the restart, /clock goes back
+  // and the replayed clouds carry earlier stamps than the frames left open.
+  NodeParams params;
+  params.is_motion_compensated = false;
+  params.use_sim_time = true;
+  start(params);
+  set_clock(clock_before_restart_sec);
+  publish_clouds_from(base_stamp_sec, {0});
+  publish_clouds_from(base_stamp_sec + 0.5, {0});
+  run_clock(clock_after_restart_sec, clock_after_restart_sec + 5 * timeout_sec);
+  concatenated_clouds_.clear();
+  const double replayed_sec = base_stamp_sec - 1.0;
+
+  // Act: the next frame's first cloud arrives before this frame's other two.
+  publish_cloud(0, replayed_sec + timestamp_offsets.at(0));
+  publish_cloud(0, replayed_sec + 0.1 + timestamp_offsets.at(0));
+  publish_cloud(1, replayed_sec + timestamp_offsets.at(1));
+  publish_cloud(2, replayed_sec + timestamp_offsets.at(2));
+
+  // Assert
+  const auto cloud = await_concatenated_cloud();
+  EXPECT_EQ(cloud.width, num_sensors * num_points);
+  EXPECT_EQ(rclcpp::Time(cloud.header.stamp), to_time(replayed_sec));
 }
 
 int main(int argc, char ** argv)
