@@ -60,6 +60,10 @@ struct ConcatenationDiagnosticsSummary
   std::vector<std::string> frames_missing_transform{};
 };
 
+/// Per-topic pipeline latency in milliseconds: (now_sec - original stamp) for every topic.
+std::unordered_map<std::string, double> latency_ms_per_topic(
+  const std::unordered_map<std::string, double> & topic_to_original_stamp, double now_sec);
+
 /// Build the DiagnosticStatus for the concatenation. Per-topic entries follow @p input_topics
 /// order. Shared by the node and the offline pipeline.
 diagnostic_msgs::msg::DiagnosticStatus build_diagnostic_status(
