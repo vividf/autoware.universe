@@ -396,15 +396,18 @@ TEST(CloudConcatenator, MaxOpenCollectorsDropsOldestUnpublished)
 
 TEST(ConcatenationDiagnostics, CompleteNaiveCollectorIsOk)
 {
+  // Arrange
   auto concatenator = make_naive_concatenator();
   static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.00));
   static_cast<void>(concatenator.process_cloud("lidar_left", make_cloud(10, 0), 100.01));
   const auto frames = concatenator.process_cloud("lidar_right", make_cloud(10, 0), 100.02);
   ASSERT_EQ(frames.size(), 1u);
 
+  // Act
   const auto status = build_diagnostic_status(frames[0], kInputTopics);
-  const auto values = key_values_of(status);
 
+  // Assert
+  const auto values = key_values_of(status);
   EXPECT_EQ(status.level, diagnostic_msgs::msg::DiagnosticStatus::OK);
   EXPECT_EQ(status.message, "Concatenated pointcloud is published and includes all topics");
   EXPECT_EQ(values.at("Pointcloud concatenation succeeded"), "True");
@@ -423,15 +426,18 @@ TEST(ConcatenationDiagnostics, CompleteNaiveCollectorIsOk)
 
 TEST(ConcatenationDiagnostics, TimeoutWithMissingTopicsIsError)
 {
+  // Arrange
   auto concatenator = make_naive_concatenator(0.2);
   static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.0));
   const auto frames = concatenator.process_cloud("lidar_left", make_cloud(10, 0), 100.5);
   ASSERT_EQ(frames.size(), 1u);
   ASSERT_EQ(frames[0].status, ConcatenatedFrameStatus::kTimeout);
 
+  // Act
   const auto status = build_diagnostic_status(frames[0], kInputTopics);
-  const auto values = key_values_of(status);
 
+  // Assert
+  const auto values = key_values_of(status);
   EXPECT_EQ(status.level, diagnostic_msgs::msg::DiagnosticStatus::ERROR);
   EXPECT_EQ(status.message, "Concatenated pointcloud is published but misses some topics");
   EXPECT_EQ(values.at("Pointcloud concatenation succeeded"), "False");
@@ -442,14 +448,18 @@ TEST(ConcatenationDiagnostics, TimeoutWithMissingTopicsIsError)
 
 TEST(ConcatenationDiagnostics, AdvancedRecordsReferenceWindow)
 {
+  // Arrange
   auto concatenator = make_advanced_concatenator();
   static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.00));
   static_cast<void>(concatenator.process_cloud("lidar_left", make_cloud(10, 40'000'000), 100.01));
   const auto frames = concatenator.process_cloud("lidar_right", make_cloud(10, 80'000'000), 100.02);
   ASSERT_EQ(frames.size(), 1u);
 
-  const auto values = key_values_of(build_diagnostic_status(frames[0], kInputTopics));
+  // Act
+  const auto status = build_diagnostic_status(frames[0], kInputTopics);
 
+  // Assert
+  const auto values = key_values_of(status);
   EXPECT_EQ(values.at("Minimum reference timestamp"), "9.990000000");
   EXPECT_EQ(values.at("Maximum reference timestamp"), "10.010000000");
   EXPECT_EQ(values.count("First pointcloud arrival timestamp"), 0u);
@@ -457,8 +467,8 @@ TEST(ConcatenationDiagnostics, AdvancedRecordsReferenceWindow)
 
 TEST(ConcatenationDiagnostics, SummaryPathMatchesFramePath)
 {
+  // Arrange
   // The node builds diagnostics from a summary; the offline pipeline builds them from the frame.
-  // Both must produce the same status.
   auto concatenator = make_advanced_concatenator();
   static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.00));
   static_cast<void>(concatenator.process_cloud("lidar_left", make_cloud(10, 40'000'000), 100.01));
@@ -480,9 +490,12 @@ TEST(ConcatenationDiagnostics, SummaryPathMatchesFramePath)
     autoware::pointcloud_preprocessor::ReferenceWindow{frame.reference_time, frame.noise_window};
   summary.topic_to_original_stamp = frame.result.topic_to_original_stamp_map;
 
+  // Act
   const auto via_frame = build_diagnostic_status(frame, kInputTopics, options);
   const auto via_summary = build_diagnostic_status(summary, kInputTopics, options);
 
+  // Assert
+  // Both must produce the same status.
   EXPECT_EQ(via_frame.level, via_summary.level);
   EXPECT_EQ(via_frame.message, via_summary.message);
   EXPECT_EQ(key_values_of(via_frame), key_values_of(via_summary));
@@ -490,9 +503,8 @@ TEST(ConcatenationDiagnostics, SummaryPathMatchesFramePath)
 
 TEST(ConcatenationDiagnostics, FrameOverloadReportsSourcesWithoutATransform)
 {
-  // No set_transform() was called, so a cloud in a sensor frame is dropped from the combine. The
-  // frame overload must report it the way the node's summary does: not concatenated, and the
-  // frame named, so the offline path cannot call a cloud concatenated when its points are not.
+  // Arrange
+  // No set_transform() was called, so a cloud in a sensor frame is dropped from the combine.
   auto concatenator = make_advanced_concatenator();
   static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.00));
   static_cast<void>(
@@ -501,9 +513,14 @@ TEST(ConcatenationDiagnostics, FrameOverloadReportsSourcesWithoutATransform)
   ASSERT_EQ(frames.size(), 1u);
   ASSERT_EQ(frames[0].result.dropped_sources_missing_transform.size(), 1u);
 
+  // Act
   const auto status = build_diagnostic_status(frames[0], kInputTopics);
-  EXPECT_EQ(status.level, diagnostic_msgs::msg::DiagnosticStatus::ERROR);
+
+  // Assert
+  // The frame overload must report it the way the node's summary does: not concatenated, and the
+  // frame named, so the offline path cannot call a cloud concatenated when its points are not.
   const auto values = key_values_of(status);
+  EXPECT_EQ(status.level, diagnostic_msgs::msg::DiagnosticStatus::ERROR);
   EXPECT_EQ(values.at("Concatenated: lidar_left"), "False");
   EXPECT_EQ(values.at("Concatenated: lidar_top"), "True");
   EXPECT_EQ(values.at("Frames without a transform to the output frame"), "lidar_left");
@@ -511,6 +528,7 @@ TEST(ConcatenationDiagnostics, FrameOverloadReportsSourcesWithoutATransform)
 
 TEST(ConcatenationDiagnostics, OptionalLatencyAndProcessingTime)
 {
+  // Arrange
   auto concatenator = make_naive_concatenator();
   static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.00));
   static_cast<void>(concatenator.process_cloud("lidar_left", make_cloud(10, 0), 100.01));
@@ -520,8 +538,12 @@ TEST(ConcatenationDiagnostics, OptionalLatencyAndProcessingTime)
   ConcatenationDiagnosticsOptions options;
   options.processing_time_ms = 2.5;
   options.now_sec = 10.1;  // 0.1 s after the 10.0 s stamps -> 100 ms latency
-  const auto values = key_values_of(build_diagnostic_status(frames[0], kInputTopics, options));
 
+  // Act
+  const auto status = build_diagnostic_status(frames[0], kInputTopics, options);
+
+  // Assert
+  const auto values = key_values_of(status);
   EXPECT_EQ(values.at("Processing time (ms)"), "2.500000");
   EXPECT_EQ(values.at("Pipeline latency (ms)"), "100.000000");
   for (const auto & topic : kInputTopics) {
