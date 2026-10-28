@@ -109,7 +109,7 @@ PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::
     params_.input_topics, params_.output_frame, params_.timeout_sec, params_.is_motion_compensated,
     params_.publish_synchronized_pointcloud, params_.keep_input_frame_in_synchronized_pointcloud,
     params_.matching_strategy, lidar_timestamp_offsets, lidar_timestamp_noise_window,
-    num_of_collectors);
+    max_open_collectors);
 
   // Diagnostic Updater
   diagnostics_interface_ =
@@ -279,7 +279,7 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<
       this->get_logger(), *this->get_clock(), 1000,
       "Reset the oldest collector because the number of processing collectors is equal to the "
       "limit of ("
-        << num_of_collectors << ").");
+        << max_open_collectors << ").");
   }
   reported_stats_ = stats;
 }
