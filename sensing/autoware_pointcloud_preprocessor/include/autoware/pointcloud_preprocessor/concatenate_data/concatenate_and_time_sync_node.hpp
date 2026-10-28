@@ -117,7 +117,7 @@ private:
 
   // Cap of concurrently open collectors (the concatenator discards the oldest beyond this),
   // matching the fixed collector pool the node used historically.
-  static constexpr const std::size_t num_of_collectors{3};
+  static constexpr const std::size_t max_open_collectors{3};
 
   // default postfix name for synchronized pointcloud
   static constexpr const char * default_sync_topic_postfix = "_synchronized";
