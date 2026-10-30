@@ -1857,7 +1857,7 @@ TEST_F(ConcatenateNodeTest, DropsCloudOlderThanTheLastPublishedOne)
   EXPECT_TRUE(concatenated_clouds_.empty());
 }
 
-TEST_F(ConcatenateNodeTest, PublishesInfoEvenForACloudItDrops)
+TEST_F(ConcatenateNodeTest, RejectsCloudsThatArriveAfterTheirFrameWasPublished)
 {
   // Arrange
   NodeParams params;
@@ -1867,18 +1867,19 @@ TEST_F(ConcatenateNodeTest, PublishesInfoEvenForACloudItDrops)
   start(params);
   publish_all_clouds(base_stamp_sec);
   await_concatenated_cloud();
+  await_concatenation_info();
   concatenated_clouds_.clear();
   concatenation_infos_.clear();
-  const double late = base_stamp_sec - 1.0;
 
   // Act
-  publish_all_clouds(late);
-  const auto info = await_concatenation_info();
+  // One second earlier, i.e. well inside rosbag_length: these clouds belong to a frame before the
+  // published one, so they are rejected on arrival and never form a frame.
+  publish_all_clouds(base_stamp_sec - 1.0);
+  wait_out_the_timeout();
 
   // Assert
-  EXPECT_EQ(rclcpp::Time(info.header.stamp), to_time(late));
-  EXPECT_TRUE(info.concatenation_success);
   EXPECT_TRUE(concatenated_clouds_.empty());
+  EXPECT_TRUE(concatenation_infos_.empty());
 }
 
 TEST_F(ConcatenateNodeTest, PublishesCloudWhenTimeJumpsBackFurtherThanRosbagLength)
@@ -2057,32 +2058,39 @@ TEST_F(ConcatenateNodeTest, DiagnosticsReportsErrorWhenTheConcatenatedCloudIsEmp
   EXPECT_EQ(status.message, "Concatenated pointcloud is empty");
 }
 
-TEST_F(ConcatenateNodeTest, DiagnosticsReportsErrorWhenACloudIsDroppedAsLate)
+TEST_F(ConcatenateNodeTest, DiagnosticsReportsErrorWhenAFrameIsDroppedAsLate)
 {
   // Arrange
+  // Frame A is left incomplete; frame B, 0.1 s later, completes and is published first. When A
+  // times out its stamp is older than the last published one, so it is dropped as late.
   NodeParams params;
   params.is_motion_compensated = false;
   params.publish_previous_but_late_pointcloud = false;
   params.rosbag_length = 10.0;
   start(params);
-  publish_all_clouds(base_stamp_sec);
-  await_concatenated_cloud();
-  diagnostics_.clear();
-  const double late = base_stamp_sec - 1.0;
+  const auto stamps_a = publish_clouds_from(base_stamp_sec, {0, 1});
+  publish_all_clouds(base_stamp_sec + 0.1);
 
   // Act
-  publish_all_clouds(late);
-  const auto status = await_diagnostic();
+  // Long enough for B to be published and for A to time out behind it.
+  wait_out_the_timeout();
 
   // Assert
+  // Only B's cloud goes out; A's info still describes the dropped frame, and the diagnostic says
+  // why.
+  ASSERT_EQ(concatenated_clouds_.size(), 1u);
+  ASSERT_EQ(concatenation_infos_.size(), 2u);
+  EXPECT_EQ(rclcpp::Time(concatenation_infos_.back().header.stamp), to_time(stamps_a.front()));
+  ASSERT_FALSE(diagnostics_.empty());
+  const auto & status = diagnostics_.back();
   EXPECT_EQ(status.level, DiagnosticStatus::ERROR);
   EXPECT_EQ(
     status.message,
-    "Concatenated pointcloud was dropped due to its timestamp is earlier than the latest "
-    "published one");
-  // The diagnostic still describes the cloud that was dropped.
+    "Concatenated pointcloud was dropped due to missing topics and its timestamp is earlier than "
+    "the latest published one");
   EXPECT_EQ(
-    get_diagnostic_value(status, "Concatenated pointcloud timestamp"), format_seconds(late));
+    get_diagnostic_value(status, "Concatenated pointcloud timestamp"),
+    format_seconds(stamps_a.front()));
 }
 
 // ---------------------------------------------------------------------------------------
