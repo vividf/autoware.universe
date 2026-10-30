@@ -72,13 +72,12 @@ struct CloudConcatenatorStats
 };
 
 /// What to do with a cloud that matches no open collector and belongs to a frame at or before the
-/// last emitted one. Such a cloud arrived after its collector closed; without a policy it opens a
-/// new collector, holds a slot for timeout_sec, and goes out as a one-cloud timeout frame.
+/// last emitted one, i.e. it arrived after its collector closed. Without a policy it opens a new
+/// collector, holds a slot for timeout_sec, and goes out as a one-cloud timeout frame.
 ///
-/// The frame a cloud belongs to is its offset-corrected reference under the advanced strategy and
-/// its header stamp under naive (naive matching itself uses arrival times, so a late cloud that
-/// still finds an open collector missing its topic joins it; only clouds that match nothing are
-/// subject to this policy).
+/// A cloud's frame is its offset-corrected reference under advanced and its header stamp under
+/// naive. Only clouds that match nothing are checked, so under naive (arrival-time matching) a late
+/// cloud that finds an open collector missing its topic still joins it.
 struct LateCloudPolicy
 {
   /// Reject late clouds (counted in CloudConcatenatorStats::late_clouds_rejected, nothing opened).
@@ -182,10 +181,9 @@ private:
   // Discard (unpublished) the open collector with the oldest reference to make room for a new one.
   void drop_oldest_collector();
 
-  // The frame a cloud belongs to, for the late-cloud check (see LateCloudPolicy).
+  // Late-cloud check (see LateCloudPolicy); a replay jump resets the watermark.
   [[nodiscard]] double frame_of(
     const MatchingReference & reference, const IncomingCloudInfo & incoming_cloud_info) const;
-  // Whether a cloud of that frame is late under the policy; a replay jump resets the watermark.
   [[nodiscard]] bool is_late(double frame);
 
   // Combine the collector's clouds and package them as an emitted frame.
@@ -203,10 +201,7 @@ private:
   CombineCloudHandler<PointCloudMsgT> handler_;
   std::vector<Collector> collectors_;
   CloudConcatenatorStats stats_;
-  // Frame of the newest emitted collector (reference time under advanced, newest header stamp
-  // under naive); clouds at or before it that match nothing are late. Reset by a backward step of
-  // the caller's clock and by a replay jump.
-  std::optional<double> emitted_frame_watermark_;
+  std::optional<double> emitted_frame_watermark_;  // frame of the newest emitted collector
   double last_time_sec_{-std::numeric_limits<double>::infinity()};
 };
 

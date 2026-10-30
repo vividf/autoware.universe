@@ -2076,8 +2076,6 @@ TEST_F(ConcatenateNodeTest, DiagnosticsReportsErrorWhenAFrameIsDroppedAsLate)
   wait_out_the_timeout();
 
   // Assert
-  // Only B's cloud goes out; A's info still describes the dropped frame, and the diagnostic says
-  // why.
   ASSERT_EQ(concatenated_clouds_.size(), 1u);
   ASSERT_EQ(concatenation_infos_.size(), 2u);
   EXPECT_EQ(rclcpp::Time(concatenation_infos_.back().header.stamp), to_time(stamps_a.front()));

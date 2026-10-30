@@ -117,9 +117,8 @@ std::vector<ConcatenatedFrame<PointCloudMsgT>> CloudConcatenator<PointCloudMsgT>
     matching_policy_->match(candidates, incoming_cloud_info);
 
   // (3) No match -> start a new collector (matching window from the policy-provided reference,
-  // timeout starting at this cloud's arrival), unless the cloud is late: its frame was already
-  // emitted, so it would only hold a slot and go out alone (see LateCloudPolicy). When the
-  // collector limit is reached, make room first by discarding the collector with the oldest
+  // timeout starting at this cloud's arrival), unless the cloud is late (see LateCloudPolicy). When
+  // the collector limit is reached, make room first by discarding the collector with the oldest
   // reference (mirrors the node's fixed collector pool).
   std::size_t index = 0;
   if (matched_index.has_value()) {
@@ -201,8 +200,6 @@ template <typename PointCloudMsgT>
 double CloudConcatenator<PointCloudMsgT>::frame_of(
   const MatchingReference & reference, const IncomingCloudInfo & incoming_cloud_info) const
 {
-  // Advanced references are offset-corrected header stamps; naive references are arrival times,
-  // which say nothing about which frame a cloud belongs to, so use its header stamp there.
   return matching_strategy_ == MatchingStrategyType::advanced ? reference.reference_time
                                                               : incoming_cloud_info.cloud_timestamp;
 }
