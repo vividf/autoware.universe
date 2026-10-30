@@ -98,8 +98,6 @@ target_link_libraries(concatenate_core PUBLIC
 )
 
 add_library(concatenate_data SHARED
-  src/concatenate_data/cloud_collector.cpp
-  src/concatenate_data/collector_matcher.cpp
   src/concatenate_data/concatenate_pointclouds.cpp
 )
 target_link_libraries(concatenate_data concatenate_core)
