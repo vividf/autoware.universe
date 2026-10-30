@@ -551,6 +551,61 @@ TEST(ConcatenationDiagnostics, OptionalLatencyAndProcessingTime)
   }
 }
 
+// ---------------------------------------------------------------------------------------
+// Clouds that arrive after their collector has already closed. These pin today's behavior so the
+// fix in this PR can invert them deliberately (see the PR description).
+// ---------------------------------------------------------------------------------------
+
+TEST(CloudConcatenatorLateClouds, AdvancedOpensACollectorForACloudWhoseFrameAlreadyClosed)
+{
+  // Arrange
+  // Frame 10.00 times out with top and left; right arrives 0.06 s after that.
+  auto concatenator = make_advanced_concatenator(0.2);
+  static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.00));
+  static_cast<void>(concatenator.process_cloud("lidar_left", make_cloud(10, 40'000'000), 100.01));
+  const auto timed_out = concatenator.close_expired_collectors(100.25);
+  ASSERT_EQ(timed_out.size(), 1u);
+
+  // Act
+  const auto on_arrival =
+    concatenator.process_cloud("lidar_right", make_cloud(10, 80'000'000), 100.26);
+  const auto later = concatenator.close_expired_collectors(100.50);
+
+  // Assert
+  // Today: a new collector holds a slot for timeout_sec and goes out as a one-cloud frame.
+  EXPECT_TRUE(on_arrival.empty());
+  ASSERT_EQ(later.size(), 1u);
+  EXPECT_EQ(later[0].status, ConcatenatedFrameStatus::kTimeout);
+  EXPECT_EQ(later[0].result.concatenate_cloud_ptr->width, kPointsPerCloud);
+}
+
+TEST(CloudConcatenatorLateClouds, NaiveLetsALateCloudJoinANewerFrame)
+{
+  // Arrange
+  // Top and left stream at 10 Hz; right is held up. Frame 10.00 times out at 100.20, and frames
+  // 10.10 and 10.20 are open when right(10.00) finally arrives.
+  auto concatenator = make_naive_concatenator(0.2);
+  static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(10, 0), 100.00));
+  static_cast<void>(concatenator.process_cloud("lidar_left", make_cloud(10, 0), 100.01));
+  static_cast<void>(concatenator.process_cloud("lidar_top", make_cloud(10, 100'000'000), 100.10));
+  static_cast<void>(concatenator.process_cloud("lidar_left", make_cloud(10, 100'000'000), 100.11));
+  const auto timed_out =
+    concatenator.process_cloud("lidar_top", make_cloud(10, 200'000'000), 100.20);
+  static_cast<void>(concatenator.process_cloud("lidar_left", make_cloud(10, 200'000'000), 100.21));
+  ASSERT_EQ(timed_out.size(), 1u);
+
+  // Act
+  const auto frames = concatenator.process_cloud("lidar_right", make_cloud(10, 0), 100.26);
+
+  // Assert
+  // Today: naive matches on arrival time only, so the stale right cloud completes frame 10.20.
+  ASSERT_EQ(frames.size(), 1u);
+  EXPECT_EQ(frames[0].status, ConcatenatedFrameStatus::kComplete);
+  const auto & stamps = frames[0].result.topic_to_original_stamp_map;
+  EXPECT_DOUBLE_EQ(stamps.at("lidar_top"), 10.2);
+  EXPECT_DOUBLE_EQ(stamps.at("lidar_right"), 10.0);
+}
+
 int main(int argc, char ** argv)
 {
   testing::InitGoogleTest(&argc, argv);
