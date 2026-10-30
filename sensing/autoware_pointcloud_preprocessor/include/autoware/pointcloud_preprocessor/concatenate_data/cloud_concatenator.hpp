@@ -130,6 +130,10 @@ public:
 
   [[nodiscard]] const CloudConcatenatorStats & stats() const { return stats_; }
 
+  /// The underlying combine handler, for integrations that need handler-level access (e.g. the
+  /// CUDA node hands the handler's per-topic streams to its subscribers).
+  [[nodiscard]] CombineCloudHandler<PointCloudMsgT> & combine_cloud_handler() { return handler_; }
+
 private:
   // One open collector: the clouds gathered so far for a single output frame.
   struct Collector

@@ -416,9 +416,6 @@ protected:
   void TearDown() override
   {
     executor_.reset();
-    // TODO(sasakisasaki): this drops one reference but does not destroy the node. The node
-    // owns its CloudCollectors and each collector owns the node back, so the shared_ptr cycle
-    // keeps both alive. Harmless here, but production wants ros2_parent_node_ to be weak.
     node_wrapper_ = rclcpp_components::NodeInstanceWrapper();
     test_node_.reset();
   }
@@ -1713,7 +1710,7 @@ TEST_F(ConcatenateNodeTest, SynchronizedCloudIsStampedWithTheConcatenatedStamp)
 }
 
 // ---------------------------------------------------------------------------------------
-// A source that never arrives. Covers the CloudCollector timeout timer.
+// A source that never arrives. Covers the timeout timer.
 // ---------------------------------------------------------------------------------------
 
 TEST_F(ConcatenateNodeTest, PublishesRemainingSourcesAfterTimeout)
