@@ -78,6 +78,10 @@ struct CloudConcatenatorStats
 ///   - online (the concatenation node): subscription callbacks call process_cloud(..., now()),
 ///     and a one-shot timer re-armed from next_deadline() calls close_expired_collectors(now())
 ///     so collectors still time out while no clouds arrive.
+///
+/// Not thread-safe: calls must not overlap. The node guarantees this by keeping its subscription
+/// and timer callbacks in its default (mutually exclusive) callback group; a caller on several
+/// threads must serialize the calls itself.
 template <typename PointCloudMsgT>
 class CloudConcatenator
 {
